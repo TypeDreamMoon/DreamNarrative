@@ -82,6 +82,7 @@ namespace UE::DreamNarrative::Lang
 				Out.ForCharacter = P.ForCharacter.IsEmpty() ? NAME_None : FName(*P.ForCharacter);
 				Out.Condition = Exprs.Compile(P.Condition);
 				Out.Priority = P.Priority != INDEX_NONE ? P.Priority : FDnaExprCompiler::CountConjuncts(P.Condition);
+				Out.bExplicitPriority = P.Priority != INDEX_NONE;
 				Out.SourceLine = Root.LineNumber();
 				Out.WasName = P.WasName.IsEmpty() ? NAME_None : FName(*P.WasName);
 				LineOrdinal = 0;
@@ -170,6 +171,7 @@ namespace UE::DreamNarrative::Lang
 				Out.Id = P.Modifiers.Id.IsEmpty()
 					? FName(*FString::Printf(TEXT("%s.%d"), *Data->Name.ToString(), LineOrdinal))
 					: FName(*P.Modifiers.Id);
+				Out.bExplicitId = !P.Modifiers.Id.IsEmpty();
 				Out.Speaker = Line.Kind == EDnaLineKind::Speech ? FName(*P.Name) : NAME_None;
 				for (const FString& Tag : P.SpeakerTags) { Out.Tags.Add(FName(*Tag)); }
 
@@ -209,6 +211,7 @@ namespace UE::DreamNarrative::Lang
 					Option.Id = P.Modifiers.Id.IsEmpty()
 						? FName(*FString::Printf(TEXT("%s.c%d"), *Data->Name.ToString(), ChoiceOrdinal))
 						: FName(*P.Modifiers.Id);
+					Option.bExplicitId = !P.Modifiers.Id.IsEmpty();
 					FTextBuilder Builder;
 					Builder.Append(P.Text, Exprs);
 					Option.Label = MakeLocalizable(Namespace, Option.Id.ToString(), Builder.Pattern);

@@ -56,6 +56,10 @@ struct DREAMNARRATIVESTORY_API FDnaLineData
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	FName Id;
 
+	/** The source gave the id (`#id`); otherwise it is derived from the position and moves with edits. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	bool bExplicitId = false;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	FName Speaker;
 
@@ -93,6 +97,10 @@ struct DREAMNARRATIVESTORY_API FDnaChoiceData
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	FName Id;
+
+	/** The source gave the id (`#id`). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	bool bExplicitId = false;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	FText Label;
@@ -178,6 +186,10 @@ struct DREAMNARRATIVESTORY_API FDnaDialogueNodeData
 	/** Explicit priority, or the number of condition terms when none was given. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	int32 Priority = 0;
+
+	/** The source wrote `priority n`. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	bool bExplicitPriority = false;
 
 	UPROPERTY(VisibleAnywhere, Category = "Narrative")
 	TArray<FDnaInstruction> Code;
