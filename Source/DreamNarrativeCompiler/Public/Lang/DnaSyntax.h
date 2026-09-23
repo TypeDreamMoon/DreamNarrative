@@ -160,6 +160,14 @@ namespace UE::DreamNarrative::Lang
 		GivenVisited,
 		/** Under `given`: `once #选项id`, a once-choice already taken. Payload.Target. */
 		GivenOnce,
+		/** Under `given`: `quest 任务 = 状态 [剩余时长]`. Payload.Name, Value (the state), Seconds (0: none given). */
+		GivenQuest,
+		/** `accept 任务`, `complete 任务`, `fail 任务`: the game asks the quest. Payload.Name. */
+		QuestAccept,
+		QuestComplete,
+		QuestFail,
+		/** `journal 任务: 文本`: the quest's journal line reads so now. Payload.Name, Text. */
+		Journal,
 	};
 
 	/** The source keyword of a step: `seed`, `talk`, ...; `line`, `absent` and `pick` for the expectations. */

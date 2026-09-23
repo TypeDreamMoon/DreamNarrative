@@ -3,6 +3,7 @@
 #include "Spec/DnaTestBlocks.h"
 #include "DreamNarrativeDialogue.h"
 #include "DreamNarrativeDialogueRunner.h"
+#include "DreamNarrativeQuest.h"
 #include "DreamNarrativeLedger.h"
 #include "DreamNarrativeStory.h"
 #include "Fixtures/DnaTestWorld.h"
@@ -68,6 +69,37 @@ namespace UE::DreamNarrative::Tests
 			FString Where(const FDnaLineNode& Node) const
 			{
 				return FString::Printf(TEXT("%s(%d)"), *File, Node.LineNumber());
+			}
+
+			FString QuestStateText(FName Quest) const
+			{
+				return ::DreamNarrative::QuestStateMember(World.Story().GetQuestStateOf(Quest)).ToString();
+			}
+
+			/** `quest 任务 = 状态 [剩余时长]` under given: the state as it stands, its objectives undone, its timer as given. */
+			bool GiveQuest(const FDnaLinePayload& E)
+			{
+				const FName Quest(*E.Name);
+				const FDnaQuestData* Data = World.Story().FindQuest(Quest);
+				EDnaQuestState State = EDnaQuestState::Inactive;
+				if (!Data || !::DreamNarrative::TryParseQuestState(FName(*E.Value), State))
+				{
+					World.ReportError(FString::Printf(TEXT("given: quest %s = %s cannot be set"), *E.Name, *E.Value));
+					return false;
+				}
+				UDreamNarrativeLedger& Ledger = World.Ledger();
+				Ledger.SetFact(::DreamNarrative::QuestObjectivesFact(Quest), FDnaValue::FromInt(0), EDnaWriteSource::Narrative);
+				Ledger.SetFact(::DreamNarrative::QuestStateFact(Quest), FDnaValue::FromTag(::DreamNarrative::QuestStateMember(State)), EDnaWriteSource::Narrative);
+				const bool bActive = State == EDnaQuestState::Accepted || State == EDnaQuestState::Going;
+				if (bActive && (E.Seconds > 0.0 || Data->Timeout > 0.f))
+				{
+					Ledger.StartTimer(::DreamNarrative::QuestStateFact(Quest), E.Seconds > 0.0 ? E.Seconds : Data->Timeout);
+				}
+				else
+				{
+					Ledger.CancelTimer(::DreamNarrative::QuestStateFact(Quest));
+				}
+				return true;
 			}
 
 			bool IsOnceChoice(FName Id) const
@@ -139,6 +171,10 @@ namespace UE::DreamNarrative::Tests
 						{
 							Chapter = Entry;
 						}
+						else if (E.TestStep == EDnaTestStepKind::GivenQuest)
+						{
+							bOk &= GiveQuest(E);
+						}
 					}
 					if (Chapter)
 					{
@@ -201,6 +237,37 @@ namespace UE::DreamNarrative::Tests
 				case EDnaTestStepKind::Rolls:
 					World.ForceRolls(P.Rolls);
 					return true;
+
+				case EDnaTestStepKind::QuestAccept:
+				case EDnaTestStepKind::QuestComplete:
+				case EDnaTestStepKind::QuestFail:
+				{
+					const EDnaQuestRequest What = P.TestStep == EDnaTestStepKind::QuestAccept ? EDnaQuestRequest::Accept
+						: P.TestStep == EDnaTestStepKind::QuestComplete ? EDnaQuestRequest::Complete : EDnaQuestRequest::Fail;
+					const FString Label = FString::Printf(TEXT("%s %s"), LexToString(P.TestStep), *P.Name);
+					const bool bOk = World.Story().RequestQuest(What, FName(*P.Name), EDnaWriteSource::Game);
+					if (!bOk)
+					{
+						World.ReportError(FString::Printf(TEXT("%s: the quest refused; it is %s"), *Label, *QuestStateText(FName(*P.Name))));
+					}
+					return World.FinishStep(Label, bOk);
+				}
+
+				case EDnaTestStepKind::Journal:
+				{
+					FString Expected;
+					if (!ExpectedText(Step, Expected))
+					{
+						return false;
+					}
+					const FString Shown = World.Story().GetQuestJournal(FName(*P.Name)).ToString();
+					if (Shown != Expected)
+					{
+						World.ReportError(FString::Printf(TEXT("journal %s reads \"%s\", not \"%s\" (the quest is %s)"), *P.Name, *Shown, *Expected, *QuestStateText(FName(*P.Name))));
+						return false;
+					}
+					return true;
+				}
 
 				default:
 					return true;

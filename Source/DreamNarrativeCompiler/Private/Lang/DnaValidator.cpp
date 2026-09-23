@@ -196,6 +196,11 @@ namespace UE::DreamNarrative::Lang
 								RequireDialogue(Entry->Payload.Target, Entry->Raw.Span);
 								continue;
 							}
+							if (Entry->Kind == EDnaLineKind::TestStep && Entry->Payload.TestStep == EDnaTestStepKind::GivenQuest)
+							{
+								RequireQuest(Entry->Payload.Name, Entry->Raw.Span);
+								continue;
+							}
 							if (Entry->Kind != EDnaLineKind::Implication) { continue; }
 							if (const FDnaFactInfo* Fact = RequireFact(Entry->Payload.Name, Entry->Raw.Span))
 							{
@@ -234,6 +239,15 @@ namespace UE::DreamNarrative::Lang
 					case EDnaTestStepKind::Always:
 					case EDnaTestStepKind::Eventually:
 						if (P.Condition.IsValid()) { CheckCondition(P.Condition); }
+						break;
+					case EDnaTestStepKind::QuestAccept:
+					case EDnaTestStepKind::QuestComplete:
+					case EDnaTestStepKind::QuestFail:
+						RequireQuest(P.Name, Step->Raw.Span);
+						break;
+					case EDnaTestStepKind::Journal:
+						RequireQuest(P.Name, Step->Raw.Span);
+						CheckText(P.Text);
 						break;
 					case EDnaTestStepKind::Softlock:
 						for (const FDnaExprPtr& Goal : P.Goals)

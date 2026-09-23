@@ -1,4 +1,4 @@
-// test 块的每一种行:步骤、given 下的赋值、talk / start 下的期望行、旁白、续行、id、选项、absent。
+// test 块的每一种行:步骤、given 下的赋值、talk / start 下的期望行、旁白、续行、id、选项、absent、任务步骤。
 
 file
   with: story.dna
@@ -8,6 +8,8 @@ test 全部步骤
   given
     好感 = 2
     墨梅册.第一页 = true
+    quest 猎狼 = going 90s
+    quest 猎狼_头狼 = inactive
   talk 村长
     村长(笑): 你好,{玩家名}。
     > 风吹过。
@@ -25,3 +27,8 @@ test 全部步骤
   wait 20m
   jump 第二章
   save
+  accept 猎狼_头狼
+  complete 猎狼_头狼
+  fail 猎狼
+  journal 猎狼: 还差 {5 - 狼杀了} 只,
+    天黑前回来。

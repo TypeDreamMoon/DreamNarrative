@@ -1629,6 +1629,34 @@ namespace UE::DreamNarrative::Lang
 					RequireNoChildren(Node);
 					return;
 				}
+				if (Word == TEXT("accept") || Word == TEXT("complete") || Word == TEXT("fail"))
+				{
+					BeginStep(Word == TEXT("accept") ? EDnaTestStepKind::QuestAccept : Word == TEXT("complete") ? EDnaTestStepKind::QuestComplete : EDnaTestStepKind::QuestFail);
+					if (ExpectIdentifier(Tokens, Index, FText::Format(LOCTEXT("QuestStepName", "a quest name after '{0}'"), FText::FromString(Word)), P.Name))
+					{
+						ExpectEnd(Tokens, Index);
+					}
+					RequireNoChildren(Node);
+					return;
+				}
+				if (Word == TEXT("journal"))
+				{
+					// `journal 任务: 文本` -- the text is read as text, not tokens.
+					Node.Kind = EDnaLineKind::TestStep;
+					P.TestStep = EDnaTestStepKind::Journal;
+					const int32 NameStart = SkipSpaces(Content, Word.Len());
+					P.Name = FirstWord(Content.Mid(NameStart));
+					const int32 Colon = SkipSpaces(Content, NameStart + P.Name.Len());
+					if (P.Name.IsEmpty() || Colon >= Content.Len() || NormalizeDnaPunctuation(Content[Colon]) != TEXT(':'))
+					{
+						Fail(TEXT("DNS2007"), Node.Raw.Span, LOCTEXT("JournalShape", "Expected 'journal 任务: 文本'"));
+						RequireNoChildren(Node);
+						return;
+					}
+					ParseText(Node, SkipSpaces(Content, Colon + 1), Content.Len(), P.Text);
+					ClassifyContinuations(Node);
+					return;
+				}
 				const bool bProperty = Word == TEXT("depth") || Word == TEXT("always") || Word == TEXT("eventually") || Word == TEXT("softlock");
 				if (bProperty && !bExplore)
 				{
@@ -1693,8 +1721,8 @@ namespace UE::DreamNarrative::Lang
 						? LOCTEXT("PickOutsideTalkExplore", "directly in an explore block; a choice to take belongs under 'talk' or 'start'")
 						: LOCTEXT("PickOutsideTalk", "directly in a test; a choice to take belongs under 'talk' or 'start'"))
 					: (bExplore
-						? LOCTEXT("InExplore", "inside an explore block; expected seed, given, talk, start, expect, set, wait, jump, save, rolls, depth, always, eventually or softlock")
-						: LOCTEXT("InTest", "inside a test; expected seed, given, talk, start, expect, set, wait, jump, save or rolls")));
+						? LOCTEXT("InExplore", "inside an explore block; expected seed, given, talk, start, expect, set, wait, jump, save, rolls, accept, complete, fail, journal, depth, always, eventually or softlock")
+						: LOCTEXT("InTest", "inside a test; expected seed, given, talk, start, expect, set, wait, jump, save, rolls, accept, complete, fail or journal")));
 			}
 
 			/** `low`, `high` or a number in [0, 1), separated by commas. */
@@ -1750,6 +1778,41 @@ namespace UE::DreamNarrative::Lang
 					else
 					{
 						ParseLineIdReference(Node, Hash + 1, LOCTEXT("OnceChoiceId", "a choice id after '#'"));
+					}
+					RequireNoChildren(Node);
+					return;
+				}
+				if (Word == TEXT("quest"))
+				{
+					// `quest 任务 = 状态 [剩余时长]`
+					Node.Kind = EDnaLineKind::TestStep;
+					P.TestStep = EDnaTestStepKind::GivenQuest;
+					TArray<FDnaToken> Tokens;
+					Tokenize(Node, 0, Tokens);
+					int32 Index = 1;
+					static const TCHAR* States[] = { TEXT("inactive"), TEXT("accepted"), TEXT("going"), TEXT("completed"), TEXT("failed"), TEXT("timedout") };
+					if (ExpectIdentifier(Tokens, Index, LOCTEXT("GivenQuestName", "a quest name after 'quest'"), P.Name))
+					{
+						bool bState = false;
+						if (Tokens[Index].Is(EDnaTokenKind::Assign))
+						{
+							for (const TCHAR* State : States) { bState |= Tokens[Index + 1].Text == State; }
+						}
+						if (!bState)
+						{
+							Fail(TEXT("DNS2007"), Tokens[Index].Span, LOCTEXT("GivenQuestState", "Expected '=' and inactive, accepted, going, completed, failed or timedout"));
+						}
+						else
+						{
+							P.Value = Tokens[Index + 1].Text;
+							Index += 2;
+							if (Tokens[Index].Is(EDnaTokenKind::Duration))
+							{
+								P.Seconds = Tokens[Index].Real;
+								++Index;
+							}
+							ExpectEnd(Tokens, Index);
+						}
 					}
 					RequireNoChildren(Node);
 					return;

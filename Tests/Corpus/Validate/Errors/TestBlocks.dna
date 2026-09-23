@@ -25,3 +25,19 @@ test 名字写错
 test 名字写错
 // EXPECT DNS3004 (25,1)
   expect 好感 == 0
+
+test 任务写错
+  given
+    quest 没有的任务 = going
+// EXPECT DNS3005 (31,5)
+    quest 采药 = 半途
+// EXPECT DNS2007 (33,14)
+  accept 没有的任务
+// EXPECT DNS3005 (35,3)
+  journal 没有的任务: 你好。
+// EXPECT DNS3005 (37,3)
+  journal 采药 你好。
+// EXPECT DNS2007 (39,3)
+
+quest 采药
+  title: 采药

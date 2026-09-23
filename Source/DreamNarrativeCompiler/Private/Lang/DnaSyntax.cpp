@@ -80,6 +80,11 @@ namespace UE::DreamNarrative::Lang
 		case EDnaTestStepKind::GivenChapter: return TEXT("chapter");
 		case EDnaTestStepKind::GivenVisited: return TEXT("visited");
 		case EDnaTestStepKind::GivenOnce: return TEXT("once");
+		case EDnaTestStepKind::GivenQuest: return TEXT("quest");
+		case EDnaTestStepKind::QuestAccept: return TEXT("accept");
+		case EDnaTestStepKind::QuestComplete: return TEXT("complete");
+		case EDnaTestStepKind::QuestFail: return TEXT("fail");
+		case EDnaTestStepKind::Journal: return TEXT("journal");
 		}
 		return TEXT("?");
 	}
@@ -387,6 +392,14 @@ namespace UE::DreamNarrative::Lang
 				case EDnaTestStepKind::GivenChapter: Detail += TEXT(" = ") + P.Target; break;
 				case EDnaTestStepKind::GivenVisited: Detail += FString::Printf(TEXT("(%s) = %d"), *P.Target, P.Count); break;
 				case EDnaTestStepKind::GivenOnce: Detail += TEXT(" #") + P.Target; break;
+				case EDnaTestStepKind::GivenQuest:
+					Detail += TEXT(" ") + P.Name + TEXT(" = ") + P.Value;
+					if (P.Seconds > 0.0) { Detail += FString::Printf(TEXT(" %gs"), P.Seconds); }
+					break;
+				case EDnaTestStepKind::QuestAccept:
+				case EDnaTestStepKind::QuestComplete:
+				case EDnaTestStepKind::QuestFail: Detail += TEXT(" ") + P.Name; break;
+				case EDnaTestStepKind::Journal: Detail += TEXT(" ") + P.Name + TEXT(" ") + TextDump(P.Text); break;
 				case EDnaTestStepKind::Always:
 				case EDnaTestStepKind::Eventually: Detail += TEXT(" ") + ExprText(P.Condition); break;
 				case EDnaTestStepKind::Softlock:
