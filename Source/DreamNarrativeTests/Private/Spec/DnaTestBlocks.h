@@ -19,7 +19,9 @@ namespace UE::DreamNarrative::Tests
 	/**
 	 * Runs one `test` block of the world's program, step by step. Every failure is reported with
 	 * FileLabel and the line it concerns, e.g. `Samples/Ring.dna(14): ...`, and the run goes on to the
-	 * next step, so one run shows every broken step. Returns false when any step failed.
+	 * next step, so one run shows every broken step. Returns false when any step failed. BeforeStep,
+	 * when given, hears of each step just before it runs.
 	 */
-	bool RunDnaTestBlock(FDnaTestWorld& World, const Lang::FDnaLineNode& TestNode, const FString& FileLabel);
+	bool RunDnaTestBlock(FDnaTestWorld& World, const Lang::FDnaLineNode& TestNode, const FString& FileLabel,
+		TFunction<void(const Lang::FDnaLineNode& Step)> BeforeStep = nullptr);
 }

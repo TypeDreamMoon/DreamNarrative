@@ -30,6 +30,9 @@ namespace UE::DreamNarrative::Tests::Spec
 	/** The names of a file's top-level blocks that start with Keyword (`test`, `explore`), in order, without a full parse. */
 	TArray<FString> ScanBlockNames(const FString& Relative, const TCHAR* Keyword);
 
+	/** The same for a file anywhere, given by its full path. */
+	TArray<FString> ScanBlockNamesInFile(const FString& Path, const TCHAR* Keyword);
+
 	/** `Spec/Dialogue/Choices.dna` -> `Dialogue.Choices`; `Samples/Ring.dna` -> `Samples.Ring`. */
 	FString ToDisplayPath(const FString& Relative);
 

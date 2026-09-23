@@ -15,11 +15,16 @@
 
 #include "DreamNarrativeDialogueRunner.h"
 #include "DreamNarrativeLedger.h"
+#include "DreamNarrativeRecorder.h"
 #include "DreamNarrativeScript.h"
 #include "DreamNarrativeStory.h"
 #include "Fixtures/DnaGameFixture.h"
 #include "Fixtures/DnaTestWorld.h"
+#include "HAL/FileManager.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "Replay/DnaReplay.h"
 #include "Smoke/DnaSmokeSaveGame.h"
 
 namespace UE::DreamNarrative::Tests
@@ -260,7 +265,13 @@ bool FDnaSmokeGameRingTest::RunTest(const FString& Parameters)
 	{
 		Ledger->ResetToDefaults();
 	}
+	// Recorded while it is walked, the way a tester records a session.
+	FDnaConsole Console(*this, Game);
+	const FString RecordingPath = UDreamNarrativeRecorder::GetDefaultPath(TEXT("冒烟回放"));
+	Console.Says(TEXT("dn.record start 冒烟回放"), TEXT("Recording 冒烟回放"));
 	const bool bWalked = WalkRingThroughConsole(*this, Game);
+	Console.Says(TEXT("dn.record stop"), TEXT("Wrote "));
+
 	// The scripts are the ones the Smoke preset built before the game started, found on disk.
 	bool bFromDisk = false;
 	for (const UDreamNarrativeScript* Script : Ledger->GetScripts())
@@ -268,6 +279,28 @@ bool FDnaSmokeGameRingTest::RunTest(const FString& Parameters)
 		bFromDisk |= Script && Script->GetPathName() == TEXT("/Game/Narrative/ring.ring");
 	}
 	TestTrue(TEXT("ring was loaded from /Game/Narrative"), bFromDisk);
+
+	// The recording plays back in the logic layer. It is checked here, not kept: the project is left
+	// as it was, down to the directories the recording made.
+	FString Recorded;
+	const bool bWritten = FFileHelper::LoadFileToString(Recorded, *RecordingPath);
+	TestTrue(TEXT("dn.record stop wrote the recording"), bWritten);
+	IFileManager::Get().Delete(*RecordingPath, /*RequireExists=*/false, /*EvenReadOnly=*/true, /*Quiet=*/true);
+	FString Directory = FPaths::GetPath(RecordingPath);
+	for (int32 Level = 0; Level < 3; ++Level, Directory = FPaths::GetPath(Directory))
+	{
+		IFileManager::Get().DeleteDirectory(*Directory, /*RequireExists=*/false, /*Tree=*/false);
+	}
+	TArray<FDnaTestSource> Sources;
+	if (bWritten && ReadPluginSources(*this, { RingSample }, Sources))
+	{
+		Sources.Add({ TEXT("冒烟回放.dna"), Recorded });
+		FDnaTestWorld World(*this);
+		if (World.Compile(Sources))
+		{
+			TestEqual(TEXT("the recording plays back"), FString::Join(Replay::RunCollecting(World, TEXT("冒烟回放"), TEXT("冒烟回放.dna")), TEXT("\n")), FString());
+		}
+	}
 	return bWalked && !HasAnyErrors();
 }
 

@@ -111,13 +111,18 @@ namespace UE::DreamNarrative::Tests::Spec
 
 	TArray<FString> ScanBlockNames(const FString& Relative, const TCHAR* Keyword)
 	{
+		return ScanBlockNamesInFile(GetTestsDir() / Relative, Keyword);
+	}
+
+	TArray<FString> ScanBlockNamesInFile(const FString& Path, const TCHAR* Keyword)
+	{
 		TArray<FString> Names;
 		FString Text;
-		if (!FFileHelper::LoadFileToString(Text, *(GetTestsDir() / Relative)))
+		if (!FFileHelper::LoadFileToString(Text, *Path))
 		{
 			return Names;
 		}
-		for (const FDnaRawLine& Line : ScanLines(Relative, Text))
+		for (const FDnaRawLine& Line : ScanLines(Path, Text))
 		{
 			if (Line.IsFloating() || Line.IndentLevel != 0 || WordAt(Line.Content, 0) != Keyword)
 			{

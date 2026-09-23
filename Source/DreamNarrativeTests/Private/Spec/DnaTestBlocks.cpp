@@ -34,8 +34,8 @@ namespace UE::DreamNarrative::Tests
 		class FBlockRunner
 		{
 		public:
-			FBlockRunner(FDnaTestWorld& InWorld, const FString& InFile)
-				: World(InWorld), File(InFile)
+			FBlockRunner(FDnaTestWorld& InWorld, const FString& InFile, TFunction<void(const FDnaLineNode&)> InBeforeStep)
+				: World(InWorld), File(InFile), BeforeStep(MoveTemp(InBeforeStep))
 			{
 			}
 
@@ -49,6 +49,10 @@ namespace UE::DreamNarrative::Tests
 					if (Step->Kind == EDnaLineKind::TestStep)
 					{
 						World.SetContext(Where(*Step));
+						if (BeforeStep)
+						{
+							BeforeStep(*Step);
+						}
 						bOk &= RunStep(*Step);
 					}
 				}
@@ -59,6 +63,7 @@ namespace UE::DreamNarrative::Tests
 		private:
 			FDnaTestWorld& World;
 			FString File;
+			TFunction<void(const FDnaLineNode&)> BeforeStep;
 
 			FString Where(const FDnaLineNode& Node) const
 			{
@@ -463,9 +468,9 @@ namespace UE::DreamNarrative::Tests
 		};
 	}
 
-	bool RunDnaTestBlock(FDnaTestWorld& World, const FDnaLineNode& TestNode, const FString& FileLabel)
+	bool RunDnaTestBlock(FDnaTestWorld& World, const FDnaLineNode& TestNode, const FString& FileLabel, TFunction<void(const FDnaLineNode&)> BeforeStep)
 	{
-		FBlockRunner Runner(World, FileLabel);
+		FBlockRunner Runner(World, FileLabel, MoveTemp(BeforeStep));
 		return Runner.Run(TestNode);
 	}
 }
