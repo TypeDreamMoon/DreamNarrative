@@ -63,13 +63,21 @@ void UDreamNarrativeStory::RegisterScript(UDreamNarrativeScript* Script)
 
 int32 UDreamNarrativeStory::LoadAllScripts()
 {
-	const FAssetRegistryModule& Registry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+	const FString& Directory = UDreamNarrativeSettings::Get()->AssetDirectory;
+	IAssetRegistry& Registry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+	// In the editor and in an uncooked game the registry fills in the background after startup; a
+	// query made before it reached this directory would come back short. A cooked game's registry is
+	// complete from the start, so this does nothing there.
+	if (Registry.IsLoadingAssets())
+	{
+		Registry.ScanPathsSynchronous({ Directory });
+	}
 	TArray<FAssetData> Assets;
 	FARFilter Filter;
 	Filter.ClassPaths.Add(UDreamNarrativeScript::StaticClass()->GetClassPathName());
-	Filter.PackagePaths.Add(*UDreamNarrativeSettings::Get()->AssetDirectory);
+	Filter.PackagePaths.Add(*Directory);
 	Filter.bRecursivePaths = true;
-	Registry.Get().GetAssets(Filter, Assets);
+	Registry.GetAssets(Filter, Assets);
 
 	int32 Count = 0;
 	for (const FAssetData& Asset : Assets)
@@ -80,7 +88,7 @@ int32 UDreamNarrativeStory::LoadAllScripts()
 			++Count;
 		}
 	}
-	UE_LOG(LogDreamNarrativeStory, Log, TEXT("Registered %d narrative script(s) from %s"), Count, *UDreamNarrativeSettings::Get()->AssetDirectory);
+	UE_LOG(LogDreamNarrativeStory, Log, TEXT("Registered %d narrative script(s) from %s"), Count, *Directory);
 	return Count;
 }
 
