@@ -1,0 +1,14 @@
+// 全角标点在文本区之外与半角等价:冒号、逗号、括号、比较符全用全角写。
+character 凛
+character 玩家 player
+fact 换水次数: int = 0
+fact 梅蕾状态: tag in (含苞, 初绽) = 含苞
+
+dialogue 全角标点 for 凛 if 换水次数 == 0
+  凛(轻声,转身):你回来了。
+  凛: 第 {换水次数 + 1} 次。 #a1
+  玩家: 嗯。 for 1.5s
+  - 打听 if 梅蕾状态 == 初绽 once
+      set 换水次数 += 1
+  - 没事。
+  -> end

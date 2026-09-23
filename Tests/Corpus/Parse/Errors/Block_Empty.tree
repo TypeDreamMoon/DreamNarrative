@@ -1,0 +1,5 @@
+1: Character 凛
+2: Fact 换水次数: int
+3: Dialogue 测试 for 凛
+4:   If (换水次数 > 0)
+5:   Speech 凛 "你好。"

@@ -1,0 +1,6 @@
+character 凛
+dialogue 测试 for 凛
+  凛: 两空格。
+	凛: 一个 Tab。
+// EXPECT DNS1002 (4,1)
+// EXPECT DNS1003 (4,1)

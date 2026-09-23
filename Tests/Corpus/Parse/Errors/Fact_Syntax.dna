@@ -1,0 +1,4 @@
+fact 无类型: string
+// EXPECT DNS2007 (1,11)
+fact 好的: int range 0..
+// EXPECT DNS2007 (3,23)

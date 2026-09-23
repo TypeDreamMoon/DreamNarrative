@@ -1,0 +1,6 @@
+1: Character 凛
+2: Fact 换水次数: int
+3: Dialogue 测试 for 凛
+4:   Speech 凛 "你好。" once
+6:   Choice "选项" #b
+8:   Speech 凛 "I would go if I were you."

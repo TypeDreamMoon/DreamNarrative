@@ -1,0 +1,5 @@
+stage 测试
+  duration 1.0s
+  ui
+    0.1s text "梅 style 浮字
+// EXPECT DNS1004 (4,15)

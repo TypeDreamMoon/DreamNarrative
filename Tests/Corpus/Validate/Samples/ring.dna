@@ -1,0 +1,187 @@
+// Ring · 黄金样例(公寓 + 一条街 + 墨梅册闭环)
+//
+// 内容是按设计文档里的概念(换水 / 梅蕾 / 47 周期 / 墨梅册 / 显影点 / 门禁 / NPC 闭环对白 / 花开·永闭)
+// 拼出来的重构版:人名、台词、数值全部待替换成真实内容。样例的用途只有一个——让语法在真实形状的
+// 数据上露怯。哪里写着别扭,改语法,不改样例的意图。
+
+file
+  localization: on
+
+// ---------------------------------------------------------------- 角色
+
+character 凛
+  display: 凛
+  voice: /Game/Ring/VO/Rin
+
+character 玩家 player
+
+character 店主
+  display: 街角店主
+
+// ---------------------------------------------------------------- 账本
+
+fact 换水次数: int = 0
+fact 梅蕾状态: tag in (含苞, 初绽, 盛开, 枯萎) = 含苞
+fact 周期: int extern                          // 游戏时钟推进,47 是终局阈值
+fact 色温: float extern session                 // 公寓当前色温,不进存档
+
+fact 墨梅册
+  第一页: bool
+  第二页: bool
+  第三页: bool
+
+fact 显影点 extern                              // 霜纹显影点,玩家发现即由游戏侧写入
+  阳台: bool
+  门缝: bool
+  信箱: bool
+
+fact 门禁 extern
+  权限等级: int range 0..3
+  谜题已解: bool
+
+fact 店主提到过梅: bool
+fact 凛提到过等待: bool
+
+// ---------------------------------------------------------------- 章节
+
+chapter 序章
+  title: 公寓
+
+chapter 第一章 after 序章
+  title: 一条街
+  implied
+    换水次数 = 1
+    梅蕾状态 = 初绽
+    墨梅册.第一页 = true
+  advance -> 终局_花开 if 梅蕾状态 == 盛开 and 墨梅册.第三页
+  advance -> 终局_永闭 if 周期 >= 47 and 梅蕾状态 != 盛开
+
+chapter 终局_花开 after 第一章
+  title: 花开
+  implied
+    梅蕾状态 = 盛开
+    墨梅册.第三页 = true
+
+chapter 终局_永闭 after 第一章
+  title: 永闭
+  implied
+    周期 = 47
+
+// ---------------------------------------------------------------- 记忆链
+// 先用隐藏任务表达:目标 = 证据 fact 的组合(Ring 的推理 = 固定槽位比对 ID 组合)。
+// 如果这里写着别扭,就是需要一个 chain 顶层块的信号。
+
+quest 记忆链_第二页
+  priority: hidden
+  objective 显影点.阳台
+  objective 店主提到过梅
+  objective 凛提到过等待
+  on complete
+    set 墨梅册.第二页 = true
+    play 记忆插帧_01
+
+quest 记忆链_第三页
+  priority: hidden
+  available if 墨梅册.第二页
+  objective 显影点.门缝
+  objective 显影点.信箱
+  objective 门禁.谜题已解
+  on complete
+    set 墨梅册.第三页 = true
+
+// ---------------------------------------------------------------- 凛
+// 三个入口,运行时按条件挑:条件项越多越优先,平局按声明顺序。
+
+dialogue 凛_第一次换水 for 凛 if 换水次数 == 0
+  凛(轻声): 水该换了。
+  玩家: 我来。
+  play 换水
+  set 换水次数 += 1
+  set 梅蕾状态 = 初绽
+  凛: 第一滴。 @镜头微推
+  advance 第一章
+
+dialogue 凛_换水 for 凛 if 换水次数 > 0 and 周期 % 3 == 0
+  凛: 今天也换吧。
+  play 换水
+  set 换水次数 += 1
+  if 换水次数 >= 5 and 梅蕾状态 == 初绽
+    set 梅蕾状态 = 盛开
+    凛(笑): 开了。
+
+dialogue 凛_日常 for 凛
+  if 周期 >= 40
+    凛(低头): 快到了。
+    她没有说是什么快到了。
+  else if visited(凛_日常) == 0
+    凛: 你回来了。
+  else
+    凛: 嗯。
+  - 你在等什么? once
+      凛(沉默): ……
+      set 凛提到过等待 = true
+      play 记忆插帧_01
+  - 没事。
+  凛: 早点睡。 if 周期 >= 30
+  -> end
+
+// ---------------------------------------------------------------- 街角店主(闭环对白)
+
+dialogue 店主_梅 for 店主 if 梅蕾状态 == 盛开
+  店主: 开了?那株梅。
+  set 店主提到过梅 = true
+
+dialogue 店主_枯 for 店主 if 梅蕾状态 == 枯萎
+  店主(叹气): 可惜。
+
+dialogue 店主_闲聊 for 店主
+  店主: 又来了。
+  - 打听那株梅 if not 店主提到过梅 once
+      店主: 你屋里那株?以前也有人这么养过。
+        养到第四十七天,人走了。
+      set 店主提到过梅 = true
+  - 打听门禁 if 门禁.权限等级 < 3
+      店主: 楼下那扇门,钥匙不在锁上。
+      > 他没有再说下去。
+  - 走了。
+
+// ---------------------------------------------------------------- 演出
+// Ring 的演出词汇只有四种:黑屏浮字、记忆插帧、镜头微推、静默调度。全是 camera + mask + ui 的小 stage。
+
+stage 换水
+  duration 8.0s
+  anim
+    0.0s     montage AM_换水
+  camera
+    0.0s     blend from game 0.3s
+    0.5s     push 8cm over 6.0s
+  game
+    0.0s..8.0s   input lock
+  restore
+    camera   blend back 0.3s
+
+stage 镜头微推
+  base: line
+  camera
+    0%       push 4cm over 100%
+
+stage 记忆插帧_01
+  duration 0.6s
+  mask
+    0.0s..0.6s   cut black
+  ui
+    0.1s     text 「梅」 style 浮字
+  restore
+    ui       clear
+
+stage 死亡黑屏
+  duration 4.0s
+  mask
+    0.0s..4.0s   fade black 0.4s
+  ui
+    1.0s     text 「她还想继续等」 style 浮字
+  game
+    0.0s..4.0s   input lock
+  restore
+    ui       clear
+    camera   blend back 0.5s

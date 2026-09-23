@@ -1,0 +1,12 @@
+2: Character 凛
+3: Character 玩家 player
+4: Fact 换水次数: int = 0
+5: Fact 梅蕾状态: tag in (含苞, 初绽) = 含苞
+7: Dialogue 全角标点 for 凛 if (换水次数 == 0)
+8:   Speech 凛(轻声, 转身) "你回来了。"
+9:   Speech 凛 "第 {换水次数 + 1} 次。" parts=['第 ' {(换水次数 + 1)} ' 次。'] #a1
+10:   Speech 玩家 "嗯。" for=1.5s
+11:   Choice "打听" if=(梅蕾状态 == 初绽) once
+12:     Command set 换水次数 += 1
+13:   Choice "没事。"
+14:   Jump end

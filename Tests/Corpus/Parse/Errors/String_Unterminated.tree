@@ -1,0 +1,4 @@
+1: Stage 测试
+2:   Duration 1s
+3:   Track ui
+4:     StageEntry 0.1s text "梅 style 浮字"

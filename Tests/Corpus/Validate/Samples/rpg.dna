@@ -1,0 +1,171 @@
+// RPG · 黄金样例(按 DreamGameplayTask v3.1.0 功能集对齐的任务 + 带分支的对话)
+//
+// 覆盖:接受 / 计数目标 / 可选目标 / 超时 / 失败条件 / 子任务自动派发 / 优先级 / 追踪 / 奖励表 /
+//       日志三态 / 任务状态进对话条件 / once 选项 / 章节门槛 / 改名迁移 / 绝对时间基演出。
+// 这份是通用市场的形状,不是某个项目的内容;它的作用是保证 RPG 词汇没有被 Ring 的解谜向挤掉。
+
+file
+  localization: on
+
+// ---------------------------------------------------------------- 角色
+
+character 村长
+  voice: /Game/RPG/VO/Mayor
+
+character 猎户
+
+character 玩家 player
+
+// ---------------------------------------------------------------- 账本
+
+fact 见过村长: bool
+fact 见过猎户: bool
+fact 村长好感: int = 0 range 0..10
+fact 狼杀了: int extern
+fact 头狼死了: bool extern
+fact 村庄被袭: bool extern
+fact 金币: int extern                           // 背包归游戏侧,叙事只读
+
+// ---------------------------------------------------------------- 章节
+
+chapter 序章
+
+chapter 第一章 after 序章
+  implied
+    见过村长 = true
+  advance -> 第二章 if 猎狼.completed
+
+chapter 第二章 after 第一章
+  implied
+    狼杀了 = 5
+    头狼死了 = true
+
+// ---------------------------------------------------------------- 任务
+
+quest 猎狼 was 猎狼任务
+  title: 猎狼
+  priority: main
+  track
+  timeout: 20m
+  available if chapter == 第一章 and not 猎狼.completed
+  journal
+    accepted: 村长说狼在北边的林子里,先清掉五只。
+    going: 还差 {5 - 狼杀了} 只。
+    completed: 林子清净了。回去找村长。
+    failed: 狼群先动手了。
+  objective 狼杀了 >= 5
+    show: 猎狼 {狼杀了}/5
+  objective 见过猎户 optional
+    show: 去林边找猎户
+  fail if 村庄被袭
+  on accept
+    set 狼杀了 = 0
+    emit 任务板刷新
+  on complete
+    set 村长好感 += 1
+    reward 金币 50
+    reward 物品 狼牙 x3
+  on timeout
+    emit 任务板刷新
+  subquest 猎狼_头狼 auto
+
+quest 猎狼_头狼
+  title: 头狼
+  priority: main
+  track
+  journal
+    accepted: 猎户说狼群有个头,左耳缺一块。
+    completed: 头狼倒下了。
+  objective 头狼死了
+    show: 击杀头狼
+  on accept
+    play 头狼登场
+  on complete
+    reward 金币 200
+    reward 经验 500
+
+// ---------------------------------------------------------------- 村长(按任务状态挑入口)
+
+dialogue 村长_初见 for 村长 if not 见过村长
+  村长: 你就是新来的?
+  set 见过村长 = true
+  advance 第一章
+  -> 村长_派活
+
+dialogue 村长_派活
+  村长: 北边的林子里有狼,已经叼走两只羊了。
+  - 我去。
+      accept 猎狼
+      村长: 五只。回来我有赏。
+  - 我考虑一下。
+      村长(不耐烦): 别考虑太久。
+  -> end
+
+dialogue 村长_进行中 for 村长 if 猎狼.active
+  村长: 还差 {5 - 狼杀了} 只。
+  - 狼在哪? once
+      村长: 北边。跟着羊骨头走。
+  - 知道了。
+
+dialogue 村长_失败 for 村长 if 猎狼.failed
+  村长(阴沉): 羊圈空了。
+  - 再给我一次机会。 if 猎狼.available
+      accept 猎狼
+  - ……
+
+dialogue 村长_完成 for 村长 if 猎狼.completed and not 猎狼_头狼.completed
+  村长: 林子安静了?好。
+  村长: 不过猎户说……那群狼有个头。
+
+dialogue 村长_全清 for 村长 if 猎狼_头狼.completed
+  if 村长好感 >= 3
+    村长(笑): 老朋友,村子欠你的。
+  else
+    村长: 猎人,村子欠你的。
+
+dialogue 村长_日常 for 村长
+  村长: 忙你的去。
+
+// ---------------------------------------------------------------- 猎户
+
+dialogue 猎户_初见 for 猎户 if not 见过猎户
+  猎户(警惕): 你不是村里人。
+  set 见过猎户 = true
+  if 猎狼.active
+    猎户: 村长派你来的?那群狼有个头,别单独碰它。
+  - 头狼长什么样? if 猎狼.active once
+      猎户: 左耳缺一块。见到就跑。
+  - 告辞。
+
+dialogue 猎户_日常 for 猎户
+  猎户: 林子今天很安静。 if 猎狼.completed
+  猎户: 小心点。 if not 猎狼.completed
+  wait 0.5s
+  猎户: 走吧。
+
+// ---------------------------------------------------------------- 演出(绝对时间基:时序权威是动画,不是配音)
+
+stage 头狼登场
+  duration 6.0s
+  shots
+    头狼特写   local (0, -120, 40) look 头狼 fov 30
+    全景       local (0, -400, 200) look 头狼 fov 60
+  camera
+    0.0s     blend from game 0.3s
+    2.0s     cut -> 头狼特写                      // 1.9..2.1 的 distort 盖住这一刀
+    4.5s     cut -> 全景                          // 4.4..4.6 的 fade black 盖住这一刀
+    6.0s     blend back 0.4s
+  mask
+    1.9s..2.1s   distort strength 0.8
+    4.4s..4.6s   fade black 0.1s
+  anim
+    2.0s     montage AM_头狼_咆哮 actor 头狼
+  vfx
+    2.1s     spawn /Game/FX/NS_Howl
+  ui
+    0.0s     hide hud
+  game
+    0.0s..6.0s   input lock
+    2.0s..2.3s   hitstop 0.2x
+  restore
+    ui       show hud

@@ -1,0 +1,38 @@
+character 凛
+fact 见过: bool
+fact 次数: int range 0..10
+fact 状态: tag in (甲, 乙) = 甲
+chapter 序章
+
+dialogue 测试 for 凛
+  set 次数 = true
+// EXPECT DNS4001 (8,12)
+  set 次数 = 99
+// EXPECT DNS4003 (10,12)
+  set 状态 = 丙
+// EXPECT DNS4002 (12,12)
+  set 见过 += 1
+// EXPECT DNS4001 (14,3)
+  if 状态 < 状态
+// EXPECT DNS4004 (16,6)
+    凛: 嗯。
+  if 见过 == 3
+// EXPECT DNS4001 (19,6)
+    凛: 嗯。
+  if chapter == 不存在的章
+// EXPECT DNS3009 (22,17)
+    凛: 嗯。
+  if 次数 % 1.5 == 0
+// EXPECT DNS4001 (25,6)
+    凛: 嗯。
+  if visited(测试, 测试) > 0
+// EXPECT DNS4005 (28,6)
+    凛: 嗯。
+  else
+    凛: 嗯。
+  else
+// EXPECT DNS2010 (33,3)
+    凛: 嗯。
+  - 选项 if 见过
+  - 选项二 once
+// EXPECT DNS5008 (36,3)

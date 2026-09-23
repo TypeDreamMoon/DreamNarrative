@@ -1,0 +1,4 @@
+character 凛
+dialogue 测试 for 凛
+　凛: 全角空格缩进。
+// EXPECT DNS1001 (3,1)

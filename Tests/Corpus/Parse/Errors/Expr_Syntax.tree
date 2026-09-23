@@ -1,0 +1,6 @@
+1: Character 凛
+2: Fact 换水次数: int
+3: Dialogue 测试 for 凛
+4:   If <null>
+5:     Speech 凛 "不会到这。"
+7:   Command set 换水次数 = 1

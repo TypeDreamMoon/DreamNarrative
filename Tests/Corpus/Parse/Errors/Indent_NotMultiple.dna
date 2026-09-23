@@ -1,0 +1,5 @@
+character 凛
+dialogue 测试 for 凛
+  凛: 两空格。
+   凛: 三空格。
+// EXPECT DNS1003 (4,1)

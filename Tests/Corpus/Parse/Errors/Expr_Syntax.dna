@@ -1,0 +1,8 @@
+character 凛
+fact 换水次数: int
+dialogue 测试 for 凛
+  if 换水次数 >
+    凛: 不会到这。
+// EXPECT DNS2007 (4,12)
+  set 换水次数 = 1 2
+// EXPECT DNS2008 (7,16)

@@ -1,0 +1,132 @@
+7: File
+8:   Property localization = "on"
+12: Character 村长
+13:   Property voice = "/Game/RPG/VO/Mayor"
+15: Character 猎户
+17: Character 玩家 player
+21: Fact 见过村长: bool
+22: Fact 见过猎户: bool
+23: Fact 村长好感: int range 0..10 = 0
+24: Fact 狼杀了: int extern
+25: Fact 头狼死了: bool extern
+26: Fact 村庄被袭: bool extern
+27: Fact 金币: int extern
+31: Chapter 序章
+33: Chapter 第一章 after 序章
+34:   Implied
+35:     Implication 见过村长 = true
+36:   Advance -> 第二章 if 猎狼.completed
+38: Chapter 第二章 after 第一章
+39:   Implied
+40:     Implication 狼杀了 = 5
+41:     Implication 头狼死了 = true
+45: Quest 猎狼 was 猎狼任务
+46:   Property title = "猎狼"
+47:   Property priority = "main"
+48:   Flag track
+49:   Property timeout = "20m"
+50:   Available ((chapter == 第一章) and (not 猎狼.completed))
+51:   Journal
+52:     Property accepted = "村长说狼在北边的林子里,先清掉五只。"
+53:     Property going = "还差 {5 - 狼杀了} 只。" parts=['还差 ' {(5 - 狼杀了)} ' 只。']
+54:     Property completed = "林子清净了。回去找村长。"
+55:     Property failed = "狼群先动手了。"
+56:   Objective (狼杀了 >= 5)
+57:     Property show = "猎狼 {狼杀了}/5" parts=['猎狼 ' {狼杀了} '/5']
+58:   Objective 见过猎户 optional
+59:     Property show = "去林边找猎户"
+60:   FailIf 村庄被袭
+61:   On accept
+62:     Command set 狼杀了 = 0
+63:     Command emit 任务板刷新
+64:   On complete
+65:     Command set 村长好感 += 1
+66:     Reward 金币 x50
+67:     Reward 物品 狼牙 x3
+68:   On timeout
+69:     Command emit 任务板刷新
+70:   Subquest 猎狼_头狼 auto
+72: Quest 猎狼_头狼
+73:   Property title = "头狼"
+74:   Property priority = "main"
+75:   Flag track
+76:   Journal
+77:     Property accepted = "猎户说狼群有个头,左耳缺一块。"
+78:     Property completed = "头狼倒下了。"
+79:   Objective 头狼死了
+80:     Property show = "击杀头狼"
+81:   On accept
+82:     Command play 头狼登场
+83:   On complete
+84:     Reward 金币 x200
+85:     Reward 经验 x500
+89: Dialogue 村长_初见 for 村长 if (not 见过村长)
+90:   Speech 村长 "你就是新来的?"
+91:   Command set 见过村长 = true
+92:   Command advance 第一章
+93:   Jump 村长_派活
+95: Dialogue 村长_派活
+96:   Speech 村长 "北边的林子里有狼,已经叼走两只羊了。"
+97:   Choice "我去。"
+98:     Command accept 猎狼
+99:     Speech 村长 "五只。回来我有赏。"
+100:   Choice "我考虑一下。"
+101:     Speech 村长(不耐烦) "别考虑太久。"
+102:   Jump end
+104: Dialogue 村长_进行中 for 村长 if 猎狼.active
+105:   Speech 村长 "还差 {5 - 狼杀了} 只。" parts=['还差 ' {(5 - 狼杀了)} ' 只。']
+106:   Choice "狼在哪?" once
+107:     Speech 村长 "北边。跟着羊骨头走。"
+108:   Choice "知道了。"
+110: Dialogue 村长_失败 for 村长 if 猎狼.failed
+111:   Speech 村长(阴沉) "羊圈空了。"
+112:   Choice "再给我一次机会。" if=猎狼.available
+113:     Command accept 猎狼
+114:   Choice "……"
+116: Dialogue 村长_完成 for 村长 if (猎狼.completed and (not 猎狼_头狼.completed))
+117:   Speech 村长 "林子安静了?好。"
+118:   Speech 村长 "不过猎户说……那群狼有个头。"
+120: Dialogue 村长_全清 for 村长 if 猎狼_头狼.completed
+121:   If (村长好感 >= 3)
+122:     Speech 村长(笑) "老朋友,村子欠你的。"
+123:   Else
+124:     Speech 村长 "猎人,村子欠你的。"
+126: Dialogue 村长_日常 for 村长
+127:   Speech 村长 "忙你的去。"
+131: Dialogue 猎户_初见 for 猎户 if (not 见过猎户)
+132:   Speech 猎户(警惕) "你不是村里人。"
+133:   Command set 见过猎户 = true
+134:   If 猎狼.active
+135:     Speech 猎户 "村长派你来的?那群狼有个头,别单独碰它。"
+136:   Choice "头狼长什么样?" if=猎狼.active once
+137:     Speech 猎户 "左耳缺一块。见到就跑。"
+138:   Choice "告辞。"
+140: Dialogue 猎户_日常 for 猎户
+141:   Speech 猎户 "林子今天很安静。" if=猎狼.completed
+142:   Speech 猎户 "小心点。" if=(not 猎狼.completed)
+143:   Command wait 0.5s
+144:   Speech 猎户 "走吧。"
+148: Stage 头狼登场
+149:   Duration 6s
+150:   Shots
+151:     Shot 头狼特写 local ( 0 , - 120 , 40 ) look 头狼 fov 30
+152:     Shot 全景 local ( 0 , - 400 , 200 ) look 头狼 fov 60
+153:   Track camera
+154:     StageEntry 0s blend from game 0.3s
+155:     StageEntry 2s cut -> 头狼特写
+156:     StageEntry 4.5s cut -> 全景
+157:     StageEntry 6s blend back 0.4s
+158:   Track mask
+159:     StageEntry 1.9s..2.1s distort strength 0.8
+160:     StageEntry 4.4s..4.6s fade black 0.1s
+161:   Track anim
+162:     StageEntry 2s montage AM_头狼_咆哮 actor 头狼
+163:   Track vfx
+164:     StageEntry 2.1s spawn / Game / FX / NS_Howl
+165:   Track ui
+166:     StageEntry 0s hide hud
+167:   Track game
+168:     StageEntry 0s..6s input lock
+169:     StageEntry 2s..2.3s hitstop 0.2 x
+170:   Restore
+171:     RestoreEntry ui show hud

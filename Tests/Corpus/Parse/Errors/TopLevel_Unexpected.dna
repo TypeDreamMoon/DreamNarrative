@@ -1,0 +1,5 @@
+character 凛
+这是一行不该出现在顶层的文本
+// EXPECT DNS2003 (2,1)
+- 一个顶层选项
+// EXPECT DNS2005 (4,1)

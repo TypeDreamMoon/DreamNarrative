@@ -1,0 +1,10 @@
+character 凛
+character 凛
+// EXPECT DNS3004 (2,1)
+fact set: bool
+// EXPECT DNS3008 (4,1)
+dialogue 测试 for 凛 was 凛_旧
+// EXPECT DNS3007 (6,1)
+  凛: 你好。
+dialogue 凛_旧 for 凛
+  凛: 旧的。

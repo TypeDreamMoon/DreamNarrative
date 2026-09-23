@@ -1,0 +1,6 @@
+1: Character 凛
+3: Character 店主
+4: Fact x: int
+5: Dialogue 测试 for 店主
+6:   Command set x = 1
+7:     Unknown

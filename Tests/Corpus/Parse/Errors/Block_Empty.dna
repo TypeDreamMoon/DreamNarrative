@@ -1,0 +1,6 @@
+character 凛
+fact 换水次数: int
+dialogue 测试 for 凛
+  if 换水次数 > 0
+  凛: 你好。
+// EXPECT DNS2002 (4,3)

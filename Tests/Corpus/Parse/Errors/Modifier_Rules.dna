@@ -1,0 +1,9 @@
+character 凛
+fact 换水次数: int
+dialogue 测试 for 凛
+  凛: 你好。 once
+// EXPECT DNS2009 (4,10)
+  - 选项 #a #b
+// EXPECT DNS2004 (6,11)
+  凛: I would go if I were you.
+// EXPECT DNS2006 (8,3)

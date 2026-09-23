@@ -1,0 +1,8 @@
+  character 凛
+// EXPECT DNS2001 (1,3)
+character 店主
+fact x: int
+dialogue 测试 for 店主
+  set x = 1
+    店主: 缩在命令下面。
+// EXPECT DNS2001 (7,5)

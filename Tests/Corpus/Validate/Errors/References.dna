@@ -1,0 +1,30 @@
+character 凛
+fact 换水次数: int
+fact 梅蕾状态: tag in (含苞, 盛开) = 含苞
+chapter 序章
+quest 猎狼
+  objective 换水次数 >= 1
+stage 演出
+  duration 1.0s
+
+dialogue 测试 for 凛
+  店主: 未声明的角色。
+// EXPECT DNS3002 (11,3)
+  if 不存在的fact > 0
+// EXPECT DNS3001 (13,6)
+    凛: 嗯。
+  set 不存在 = 1
+// EXPECT DNS3001 (16,3)
+  accept 不存在的任务
+// EXPECT DNS3005 (18,3)
+  play 不存在的演出
+// EXPECT DNS3006 (20,3)
+  advance 不存在的章
+// EXPECT DNS3009 (22,3)
+  -> 不存在的节点
+// EXPECT DNS3003 (24,3)
+  if visited(不存在的节点) > 0
+// EXPECT DNS3003 (26,14)
+    凛: 嗯。
+  凛: 再见。 @不存在的演出
+// EXPECT DNS3006 (29,10)
