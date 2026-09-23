@@ -102,7 +102,7 @@ $MaxFilterLength = 12000
 $Presets = [ordered]@{
     Quick   = @{
         Filter   = 'StartsWith:DreamNarrative.Lang+StartsWith:DreamNarrative.Corpus+StartsWith:DreamNarrative.Ledger+StartsWith:DreamNarrative.Dialogue+StartsWith:DreamNarrative.Spec+StartsWith:DreamNarrative.Smoke.InProcess'
-        MinTests = 43
+        MinTests = 86
         Timeout  = 10
         Game     = $false
     }
@@ -358,6 +358,7 @@ function Invoke-TestRun([string]$Name, [hashtable]$Spec, [string]$RunDir) {
     Write-Note "filter:  $runFilter"
     Write-Note "log:     $runLog"
     $watch = [Diagnostics.Stopwatch]::StartNew()
+    $runStarted = Get-Date
     $proc = $null
     $timedOut = $false
     try {
@@ -375,6 +376,11 @@ function Invoke-TestRun([string]$Name, [hashtable]$Spec, [string]$RunDir) {
     }
     $watch.Stop()
     $exitCode = if ($timedOut) { $null } else { $proc.ExitCode }
+    # DreamNarrative.Spec.Coverage writes its matrix report under Saved; keep this run's copy with the run.
+    $coverage = Join-Path $projectDir 'Saved\DreamNarrativeCoverage.md'
+    if ((Test-Path -LiteralPath $coverage) -and (Get-Item -LiteralPath $coverage).LastWriteTime -gt $runStarted) {
+        Copy-Item -LiteralPath $coverage -Destination (Join-Path $RunDir 'coverage.md')
+    }
     Write-Note ('editor finished after {0:N0} s, exit code {1}' -f $watch.Elapsed.TotalSeconds, $(if ($null -eq $exitCode) { 'none (killed)' } else { $exitCode }))
 
     return (Get-Digest -Name $Name -RunDir $RunDir -Floor $floor -TimedOut $timedOut -ExitCode $exitCode -Seconds $watch.Elapsed.TotalSeconds)
