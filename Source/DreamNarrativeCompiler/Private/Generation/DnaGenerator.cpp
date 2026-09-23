@@ -484,6 +484,12 @@ namespace UE::DreamNarrative::Lang
 		return Compiler.Compile(Expr);
 	}
 
+	int32 CompileDnaValueFor(const FDnaProgram& Program, const FDnaExprPtr& Expr, const FString& TargetFact, UDreamNarrativeScript& Pool)
+	{
+		FDnaExprCompiler Compiler(Program, Pool);
+		return Compiler.CompileValueFor(Expr, Program.FindFact(TargetFact));
+	}
+
 	bool GenerateDnaProgram(const FDnaProgram& Program, const FDnaGenerateOptions& Options, FDnaGenerateResult& OutResult, FDnaDiagnosticSink& Diagnostics)
 	{
 		bool bOk = true;

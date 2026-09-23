@@ -500,6 +500,19 @@ namespace UE::DreamNarrative::Tests
 		return ExpressionPool->GetExpression(Index);
 	}
 
+	bool FDnaTestWorld::EvaluateValueFor(const FDnaExprPtr& Expr, const FString& Fact, FDnaValue& OutValue)
+	{
+		const int32 Index = Expr.IsValid() ? CompileDnaValueFor(ProgramModel, Expr, Fact, *ExpressionPool) : INDEX_NONE;
+		const FDnaCompiledExpr* Compiled = ExpressionPool->GetExpression(Index);
+		if (!Compiled)
+		{
+			ReportError(FString::Printf(TEXT("`%s` could not be compiled"), Expr.IsValid() ? *Expr->ToString() : TEXT("<null>")));
+			return false;
+		}
+		OutValue = LedgerObject->Evaluate(*Compiled);
+		return true;
+	}
+
 	bool FDnaTestWorld::EvaluateAst(const FDnaExprPtr& Expr, FDnaValue& OutValue)
 	{
 		const FDnaCompiledExpr* Compiled = ExpressionPool->GetExpression(CompileAst(Expr));

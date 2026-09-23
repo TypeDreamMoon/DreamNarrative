@@ -83,7 +83,7 @@ namespace UE::DreamNarrative::Tests
 						if (Entry->Kind != EDnaLineKind::Implication) { continue; }
 						World.SetContext(Where(*Entry));
 						FDnaValue Value;
-						bOk &= World.EvaluateAst(Entry->Payload.Expr, Value) && World.Given(FName(*Entry->Payload.Name), Value);
+						bOk &= World.EvaluateValueFor(Entry->Payload.Expr, Entry->Payload.Name, Value) && World.Given(FName(*Entry->Payload.Name), Value);
 					}
 					return bOk;
 				}
@@ -111,7 +111,7 @@ namespace UE::DreamNarrative::Tests
 				case EDnaTestStepKind::Set:
 				{
 					FDnaValue Value;
-					if (!World.EvaluateAst(P.Expr, Value))
+					if (!World.EvaluateValueFor(P.Expr, P.Name, Value))
 					{
 						return false;
 					}

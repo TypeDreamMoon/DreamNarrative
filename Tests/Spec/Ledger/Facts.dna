@@ -9,6 +9,7 @@ fact 浮: float range 0.0..1.0
 fact 标: tag in (甲级, 乙级, 丙级)
 fact 外: int extern
 fact 温度: float extern session
+fact 天色: tag in (白天, 夜里) extern
 
 dialogue 写
   set 布 = true
@@ -54,3 +55,10 @@ test 会话事实读写照常
   set 温度 = 0.3
   expect 温度 > 0.25 and 温度 < 0.35
   save
+
+// 测试写的值和剧情里一样认集合成员:光写成员名就行。
+test 测试写入集合成员
+  given
+    标 = 丙级
+  set 天色 = 夜里
+  expect 标 == 丙级 and 天色 == 夜里

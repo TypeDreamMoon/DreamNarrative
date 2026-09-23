@@ -163,6 +163,9 @@ namespace UE::DreamNarrative::Tests
 		/** Evaluates an expression of the compiled program (already checked) against the ledger. */
 		bool EvaluateAst(const Lang::FDnaExprPtr& Expr, FDnaValue& OutValue);
 
+		/** Same, for a value written to Fact: a bare member of a tag fact's set means that member. */
+		bool EvaluateValueFor(const Lang::FDnaExprPtr& Expr, const FString& Fact, FDnaValue& OutValue);
+
 		/** "Now: fact = value, ..." for the facts (and the chapter) an expression reads. */
 		FString DescribeFactsOf(const Lang::FDnaExpr& Expr) const;
 

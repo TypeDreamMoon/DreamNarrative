@@ -48,4 +48,7 @@ namespace UE::DreamNarrative::Lang
 	 * names resolve the way the validator resolved them.
 	 */
 	DREAMNARRATIVECOMPILER_API int32 CompileDnaExpression(const FDnaProgram& Program, const FDnaExprPtr& Expr, UDreamNarrativeScript& Pool);
+
+	/** Same, for a value written to TargetFact: a bare member of a tag fact's set resolves against that fact. */
+	DREAMNARRATIVECOMPILER_API int32 CompileDnaValueFor(const FDnaProgram& Program, const FDnaExprPtr& Expr, const FString& TargetFact, UDreamNarrativeScript& Pool);
 }
