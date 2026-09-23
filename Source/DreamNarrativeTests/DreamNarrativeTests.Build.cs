@@ -21,6 +21,7 @@ public class DreamNarrativeTests : ModuleRules
 			"Engine",
 			"GameplayTags",
 			"Projects",
+			"AssetRegistry",
 			"DreamNarrativeCore",
 			"DreamNarrativeStory",
 			"DreamNarrativeCompiler",

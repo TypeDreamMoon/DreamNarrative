@@ -151,17 +151,32 @@ namespace UE::DreamNarrative::Tests
 		Collector.AddReferencedObject(ExpressionPool);
 	}
 
-	// ---------------------------------------------------------------- building
+	// ---------------------------------------------------------------- compiling
 
-	bool FDnaTestWorld::Compile(const TArray<FDnaTestSource>& Sources)
+	bool ReadPluginSources(FAutomationTestBase& Test, const TArray<FString>& RelativePaths, TArray<FDnaTestSource>& OutSources)
 	{
-		if (bCompiled)
+		const FString PluginDir = GetPluginDir();
+		if (PluginDir.IsEmpty())
 		{
-			Test.AddError(TEXT("FDnaTestWorld compiles once; put every source in one Compile call"));
+			Test.AddError(TEXT("The DreamNarrative plugin is not loaded"));
 			return false;
 		}
-		bCompiled = true;
+		for (const FString& Relative : RelativePaths)
+		{
+			FDnaTestSource& Source = OutSources.AddDefaulted_GetRef();
+			Source.Path = FPaths::Combine(PluginDir, Relative);
+			if (!FFileHelper::LoadFileToString(Source.Text, *Source.Path))
+			{
+				Test.AddError(FString::Printf(TEXT("Cannot read %s"), *Source.Path));
+				return false;
+			}
+		}
+		return true;
+	}
 
+	bool CompileDnaSources(FAutomationTestBase& Test, const TArray<FDnaTestSource>& Sources, const FDnaGenerateOptions& Options,
+		FDnaProgram& OutProgram, TArray<UDreamNarrativeScript*>& OutScripts)
+	{
 		// The first pass collects every declared name, as the commandlet does, so the text-tail `if`
 		// rule sees names from all the sources.
 		TSet<FString> Names;
@@ -174,28 +189,21 @@ namespace UE::DreamNarrative::Tests
 		TArray<TSharedPtr<FDnaDocument>> Documents;
 		for (const FDnaTestSource& Source : Sources)
 		{
-			FDnaParseOptions Options;
-			Options.ExternalNames = &Names;
+			FDnaParseOptions ParseOptions;
+			ParseOptions.ExternalNames = &Names;
 			TSharedPtr<FDnaDocument> Document = MakeShared<FDnaDocument>();
 			Diagnostics.SetFilePath(Source.Path);
-			ParseDnaDocument(FDnaSourceText(Source.Path, Source.Text), Options, *Document, Diagnostics);
+			ParseDnaDocument(FDnaSourceText(Source.Path, Source.Text), ParseOptions, *Document, Diagnostics);
 			Documents.Add(Document);
 		}
-		BuildDnaProgram(Documents, ProgramModel, Diagnostics);
-		ValidateDnaProgram(ProgramModel, Diagnostics);
+		BuildDnaProgram(Documents, OutProgram, Diagnostics);
+		ValidateDnaProgram(OutProgram, Diagnostics);
 
 		if (!Diagnostics.HasErrors())
 		{
-			FDnaGenerateOptions Options;
-			Options.bSave = false;
-			Options.bTransient = true;
 			FDnaGenerateResult Result;
-			GenerateDnaProgram(ProgramModel, Options, Result, Diagnostics);
-			for (UDreamNarrativeScript* Script : Result.Scripts)
-			{
-				Scripts.Add(Script);
-				StoryObject->RegisterScript(Script);
-			}
+			GenerateDnaProgram(OutProgram, Options, Result, Diagnostics);
+			OutScripts.Append(Result.Scripts);
 		}
 
 		for (const FDnaDiagnostic& Diagnostic : Diagnostics.GetDiagnostics())
@@ -208,26 +216,34 @@ namespace UE::DreamNarrative::Tests
 		return !Diagnostics.HasErrors();
 	}
 
-	bool FDnaTestWorld::CompilePluginFiles(const TArray<FString>& RelativePaths)
+	// ---------------------------------------------------------------- building
+
+	bool FDnaTestWorld::Compile(const TArray<FDnaTestSource>& Sources)
 	{
-		const FString PluginDir = GetPluginDir();
-		if (PluginDir.IsEmpty())
+		if (bCompiled)
 		{
-			Test.AddError(TEXT("The DreamNarrative plugin is not loaded"));
+			Test.AddError(TEXT("FDnaTestWorld compiles once; put every source in one Compile call"));
 			return false;
 		}
-		TArray<FDnaTestSource> Sources;
-		for (const FString& Relative : RelativePaths)
+		bCompiled = true;
+
+		FDnaGenerateOptions Options;
+		Options.bSave = false;
+		Options.bTransient = true;
+		TArray<UDreamNarrativeScript*> Generated;
+		const bool bOk = CompileDnaSources(Test, Sources, Options, ProgramModel, Generated);
+		for (UDreamNarrativeScript* Script : Generated)
 		{
-			FDnaTestSource& Source = Sources.AddDefaulted_GetRef();
-			Source.Path = FPaths::Combine(PluginDir, Relative);
-			if (!FFileHelper::LoadFileToString(Source.Text, *Source.Path))
-			{
-				Test.AddError(FString::Printf(TEXT("Cannot read %s"), *Source.Path));
-				return false;
-			}
+			Scripts.Add(Script);
+			StoryObject->RegisterScript(Script);
 		}
-		return Compile(Sources);
+		return bOk;
+	}
+
+	bool FDnaTestWorld::CompilePluginFiles(const TArray<FString>& RelativePaths)
+	{
+		TArray<FDnaTestSource> Sources;
+		return ReadPluginSources(Test, RelativePaths, Sources) && Compile(Sources);
 	}
 
 	bool FDnaTestWorld::CompileText(const FString& Text, const FString& Path)

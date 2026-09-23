@@ -13,6 +13,7 @@
 #include "CoreMinimal.h"
 #include "DreamNarrativeClock.h"
 #include "DreamNarrativeTypes.h"
+#include "Generation/DnaGenerator.h"
 #include "Lang/DnaModel.h"
 #include "UObject/GCObject.h"
 
@@ -38,6 +39,16 @@ namespace UE::DreamNarrative::Tests
 
 	/** Differences between two snapshots, one readable line each; empty when they agree. */
 	TArray<FString> DiffSnapshots(const FDnaLedgerSnapshot& Expected, const FDnaLedgerSnapshot& Actual);
+
+	/** Reads files given relative to the plugin directory. A file that cannot be read fails the test. */
+	bool ReadPluginSources(FAutomationTestBase& Test, const TArray<FString>& RelativePaths, TArray<FDnaTestSource>& OutSources);
+
+	/**
+	 * Parses, checks and generates the sources as one program, the way the commandlet does, and hands
+	 * out the scripts. Error diagnostics fail the test and make this return false.
+	 */
+	bool CompileDnaSources(FAutomationTestBase& Test, const TArray<FDnaTestSource>& Sources, const Lang::FDnaGenerateOptions& Options,
+		Lang::FDnaProgram& OutProgram, TArray<UDreamNarrativeScript*>& OutScripts);
 
 	class FDnaTestWorld : public FGCObject
 	{
