@@ -55,6 +55,10 @@ struct DREAMNARRATIVECORE_API FDnaLedgerSnapshot
 
 	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
 	TArray<FName> ChosenOnce;
+
+	/** Timers still running, with the narrative seconds each had left. */
+	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
+	TMap<FName, float> Timers;
 };
 
 /**
@@ -84,6 +88,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDnaEventSignature, FName, Event);
 DECLARE_MULTICAST_DELEGATE_OneParam(FDnaBatchCommittedSignature, const TArray<FName>& /*ChangedFacts*/);
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FDnaFactWrittenSignature, FName /*Fact*/, const FDnaValue& /*Value*/, EDnaWriteSource /*Source*/);
 DECLARE_MULTICAST_DELEGATE_OneParam(FDnaJumpRequestedSignature, FName /*Chapter*/);
+DECLARE_MULTICAST_DELEGATE_OneParam(FDnaTimerFiredSignature, FName /*Timer*/);
 
 UCLASS()
 class DREAMNARRATIVECORE_API UDreamNarrativeLedger : public UGameInstanceSubsystem, public IDnaEvalContext
@@ -217,9 +222,24 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Save")
 	void ApplySnapshot(const FDnaLedgerSnapshot& Snapshot);
 
-	/** Every fact back to its default, chapter to none, bookkeeping cleared. */
+	/** Every fact back to its default, chapter to none, bookkeeping cleared, timers stopped. */
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Save")
 	void ResetToDefaults();
+
+	// ---------------------------------------------------------------- timers
+
+	/**
+	 * Starts (or restarts) a named timer on the ledger's clock: a quest's timeout, say. When it runs out,
+	 * OnTimerFired says so. Timers are part of the snapshot: a save keeps what each had left.
+	 */
+	void StartTimer(FName Timer, double Seconds);
+
+	void CancelTimer(FName Timer);
+
+	bool IsTimerRunning(FName Timer) const { return Timers.Contains(Timer); }
+
+	/** Narrative seconds the timer has left; negative when it is not running. */
+	double GetTimerRemaining(FName Timer) const;
 
 	// ---------------------------------------------------------------- quests (provided by Story)
 
@@ -279,6 +299,9 @@ public:
 	/** Fires when a debug teleport starts, before it writes the implied facts. */
 	FDnaJumpRequestedSignature OnJumpRequested;
 
+	/** Fires when a timer runs out; it is no longer running by then. */
+	FDnaTimerFiredSignature OnTimerFired;
+
 private:
 	/** Follows `was` redirects to the current name. */
 	FName Resolve(FName Fact) const;
@@ -311,5 +334,6 @@ private:
 	FRandomStream Random;
 	IDnaRandomSource* RandomSource = nullptr;
 	TSharedPtr<IDnaClock> Clock;
+	TMap<FName, FDnaClockHandle> Timers;
 	IDnaTrace* Trace = nullptr;
 };

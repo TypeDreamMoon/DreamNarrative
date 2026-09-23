@@ -41,6 +41,9 @@ public:
 	virtual void Cancel(FDnaClockHandle& Handle) = 0;
 
 	virtual bool IsPending(const FDnaClockHandle& Handle) const = 0;
+
+	/** Seconds of narrative time until a pending callback runs; negative when it is not pending. */
+	virtual double GetRemaining(const FDnaClockHandle& Handle) const = 0;
 };
 
 /** The game's clock: the game instance's timer manager, ticked with (dilated, pausable) world time. */
@@ -55,6 +58,7 @@ public:
 	virtual FDnaClockHandle Schedule(double Seconds, FSimpleDelegate Callback) override;
 	virtual void Cancel(FDnaClockHandle& Handle) override;
 	virtual bool IsPending(const FDnaClockHandle& Handle) const override;
+	virtual double GetRemaining(const FDnaClockHandle& Handle) const override;
 
 private:
 	TWeakObjectPtr<UGameInstance> GameInstance;
@@ -74,6 +78,7 @@ public:
 	virtual FDnaClockHandle Schedule(double Seconds, FSimpleDelegate Callback) override;
 	virtual void Cancel(FDnaClockHandle& Handle) override;
 	virtual bool IsPending(const FDnaClockHandle& Handle) const override;
+	virtual double GetRemaining(const FDnaClockHandle& Handle) const override;
 
 	/** Moves time forward by Seconds (zero fires what is already due). */
 	void Advance(double Seconds);

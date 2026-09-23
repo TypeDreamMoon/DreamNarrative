@@ -21,6 +21,7 @@ void UDreamNarrativeLedger::Initialize(FSubsystemCollectionBase& Collection)
 void UDreamNarrativeLedger::Deinitialize()
 {
 	// The game's clock keeps its timers on the game instance; drop them while it is still there.
+	Timers.Reset();
 	Clock.Reset();
 	Super::Deinitialize();
 }
@@ -402,6 +403,44 @@ IDnaClock& UDreamNarrativeLedger::GetClock()
 	return *Clock;
 }
 
+// ---------------------------------------------------------------- timers
+
+void UDreamNarrativeLedger::StartTimer(FName Timer, double Seconds)
+{
+	CancelTimer(Timer);
+	if (Trace)
+	{
+		Trace->OnEvent(TEXT("ledger.timer.start"));
+	}
+	Timers.Add(Timer, GetClock().Schedule(Seconds, FSimpleDelegate::CreateWeakLambda(this, [this, Timer]()
+	{
+		Timers.Remove(Timer);
+		if (Trace)
+		{
+			Trace->OnEvent(TEXT("ledger.timer.fired"));
+		}
+		OnTimerFired.Broadcast(Timer);
+	})));
+}
+
+void UDreamNarrativeLedger::CancelTimer(FName Timer)
+{
+	if (FDnaClockHandle* Handle = Timers.Find(Timer))
+	{
+		if (Clock.IsValid())
+		{
+			Clock->Cancel(*Handle);
+		}
+		Timers.Remove(Timer);
+	}
+}
+
+double UDreamNarrativeLedger::GetTimerRemaining(FName Timer) const
+{
+	const FDnaClockHandle* Handle = Timers.Find(Timer);
+	return Handle && Clock.IsValid() ? Clock->GetRemaining(*Handle) : -1.0;
+}
+
 // ---------------------------------------------------------------- snapshot
 
 FDnaLedgerSnapshot UDreamNarrativeLedger::MakeSnapshot() const
@@ -425,6 +464,10 @@ FDnaLedgerSnapshot UDreamNarrativeLedger::MakeSnapshot() const
 	Snapshot.Chapter = CurrentChapter;
 	Snapshot.Visited = VisitCounts;
 	Snapshot.ChosenOnce = ChosenOnce.Array();
+	for (const TPair<FName, FDnaClockHandle>& Pair : Timers)
+	{
+		Snapshot.Timers.Add(Pair.Key, static_cast<float>(FMath::Max(0.0, GetTimerRemaining(Pair.Key))));
+	}
 	return Snapshot;
 }
 
@@ -469,6 +512,11 @@ void UDreamNarrativeLedger::ApplySnapshot(const FDnaLedgerSnapshot& Snapshot)
 		}
 		SetChapter(Snapshot.Chapter);
 	}
+	// Timers go on from what they had left.
+	for (const TPair<FName, float>& Pair : Snapshot.Timers)
+	{
+		StartTimer(Pair.Key, Pair.Value);
+	}
 }
 
 void UDreamNarrativeLedger::ResetToDefaults()
@@ -482,6 +530,12 @@ void UDreamNarrativeLedger::ResetToDefaults()
 	}
 	VisitCounts.Reset();
 	ChosenOnce.Reset();
+	TArray<FName> Running;
+	Timers.GetKeys(Running);
+	for (const FName& Timer : Running)
+	{
+		CancelTimer(Timer);
+	}
 	if (!CurrentChapter.IsNone())
 	{
 		const FName Old = CurrentChapter;

@@ -82,6 +82,18 @@ bool FDnaWorldClock::IsPending(const FDnaClockHandle& Handle) const
 	return Handle.IsValid() && Timers.Contains(Handle.Id);
 }
 
+double FDnaWorldClock::GetRemaining(const FDnaClockHandle& Handle) const
+{
+	const FTimerHandle* Timer = Handle.IsValid() ? Timers.Find(Handle.Id) : nullptr;
+	const UGameInstance* Instance = GameInstance.Get();
+	if (!Timer || !Instance)
+	{
+		return -1.0;
+	}
+	// A next-tick timer reports nothing remaining; it is still pending.
+	return FMath::Max(0.0, static_cast<double>(Instance->GetTimerManager().GetTimerRemaining(*Timer)));
+}
+
 // ---------------------------------------------------------------- manual clock
 
 FDnaClockHandle FDnaManualClock::Schedule(double Seconds, FSimpleDelegate Callback)
@@ -112,6 +124,12 @@ void FDnaManualClock::Cancel(FDnaClockHandle& Handle)
 bool FDnaManualClock::IsPending(const FDnaClockHandle& Handle) const
 {
 	return Handle.IsValid() && Pending.ContainsByPredicate([Id = Handle.Id](const FEntry& Entry) { return Entry.Id == Id; });
+}
+
+double FDnaManualClock::GetRemaining(const FDnaClockHandle& Handle) const
+{
+	const FEntry* Entry = Handle.IsValid() ? Pending.FindByPredicate([Id = Handle.Id](const FEntry& Candidate) { return Candidate.Id == Id; }) : nullptr;
+	return Entry ? FMath::Max(0.0, Entry->Due - Now) : -1.0;
 }
 
 void FDnaManualClock::Advance(double Seconds)

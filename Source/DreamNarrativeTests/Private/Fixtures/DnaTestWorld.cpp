@@ -103,6 +103,23 @@ namespace UE::DreamNarrative::Tests
 			}
 		}
 
+		for (const TPair<FName, float>& Pair : Expected.Timers)
+		{
+			const float* Other = Actual.Timers.Find(Pair.Key);
+			if (!Other || FMath::Abs(*Other - Pair.Value) > 0.001f)
+			{
+				Differences.Add(FString::Printf(TEXT("timer %s with %gs left, came back %s"), *Pair.Key.ToString(), Pair.Value,
+					Other ? *FString::Printf(TEXT("with %gs left"), *Other) : TEXT("stopped")));
+			}
+		}
+		for (const TPair<FName, float>& Pair : Actual.Timers)
+		{
+			if (!Expected.Timers.Contains(Pair.Key))
+			{
+				Differences.Add(FString::Printf(TEXT("timer %s came back running"), *Pair.Key.ToString()));
+			}
+		}
+
 		const TSet<FName> OnceLeft(Expected.ChosenOnce);
 		const TSet<FName> OnceRight(Actual.ChosenOnce);
 		for (const FName& Id : OnceLeft.Difference(OnceRight))
@@ -598,6 +615,8 @@ namespace UE::DreamNarrative::Tests
 
 		// A fresh ledger that knows the same scripts, as after starting the game and loading the save.
 		UDreamNarrativeLedger* Fresh = NewObject<UDreamNarrativeLedger>(GameInstance, NAME_None, RF_Transient);
+		// Its timers run on a clock of their own, one that never moves: only what they have left is compared.
+		Fresh->SetClock(MakeShared<FDnaManualClock>());
 		Fresh->SetTrace(LedgerObject->GetTrace());
 		for (UDreamNarrativeScript* Script : Scripts)
 		{
