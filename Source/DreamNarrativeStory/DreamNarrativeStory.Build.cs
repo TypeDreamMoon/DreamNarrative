@@ -25,6 +25,8 @@ public class DreamNarrativeStory : ModuleRules
 			"EnhancedInput",
 			"LevelSequence",
 			"MovieScene",
+			"AssetRegistry",
+			"DeveloperSettings",
 		});
 	}
 }
