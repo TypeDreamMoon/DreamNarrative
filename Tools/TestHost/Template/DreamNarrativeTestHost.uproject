@@ -1,0 +1,19 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "{486FC676-41CB-DA5E-D95C-8AA1D8EB76B0}",
+	"Category": "",
+	"Description": "Minimal host project that builds DreamNarrative on its own and runs its automation tests, away from any working project. Generated from Plugins/DreamNarrative/Tools/TestHost/Template by New-DreamNarrativeTestHost.ps1; see Tools/TestHost/README.md.",
+	"Modules": [
+		{
+			"Name": "DreamNarrativeTestHost",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "DreamNarrative",
+			"Enabled": true
+		}
+	]
+}
