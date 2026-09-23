@@ -27,15 +27,18 @@ enum class EDnaWriteSource : uint8
 	Game,
 };
 
+// Every property of the snapshot is marked SaveGame, down to the values, so the snapshot survives an
+// archive that only writes SaveGame properties (ArIsSaveGame) as well as one that writes them all.
+
 USTRUCT(BlueprintType)
 struct DREAMNARRATIVECORE_API FDnaFactSnapshotEntry
 {
 	GENERATED_BODY()
 
-	UPROPERTY(BlueprintReadWrite, Category = "Narrative")
+	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
 	FName Fact;
 
-	UPROPERTY(BlueprintReadWrite, Category = "Narrative")
+	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
 	FDnaValue Value;
 };
 
@@ -45,19 +48,19 @@ struct DREAMNARRATIVECORE_API FDnaLedgerSnapshot
 {
 	GENERATED_BODY()
 
-	UPROPERTY(BlueprintReadWrite, Category = "Narrative")
+	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
 	int32 SchemaVersion = 1;
 
-	UPROPERTY(BlueprintReadWrite, Category = "Narrative")
+	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
 	TArray<FDnaFactSnapshotEntry> Facts;
 
-	UPROPERTY(BlueprintReadWrite, Category = "Narrative")
+	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
 	FName Chapter;
 
-	UPROPERTY(BlueprintReadWrite, Category = "Narrative")
+	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
 	TMap<FName, int32> Visited;
 
-	UPROPERTY(BlueprintReadWrite, Category = "Narrative")
+	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
 	TArray<FName> ChosenOnce;
 };
 

@@ -41,26 +41,26 @@ enum class EDnaAuthority : uint8
 	Client,
 };
 
-/** A value in the ledger. Only the member matching Type is meaningful. */
+/** A value in the ledger. Only the member matching Type is meaningful. SaveGame, because snapshots hold values. */
 USTRUCT(BlueprintType)
 struct DREAMNARRATIVECORE_API FDnaValue
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Narrative")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Narrative")
 	EDnaFactType Type = EDnaFactType::Bool;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Narrative")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Narrative")
 	bool bBool = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Narrative")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Narrative")
 	int32 Int = 0;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Narrative")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Narrative")
 	float Float = 0.f;
 
 	/** For Tag values: the bare member name as declared in the fact's domain, e.g. `盛开`. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Narrative")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Narrative")
 	FName Tag;
 
 	static FDnaValue FromBool(bool bValue) { FDnaValue V; V.Type = EDnaFactType::Bool; V.bBool = bValue; return V; }
