@@ -6,6 +6,7 @@
 #include "DreamNarrativeDialogueRunner.h"
 #include "DreamNarrativeExpression.h"
 #include "DreamNarrativeLedger.h"
+#include "DreamNarrativeQuest.h"
 #include "DreamNarrativeScript.h"
 #include "DreamNarrativeStory.h"
 #include "DreamNarrativeTrace.h"
@@ -285,6 +286,8 @@ namespace UE::DreamNarrative::Tests::Explore
 			Talk,
 			Start,
 			Set,
+			/** Time runs until the next timer (a quest's timeout) goes off. */
+			Wait,
 		};
 
 		struct FMove
@@ -328,6 +331,8 @@ namespace UE::DreamNarrative::Tests::Explore
 		{
 			TArray<TArray<FDnaChoiceView>> Choices;
 			TArray<FString> DrawNotes;
+			/** For a wait: how long it was. */
+			double WaitSeconds = 0.0;
 		};
 
 		/** The choice points of one move from one state, and which of them can still get to the end. */
@@ -475,6 +480,8 @@ namespace UE::DreamNarrative::Tests::Explore
 		TArray<FName> NodeNames;
 		TArray<FName> OnceIds;
 		TArray<FName> ChapterNames;
+		/** The timers a state can have running: the timeouts of quests that have one. */
+		TArray<FName> TimerNames;
 		TArray<FName> Talkers;
 		TArray<FName> Roots;
 		TArray<FName> AllLines;
@@ -489,6 +496,7 @@ namespace UE::DreamNarrative::Tests::Explore
 		int32 VisitBase = 0;
 		int32 OnceBase = 0;
 		int32 ChapterSlot = 0;
+		int32 TimerBase = 0;
 		TArray<FMove> Moves;
 
 		// -- the exploration
@@ -531,6 +539,17 @@ namespace UE::DreamNarrative::Tests::Explore
 				}
 			}
 			Ledger().GetChapterNames(ChapterNames);
+			TArray<FName> Quests;
+			Story().GetQuestNames(Quests);
+			Quests.Sort([](const FName& A, const FName& B) { return A.ToString() < B.ToString(); });
+			for (const FName& Quest : Quests)
+			{
+				const FDnaQuestData* Data = Story().FindQuest(Quest);
+				if (Data && Data->Timeout > 0.f)
+				{
+					TimerNames.Add(::DreamNarrative::QuestStateFact(Quest));
+				}
+			}
 
 			TSet<FName> Targets;
 			TSet<FName> TalkerSet;
@@ -642,6 +661,31 @@ namespace UE::DreamNarrative::Tests::Explore
 							const FDnaCompiledExpr* Value = Script->GetExpression(Instruction.Expr);
 							Scan(Value, ERole::Value);
 							NoteWrite(Instruction.Name, Instruction.Assign, Value);
+						}
+					}
+				}
+			}
+			for (const TObjectPtr<UDreamNarrativeScript>& Script : World.GetScripts())
+			{
+				const UDnaQuestSection* Quests = Script ? Script->FindSection<UDnaQuestSection>() : nullptr;
+				for (const FDnaQuestData& Quest : Quests ? Quests->Quests : TArray<FDnaQuestData>())
+				{
+					Scan(Script->GetExpression(Quest.Available), ERole::Condition);
+					Scan(Script->GetExpression(Quest.FailIf), ERole::Condition);
+					for (const FDnaObjectiveData& Objective : Quest.Objectives)
+					{
+						Scan(Script->GetExpression(Objective.Condition), ERole::Condition);
+					}
+					for (const FDnaQuestHandlerData* Handler : { &Quest.OnAccept, &Quest.OnComplete, &Quest.OnFail, &Quest.OnTimeout })
+					{
+						for (const FDnaInstruction& Instruction : Handler->Code)
+						{
+							if (Instruction.Op == EDnaOpCode::Set)
+							{
+								const FDnaCompiledExpr* Value = Script->GetExpression(Instruction.Expr);
+								Scan(Value, ERole::Value);
+								NoteWrite(Instruction.Name, Instruction.Assign, Value);
+							}
 						}
 					}
 				}
@@ -769,6 +813,12 @@ namespace UE::DreamNarrative::Tests::Explore
 		{
 			for (int32 Index = 0; Index < FactNames.Num(); ++Index)
 			{
+				// A quest's state and done objectives are read by the quest machinery itself: always as they are.
+				if (FactNames[Index].ToString().StartsWith(TEXT("@")))
+				{
+					Folds.Add(FFold());
+					continue;
+				}
 				const bool bNumeric = FactDecls[Index].Type == EDnaFactType::Int || FactDecls[Index].Type == EDnaFactType::Float;
 				Folds.Add(MakeFold(FactUse.Find(FactNames[Index]), bNumeric));
 			}
@@ -784,6 +834,11 @@ namespace UE::DreamNarrative::Tests::Explore
 			}
 			ChapterSlot = Folds.Num();
 			Folds.Add(FFold());
+			TimerBase = Folds.Num();
+			for (int32 Index = 0; Index < TimerNames.Num(); ++Index)
+			{
+				Folds.Add(FFold());
+			}
 		}
 
 		void BuildMoves()
@@ -799,6 +854,10 @@ namespace UE::DreamNarrative::Tests::Explore
 				FMove& Move = Moves.AddDefaulted_GetRef();
 				Move.Kind = EMoveKind::Start;
 				Move.Target = Root;
+			}
+			if (TimerNames.Num() > 0)
+			{
+				Moves.AddDefaulted_GetRef().Kind = EMoveKind::Wait;
 			}
 			for (int32 Slot = 0; Slot < FactNames.Num(); ++Slot)
 			{
@@ -973,11 +1032,20 @@ namespace UE::DreamNarrative::Tests::Explore
 				Out.Add(Ledger().WasChosenOnce(Id) ? 1 : 0);
 			}
 			Out.Add(ChapterNames.IndexOfByKey(Ledger().GetChapter()) + 1);
+			for (const FName& Timer : TimerNames)
+			{
+				Out.Add(FloatBits(Ledger().IsTimerRunning(Timer) ? static_cast<float>(Ledger().GetTimerRemaining(Timer)) : -1.f));
+			}
 		}
 
 		void Fold(const TArray<int32>& Concrete, FIntKey& Out) const
 		{
 			Out.Values = Concrete;
+			// A timer counts as running or not; how long it has left does not tell states apart.
+			for (int32 Slot = TimerBase; Slot < Out.Values.Num(); ++Slot)
+			{
+				Out.Values[Slot] = BitsFloat(Out.Values[Slot]) >= 0.f ? 1 : 0;
+			}
 			for (int32 Slot = 0; Slot < ChapterSlot; ++Slot)
 			{
 				const FFold& Rule = Folds[Slot];
@@ -1029,6 +1097,14 @@ namespace UE::DreamNarrative::Tests::Explore
 			}
 			const int32 Chapter = Values[ChapterSlot] - 1;
 			Snapshot.Chapter = ChapterNames.IsValidIndex(Chapter) ? ChapterNames[Chapter] : NAME_None;
+			for (int32 Index = 0; Index < TimerNames.Num(); ++Index)
+			{
+				const float Remaining = BitsFloat(Values[TimerBase + Index]);
+				if (Remaining >= 0.f)
+				{
+					Snapshot.Timers.Add(TimerNames[Index], Remaining);
+				}
+			}
 			Ledger().ApplySnapshot(Snapshot);
 		}
 
@@ -1152,6 +1228,10 @@ namespace UE::DreamNarrative::Tests::Explore
 				{
 					continue;
 				}
+				if (Candidate.Kind == EMoveKind::Wait && !AnyTimerRunning(States[From].Values))
+				{
+					continue;
+				}
 				ExpandMove(From, Move);
 			}
 			States[From].bExpanded = true;
@@ -1221,6 +1301,16 @@ namespace UE::DreamNarrative::Tests::Explore
 			case EMoveKind::Set:
 				Ledger().SetFact(Move.Target, Move.Value, EDnaWriteSource::Game);
 				break;
+			case EMoveKind::Wait:
+				if (Recording)
+				{
+					Recording->WaitSeconds = World.Clock().GetTimeToNext();
+				}
+				if (!World.Clock().AdvanceToNext())
+				{
+					Out.End = ERunEnd::NotApplicable;
+				}
+				break;
 			}
 			if (bStarted)
 			{
@@ -1235,6 +1325,18 @@ namespace UE::DreamNarrative::Tests::Explore
 				Out.End = ERunEnd::RanAway;
 			}
 			return Out;
+		}
+
+		bool AnyTimerRunning(const TArray<int32>& Values) const
+		{
+			for (int32 Slot = TimerBase; Slot < Values.Num(); ++Slot)
+			{
+				if (BitsFloat(Values[Slot]) >= 0.f)
+				{
+					return true;
+				}
+			}
+			return false;
 		}
 
 		bool StartNode(FName Node)
@@ -1362,6 +1464,7 @@ namespace UE::DreamNarrative::Tests::Explore
 			case EMoveKind::Talk: return FString::Printf(TEXT("talk %s"), *Move.Target.ToString());
 			case EMoveKind::Start: return FString::Printf(TEXT("start %s"), *Move.Target.ToString());
 			case EMoveKind::Set: return FString::Printf(TEXT("set %s = %s"), *Move.Target.ToString(), *Move.Value.ToString());
+			case EMoveKind::Wait: return TEXT("wait for the next timer");
 			}
 			return FString();
 		}
@@ -1692,7 +1795,7 @@ namespace UE::DreamNarrative::Tests::Explore
 			{
 				Lines.Add(TEXT("rolls ") + FString::Join(Rolls, TEXT(", ")) + (Notes.Num() > 0 ? TEXT("    // ") + FString::Join(Notes, TEXT(";")) : FString()));
 			}
-			Lines.Add(DescribeMove(MoveIndex));
+			Lines.Add(Moves[MoveIndex].Kind == EMoveKind::Wait ? FString::Printf(TEXT("wait %gs"), Recording.WaitSeconds) : DescribeMove(MoveIndex));
 			Lines.Append(Picks);
 		}
 

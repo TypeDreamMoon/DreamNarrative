@@ -1,6 +1,8 @@
 // Copyright DreamMoon. All Rights Reserved.
 
 #include "Explore/DnaExploreBlocks.h"
+#include "DreamNarrativeQuest.h"
+#include "DreamNarrativeStory.h"
 #include "Fixtures/DnaLogCapture.h"
 #include "Fixtures/DnaTestWorld.h"
 #include "Lang/DnaExpr.h"
@@ -152,6 +154,25 @@ namespace UE::DreamNarrative::Tests::Explore
 				// A step: part of the way to every state, so part of every repro.
 				WriteLines(*Line, 1, Steps);
 				break;
+			}
+		}
+
+		// Main quests must never be locked out, asked or not.
+		TArray<FName> Quests;
+		World.Story().GetQuestNames(Quests);
+		Quests.Sort([](const FName& A, const FName& B) { return A.ToString() < B.ToString(); });
+		for (const FName& Quest : Quests)
+		{
+			const FDnaQuestData* Data = World.Story().FindQuest(Quest);
+			const FString Completed = Quest.ToString() + TEXT(".completed");
+			const bool bAsked = Options.Goals.ContainsByPredicate([&Completed](const FDnaExploreGoal& Goal) { return Goal.Kind == EDnaGoalKind::Softlock && Goal.Source == Completed; });
+			if (Data && Data->Priority == EDnaQuestPriority::Main && !bAsked)
+			{
+				const FDnaExprPtr Goal = MakeShared<FDnaExpr>();
+				Goal->Kind = EDnaExprKind::Name;
+				Goal->Name = Completed;
+				Goal->Path = { Quest.ToString(), TEXT("completed") };
+				AddGoal(EDnaGoalKind::Softlock, Goal, Completed, FString::Printf(TEXT("%s(%d)"), *FileLabel, Block.LineNumber()));
 			}
 		}
 
