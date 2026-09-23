@@ -1,0 +1,38 @@
+// Ring 黄金样例的测试。和 C++ 的 DreamNarrative.Dialogue.RingSample 是同一套检查,写成 test 块。
+
+file
+  with: ../Corpus/Validate/Samples/ring.dna
+
+// 凛 的三段对话:入口按账本挑,分支按 fact 走,once 选项选过就不再出现。
+test 三段对话
+  talk 凛
+    凛(轻声): 水该换了。
+    玩家: 我来。
+    凛: 第一滴。
+  expect 换水次数 == 1 and 梅蕾状态 == 初绽
+  expect chapter == 第一章 and visited(凛_第一次换水) == 1
+  set 周期 = 1
+  talk 凛
+    凛: 你回来了。
+    - 你在等什么?
+    凛(沉默): ……
+    absent 凛: 早点睡。
+  expect 凛提到过等待
+  talk 凛 strict
+    凛: 嗯。
+    - 没事。
+  save
+
+// 周期是 extern,从 0 开始;0 % 3 == 0,所以换过水之后先挑中「每三个周期」的入口。
+test 周期为零时每三个周期的入口优先
+  talk 凛
+  talk 凛
+    凛: 今天也换吧。
+  expect 换水次数 == 2
+
+// 调试传送沿 after 链补齐 implied。
+test 跳到终局补齐前面各章
+  jump 终局_花开
+  expect chapter == 终局_花开
+  expect 换水次数 == 1 and 梅蕾状态 == 盛开
+  expect 墨梅册.第一页 and 墨梅册.第三页

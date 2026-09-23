@@ -1,0 +1,83 @@
+// test 块的每一种步骤都走一遍:seed、given、talk 与 start(宽松、strict)、按文字与按 id 选项、absent、
+// 带插值的期望行、续行、set extern(= += -=)、wait、jump、save。
+
+character 甲
+character 乙
+
+fact 好感: int = 0 range 0..10
+fact 金币: int extern
+fact 骰子: int
+
+chapter 开场
+chapter 后来 after 开场
+  implied
+    好感 = 5
+
+dialogue 甲_问候 for 甲
+  甲(微笑): 你好。
+  甲: 你有 {金币} 枚金币。
+  - 夸他
+      set 好感 += 1
+      甲: 谢谢。
+  - 走开
+  > 风吹过。
+
+dialogue 甲_熟人 for 甲 if 好感 >= 5
+  甲: 老朋友,
+    又见面了。
+  wait 3s
+  甲: 坐。
+
+dialogue 乙_掷骰
+  set 骰子 = random(1, 6)
+  乙: 掷出了 {骰子}。
+
+test 宽松匹配与按文字选
+  talk 甲
+    甲: 你有 0 枚金币。
+    - 夸他
+    甲: 谢谢。
+    absent 甲: 坐。
+  expect 好感 == 1
+
+test 期望行按当下账本插值
+  set 金币 = 3
+  set 金币 += 2
+  set 金币 -= 1
+  talk 甲
+    甲: 你有 {金币} 枚金币。
+    - #甲_问候.c2
+    > 风吹过。
+  expect 金币 == 4 and 好感 == 0
+
+test 列了标签就要对上
+  talk 甲
+    甲(微笑): 你好。
+    - 走开
+
+test 起始状态与严格对话
+  given
+    好感 = 5
+  start 甲_熟人 strict
+    甲: 老朋友,
+      又见面了。
+    甲: 坐。
+
+test 跳章补齐
+  jump 后来
+  expect chapter == 后来 and 好感 == 5
+  talk 甲
+    甲: 坐。
+  save
+
+test 等待走虚拟时钟
+  wait 20m
+  given
+    好感 = 5
+  talk 甲
+    甲: 坐。
+
+test 随机带种子
+  seed 42
+  start 乙_掷骰
+  expect 骰子 >= 1 and 骰子 <= 6

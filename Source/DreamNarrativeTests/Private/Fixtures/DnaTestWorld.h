@@ -136,6 +136,26 @@ namespace UE::DreamNarrative::Tests
 		/** Every step runs CheckSaveRoundTrip unless this is cleared. */
 		bool bCheckSaveAfterEachStep = true;
 
+		// ---------------------------------------------------------------- for step runners
+
+		/** Put in front of every failure this world reports, e.g. `Samples/Ring.dna(12)`; empty for none. */
+		void SetContext(const FString& InContext) { Context = InContext; }
+
+		/** Reports a failure with the current context. */
+		void ReportError(const FString& Message);
+
+		/** Evaluates an expression of the compiled program (already checked) against the ledger. */
+		bool EvaluateAst(const Lang::FDnaExprPtr& Expr, FDnaValue& OutValue);
+
+		/** "Now: fact = value, ..." for the facts (and the chapter) an expression reads. */
+		FString DescribeFactsOf(const Lang::FDnaExpr& Expr) const;
+
+		/** Ends a step a runner drove itself: the save check, unless turned off. */
+		bool FinishStep(const FString& What, bool bStepOk);
+
+		/** Adds a finished dialogue's transcript to the world's, making it the last dialogue. */
+		void RecordDialogue(const UDreamNarrativeDialogueRunner& Runner);
+
 		// ---------------------------------------------------------------- FGCObject
 
 		virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
@@ -143,8 +163,6 @@ namespace UE::DreamNarrative::Tests
 
 	private:
 		bool Drive(UDreamNarrativeDialogueRunner* Runner, const TArray<FString>& Choices, const FString& What);
-		bool AfterStep(const FString& What, bool bStepOk);
-		FString DescribeFactsOf(const FString& Expression) const;
 
 		FAutomationTestBase& Test;
 		TObjectPtr<UGameInstance> GameInstance;
@@ -158,5 +176,6 @@ namespace UE::DreamNarrative::Tests
 		bool bCompiled = false;
 		TArray<FString> Transcript;
 		TArray<FString> LastDialogue;
+		FString Context;
 	};
 }

@@ -222,7 +222,7 @@ namespace UE::DreamNarrative::Tests
 	{
 		if (bCompiled)
 		{
-			Test.AddError(TEXT("FDnaTestWorld compiles once; put every source in one Compile call"));
+			ReportError(TEXT("FDnaTestWorld compiles once; put every source in one Compile call"));
 			return false;
 		}
 		bCompiled = true;
@@ -268,7 +268,7 @@ namespace UE::DreamNarrative::Tests
 			{
 				if (!Choices.IsValidIndex(NextChoice))
 				{
-					Test.AddError(FString::Printf(TEXT("%s: choices are on offer but the test has no pick left. On offer: %s"), *What, *DescribeChoices(*Runner)));
+					ReportError(FString::Printf(TEXT("%s: choices are on offer but the test has no pick left. On offer: %s"), *What, *DescribeChoices(*Runner)));
 					Runner->Abort();
 					bOk = false;
 					break;
@@ -286,7 +286,7 @@ namespace UE::DreamNarrative::Tests
 				}
 				if (Pick == INDEX_NONE)
 				{
-					Test.AddError(FString::Printf(TEXT("%s: \"%s\" is not on offer. On offer: %s"), *What, *Wanted, *DescribeChoices(*Runner)));
+					ReportError(FString::Printf(TEXT("%s: \"%s\" is not on offer. On offer: %s"), *What, *Wanted, *DescribeChoices(*Runner)));
 					Runner->Abort();
 					bOk = false;
 					break;
@@ -298,7 +298,7 @@ namespace UE::DreamNarrative::Tests
 				// The wait sits on the manual clock; whatever else falls due first fires first.
 				if (!ManualClock->AdvanceToNext())
 				{
-					Test.AddError(FString::Printf(TEXT("%s: the dialogue is waiting but nothing is on the clock"), *What));
+					ReportError(FString::Printf(TEXT("%s: the dialogue is waiting but nothing is on the clock"), *What));
 					Runner->Abort();
 					bOk = false;
 				}
@@ -307,7 +307,7 @@ namespace UE::DreamNarrative::Tests
 				Runner->NotifyStageFinished();
 				break;
 			default:
-				Test.AddError(FString::Printf(TEXT("%s: the dialogue stopped in an unexpected state"), *What));
+				ReportError(FString::Printf(TEXT("%s: the dialogue stopped in an unexpected state"), *What));
 				Runner->Abort();
 				bOk = false;
 				break;
@@ -315,7 +315,7 @@ namespace UE::DreamNarrative::Tests
 		}
 		if (Runner->GetState() != EDnaRunnerState::Ended)
 		{
-			Test.AddError(FString::Printf(TEXT("%s: the dialogue did not end"), *What));
+			ReportError(FString::Printf(TEXT("%s: the dialogue did not end"), *What));
 			Runner->Abort();
 			bOk = false;
 		}
@@ -323,15 +323,25 @@ namespace UE::DreamNarrative::Tests
 		{
 			TArray<FString> Unused;
 			for (int32 Index = NextChoice; Index < Choices.Num(); ++Index) { Unused.Add(TEXT("\"") + Choices[Index] + TEXT("\"")); }
-			Test.AddError(FString::Printf(TEXT("%s: the dialogue ended before these picks were offered: %s"), *What, *FString::Join(Unused, TEXT(", "))));
+			ReportError(FString::Printf(TEXT("%s: the dialogue ended before these picks were offered: %s"), *What, *FString::Join(Unused, TEXT(", "))));
 			bOk = false;
 		}
-		LastDialogue = Runner->GetTranscript();
-		Transcript.Append(LastDialogue);
+		RecordDialogue(*Runner);
 		return bOk;
 	}
 
-	bool FDnaTestWorld::AfterStep(const FString& What, bool bStepOk)
+	void FDnaTestWorld::RecordDialogue(const UDreamNarrativeDialogueRunner& Runner)
+	{
+		LastDialogue = Runner.GetTranscript();
+		Transcript.Append(LastDialogue);
+	}
+
+	void FDnaTestWorld::ReportError(const FString& Message)
+	{
+		Test.AddError(Context.IsEmpty() ? Message : Context + TEXT(": ") + Message);
+	}
+
+	bool FDnaTestWorld::FinishStep(const FString& What, bool bStepOk)
 	{
 		const bool bSaveOk = !bCheckSaveAfterEachStep || CheckSaveRoundTrip(What);
 		return bStepOk && bSaveOk;
@@ -344,11 +354,11 @@ namespace UE::DreamNarrative::Tests
 		UDreamNarrativeDialogueRunner* Runner = StoryObject->TalkTo(Character);
 		if (!Runner)
 		{
-			Test.AddError(FString::Printf(TEXT("%s: no entry of %s applies"), *What, *Character.ToString()));
+			ReportError(FString::Printf(TEXT("%s: no entry of %s applies"), *What, *Character.ToString()));
 			return false;
 		}
 		const bool bOk = Drive(Runner, Choices, What);
-		return AfterStep(What, bOk);
+		return FinishStep(What, bOk);
 	}
 
 	bool FDnaTestWorld::Start(FName Node, const TArray<FString>& Choices)
@@ -358,11 +368,11 @@ namespace UE::DreamNarrative::Tests
 		UDreamNarrativeDialogueRunner* Runner = StoryObject->StartDialogue(Node);
 		if (!Runner)
 		{
-			Test.AddError(FString::Printf(TEXT("%s: no dialogue called %s"), *What, *Node.ToString()));
+			ReportError(FString::Printf(TEXT("%s: no dialogue called %s"), *What, *Node.ToString()));
 			return false;
 		}
 		const bool bOk = Drive(Runner, Choices, What);
-		return AfterStep(What, bOk);
+		return FinishStep(What, bOk);
 	}
 
 	bool FDnaTestWorld::SetExtern(FName Fact, const FDnaValue& Value)
@@ -372,9 +382,9 @@ namespace UE::DreamNarrative::Tests
 		const bool bOk = LedgerObject->SetFact(Fact, Value, EDnaWriteSource::Game);
 		if (!bOk)
 		{
-			Test.AddError(FString::Printf(TEXT("%s: the ledger refused the write"), *What));
+			ReportError(FString::Printf(TEXT("%s: the ledger refused the write"), *What));
 		}
-		return AfterStep(What, bOk);
+		return FinishStep(What, bOk);
 	}
 
 	bool FDnaTestWorld::Given(FName Fact, const FDnaValue& Value)
@@ -384,9 +394,9 @@ namespace UE::DreamNarrative::Tests
 		const bool bOk = LedgerObject->SetFact(Fact, Value, EDnaWriteSource::Narrative);
 		if (!bOk)
 		{
-			Test.AddError(FString::Printf(TEXT("%s: the ledger refused the write"), *What));
+			ReportError(FString::Printf(TEXT("%s: the ledger refused the write"), *What));
 		}
-		return AfterStep(What, bOk);
+		return FinishStep(What, bOk);
 	}
 
 	void FDnaTestWorld::Wait(double Seconds)
@@ -394,7 +404,7 @@ namespace UE::DreamNarrative::Tests
 		const FString What = FString::Printf(TEXT("wait %gs"), Seconds);
 		Transcript.Add(FString::Printf(TEXT("[%s]"), *What));
 		ManualClock->Advance(Seconds);
-		AfterStep(What, true);
+		FinishStep(What, true);
 	}
 
 	bool FDnaTestWorld::Jump(FName Chapter)
@@ -404,9 +414,9 @@ namespace UE::DreamNarrative::Tests
 		const bool bOk = LedgerObject->JumpToChapter(Chapter);
 		if (!bOk)
 		{
-			Test.AddError(FString::Printf(TEXT("%s: no such chapter"), *What));
+			ReportError(FString::Printf(TEXT("%s: no such chapter"), *What));
 		}
-		return AfterStep(What, bOk);
+		return FinishStep(What, bOk);
 	}
 
 	// ---------------------------------------------------------------- looking
@@ -441,7 +451,7 @@ namespace UE::DreamNarrative::Tests
 		const FDnaCompiledExpr* Compiled = ExpressionPool->GetExpression(Index);
 		if (!Compiled)
 		{
-			Test.AddError(FString::Printf(TEXT("`%s`: %s"), *Expression, *Error));
+			ReportError(FString::Printf(TEXT("`%s`: %s"), *Expression, *Error));
 			return false;
 		}
 		OutValue = LedgerObject->Evaluate(*Compiled);
@@ -455,28 +465,37 @@ namespace UE::DreamNarrative::Tests
 		const FDnaCompiledExpr* Compiled = ExpressionPool->GetExpression(Index);
 		if (!Compiled)
 		{
-			Test.AddError(FString::Printf(TEXT("expect `%s`: %s"), *Condition, *Error));
+			ReportError(FString::Printf(TEXT("expect `%s`: %s"), *Condition, *Error));
 			return false;
 		}
 		if (!LedgerObject->EvaluateCondition(*Compiled))
 		{
-			Test.AddError(FString::Printf(TEXT("expect `%s` is false. %s"), *Condition, *DescribeFactsOf(Condition)));
+			const FDnaSourceText Source(TEXT("<expression>"), Condition);
+			FDnaDiagnosticSink Scratch;
+			const FDnaExprPtr Parsed = ParseDnaExpressionSegment(Source, 0, Source.Len(), Scratch);
+			ReportError(FString::Printf(TEXT("expect `%s` is false. %s"), *Condition, Parsed.IsValid() ? *DescribeFactsOf(*Parsed) : TEXT("")));
 			return false;
 		}
 		return true;
 	}
 
-	FString FDnaTestWorld::DescribeFactsOf(const FString& Expression) const
+	bool FDnaTestWorld::EvaluateAst(const FDnaExprPtr& Expr, FDnaValue& OutValue)
 	{
-		const FDnaSourceText Source(TEXT("<expression>"), Expression);
-		FDnaDiagnosticSink Scratch;
-		const FDnaExprPtr Expr = ParseDnaExpressionSegment(Source, 0, Source.Len(), Scratch);
-		if (!Expr.IsValid())
+		const int32 Index = Expr.IsValid() ? CompileDnaExpression(ProgramModel, Expr, *ExpressionPool) : INDEX_NONE;
+		const FDnaCompiledExpr* Compiled = ExpressionPool->GetExpression(Index);
+		if (!Compiled)
 		{
-			return FString();
+			ReportError(FString::Printf(TEXT("`%s` could not be compiled"), Expr.IsValid() ? *Expr->ToString() : TEXT("<null>")));
+			return false;
 		}
+		OutValue = LedgerObject->Evaluate(*Compiled);
+		return true;
+	}
+
+	FString FDnaTestWorld::DescribeFactsOf(const FDnaExpr& Expr) const
+	{
 		TArray<const FDnaExpr*> Names;
-		Expr->CollectNames(Names);
+		Expr.CollectNames(Names);
 		TArray<FString> Parts;
 		for (const FDnaExpr* Name : Names)
 		{
@@ -491,7 +510,7 @@ namespace UE::DreamNarrative::Tests
 			return Node.Kind == EDnaExprKind::Chapter
 				|| Node.Args.ContainsByPredicate([&ReadsChapter](const FDnaExprPtr& Arg) { return Arg.IsValid() && ReadsChapter(*Arg); });
 		};
-		if (ReadsChapter(*Expr))
+		if (ReadsChapter(Expr))
 		{
 			Parts.AddUnique(FString::Printf(TEXT("chapter = %s"), *LedgerObject->GetChapter().ToString()));
 		}
@@ -543,7 +562,7 @@ namespace UE::DreamNarrative::Tests
 		const TArray<FString> Differences = DiffSnapshots(Saved, Fresh->MakeSnapshot());
 		if (Differences.Num() > 0)
 		{
-			Test.AddError(FString::Printf(TEXT("After \"%s\", saving and loading does not give the same ledger:\n    %s"),
+			ReportError(FString::Printf(TEXT("After \"%s\", saving and loading does not give the same ledger:\n    %s"),
 				*Where, *FString::Join(Differences, TEXT("\n    "))));
 			return false;
 		}
