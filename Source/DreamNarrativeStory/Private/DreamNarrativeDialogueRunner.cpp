@@ -108,6 +108,15 @@ void UDreamNarrativeDialogueRunner::Run()
 		}
 
 		const FDnaInstruction& Ins = Node->Code[PC];
+		if (Ins.Op != EDnaOpCode::Set)
+		{
+			CloseBatch();
+			// Committing tells observers; one of them may have ended this dialogue.
+			if (State == EDnaRunnerState::Ended)
+			{
+				return;
+			}
+		}
 		switch (Ins.Op)
 		{
 		case EDnaOpCode::Line:
@@ -182,6 +191,11 @@ void UDreamNarrativeDialogueRunner::Run()
 			++PC;
 			const FDnaCompiledExpr* Compiled = Expr(Ins.Expr);
 			if (!Compiled) { continue; }
+			if (!bBatchOpen)
+			{
+				Ledger->BeginBatch();
+				bBatchOpen = true;
+			}
 			FDnaValue Value = Ledger->Evaluate(*Compiled);
 			if (Ins.Assign != EDnaAssignOp::Set)
 			{
@@ -326,6 +340,7 @@ void UDreamNarrativeDialogueRunner::Finish()
 	{
 		return;
 	}
+	CloseBatch();
 	if (WaitHandle.IsValid() && Ledger)
 	{
 		Ledger->GetClock().Cancel(WaitHandle);
@@ -337,4 +352,16 @@ void UDreamNarrativeDialogueRunner::Finish()
 	State = EDnaRunnerState::Ended;
 	Transcript.Add(TEXT("[end]"));
 	OnEnded.Broadcast(this);
+}
+
+void UDreamNarrativeDialogueRunner::CloseBatch()
+{
+	if (bBatchOpen)
+	{
+		bBatchOpen = false;
+		if (Ledger)
+		{
+			Ledger->EndBatch();
+		}
+	}
 }

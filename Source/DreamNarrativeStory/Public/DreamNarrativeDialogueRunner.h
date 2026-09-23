@@ -151,6 +151,8 @@ private:
 	/** Runs instructions until one yields or the node ends. */
 	void Run();
 	void Finish();
+	/** Commits the ledger batch a run of `set` instructions opened, if one is open. */
+	void CloseBatch();
 	bool EnterNode(FName Node);
 	FText FormatText(const FText& Pattern, const TArray<int32>& Args) const;
 	FText DisplayNameOf(FName Character) const;
@@ -182,6 +184,8 @@ private:
 	TArray<int32> CurrentOptionIndices;
 
 	FDnaClockHandle WaitHandle;
+	/** Consecutive `set` instructions write in one ledger batch, so observers see all of them or none. */
+	bool bBatchOpen = false;
 	TArray<FString> Transcript;
 	/** Guards against runaway loops in a node that never yields. */
 	int32 StepBudget = 0;
