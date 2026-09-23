@@ -11,6 +11,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "DreamNarrativeClock.h"
 #include "DreamNarrativeExpression.h"
 #include "DreamNarrativeScript.h"
 #include "DreamNarrativeTypes.h"
@@ -80,6 +81,7 @@ class DREAMNARRATIVECORE_API UDreamNarrativeLedger : public UGameInstanceSubsyst
 
 public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	virtual void Deinitialize() override;
 
 	// ---------------------------------------------------------------- declarations
 
@@ -208,6 +210,21 @@ public:
 
 	void SetQuestStateProvider(IDnaQuestStateProvider* Provider) { QuestStateProvider = Provider; }
 
+	// ---------------------------------------------------------------- time and chance
+
+	/**
+	 * The clock every narrative wait runs on. Until one is installed it is the game's clock (world
+	 * time through the game instance's timers, standing still while the game is paused).
+	 */
+	IDnaClock& GetClock();
+
+	/** Replaces the clock; tests and tools install a manual one. Null goes back to the game's clock. */
+	void SetClock(TSharedPtr<IDnaClock> InClock) { Clock = MoveTemp(InClock); }
+
+	/** Restarts `random` and `chance` from a seed, so a run can be repeated. */
+	UFUNCTION(BlueprintCallable, Category = "Narrative|Ledger")
+	void SetRandomSeed(int32 Seed) { Random.Initialize(Seed); }
+
 	// ---------------------------------------------------------------- IDnaEvalContext
 
 	virtual FDnaValue GetFactValue(FName Fact) const override { return GetFact(Fact); }
@@ -263,4 +280,5 @@ private:
 
 	IDnaQuestStateProvider* QuestStateProvider = nullptr;
 	FRandomStream Random;
+	TSharedPtr<IDnaClock> Clock;
 };

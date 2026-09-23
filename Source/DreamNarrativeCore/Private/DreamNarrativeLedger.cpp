@@ -18,6 +18,13 @@ void UDreamNarrativeLedger::Initialize(FSubsystemCollectionBase& Collection)
 	}
 }
 
+void UDreamNarrativeLedger::Deinitialize()
+{
+	// The game's clock keeps its timers on the game instance; drop them while it is still there.
+	Clock.Reset();
+	Super::Deinitialize();
+}
+
 // ---------------------------------------------------------------- declarations
 
 void UDreamNarrativeLedger::RegisterScript(UDreamNarrativeScript* Script)
@@ -324,6 +331,15 @@ void UDreamNarrativeLedger::EmitEvent(FName Event)
 bool UDreamNarrativeLedger::GetQuestState(FName Quest, EDnaQuestStateQuery Query) const
 {
 	return QuestStateProvider ? QuestStateProvider->GetQuestState(Quest, Query) : false;
+}
+
+IDnaClock& UDreamNarrativeLedger::GetClock()
+{
+	if (!Clock.IsValid())
+	{
+		Clock = MakeShared<FDnaWorldClock>(GetGameInstance());
+	}
+	return *Clock;
 }
 
 // ---------------------------------------------------------------- snapshot
