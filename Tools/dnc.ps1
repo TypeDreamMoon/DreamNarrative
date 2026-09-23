@@ -31,7 +31,7 @@
 
     Presets
       Quick    language, corpus, ledger, dialogue, spec and in-process smoke tests (the daily one)
-      Explore  the explorer
+      Explore  the explorer: every explore block, and the explorer's own fixtures
       Smoke    the standalone-game smoke tests, in an editor binary running -game
       All      the three above, one editor each
 
@@ -102,13 +102,13 @@ $MaxFilterLength = 12000
 $Presets = [ordered]@{
     Quick   = @{
         Filter   = 'StartsWith:DreamNarrative.Lang+StartsWith:DreamNarrative.Corpus+StartsWith:DreamNarrative.Ledger+StartsWith:DreamNarrative.Dialogue+StartsWith:DreamNarrative.Spec+StartsWith:DreamNarrative.Smoke.InProcess'
-        MinTests = 86
+        MinTests = 92
         Timeout  = 10
         Game     = $false
     }
     Explore = @{
         Filter   = 'StartsWith:DreamNarrative.Explore'
-        MinTests = 0
+        MinTests = 12
         Timeout  = 30
         Game     = $false
     }
