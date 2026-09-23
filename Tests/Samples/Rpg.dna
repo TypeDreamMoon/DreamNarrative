@@ -1,0 +1,53 @@
+// RPG 黄金样例的测试:猎狼主线(接任务 → 计数 → 完成 → 子任务 → 第二章)、超时之后重接、犹豫之后还能接;
+// 探索全路径,两个主线任务都不许卡死。
+
+file
+  with: ../Corpus/Validate/Samples/rpg.dna
+
+test 猎狼主线
+  talk 村长
+    村长: 你就是新来的?
+    - 我去。
+    村长: 五只。回来我有赏。
+  expect 猎狼.active and chapter == 第一章
+  journal 猎狼: 村长说狼在北边的林子里,先清掉五只。
+  set 狼杀了 = 3
+  journal 猎狼: 还差 2 只。
+  set 狼杀了 = 5
+  expect 猎狼.completed and 村长好感 == 1 and chapter == 第二章
+  expect 猎狼_头狼.active
+  journal 猎狼_头狼: 猎户说狼群有个头,左耳缺一块。
+  talk 村长
+    村长: 林子安静了?好。
+  set 头狼死了 = true
+  expect 猎狼_头狼.completed
+  talk 村长
+    村长: 猎人,村子欠你的。
+
+test 超时之后可以重接
+  talk 村长
+    - 我去。
+  wait 20m
+  expect 猎狼.failed
+  talk 村长
+    村长(阴沉): 羊圈空了。
+    - 再给我一次机会。
+  expect 猎狼.active
+
+test 村庄被袭就失败
+  talk 村长
+    - 我去。
+  set 村庄被袭 = true
+  expect 猎狼.failed
+  journal 猎狼: 狼群先动手了。
+
+// 这一条原本是软锁:第一次选「我考虑一下。」之后,村长这边再也接不到猎狼。
+test 犹豫之后还能接
+  talk 村长
+    - 我考虑一下。
+  talk 村长
+    - 我去。
+  expect 猎狼.active
+
+explore 全路径
+  jump 序章

@@ -101,6 +101,10 @@ dialogue 村长_派活
       村长(不耐烦): 别考虑太久。
   -> end
 
+// 选过「我考虑一下。」再来:活还在,村长再问一次(没有这个入口,犹豫一次猎狼就再也接不到)。
+dialogue 村长_再派活 for 村长 if 见过村长 and 猎狼.available and not 猎狼.failed
+  -> 村长_派活
+
 dialogue 村长_进行中 for 村长 if 猎狼.active
   村长: 还差 {5 - 狼杀了} 只。
   - 狼在哪? once
