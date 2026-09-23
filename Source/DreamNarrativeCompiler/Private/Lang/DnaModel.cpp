@@ -206,6 +206,21 @@ namespace UE::DreamNarrative::Lang
 						NoteRename(P.WasName, Root);
 						break;
 					}
+					case EDnaLineKind::Test:
+					{
+						if (P.Name.IsEmpty()) { break; }
+						if (Program.Tests.Contains(P.Name))
+						{
+							bOk = Diagnostics.Error(TEXT("DNS3004"), Root.Raw.Span,
+								FText::Format(LOCTEXT("DuplicateTest", "A test called '{0}' already exists; test names are unique"), FText::FromString(P.Name)));
+							break;
+						}
+						FDnaTestInfo& Info = Program.Tests.Add(P.Name);
+						Info.Name = P.Name;
+						Info.Node = &Root;
+						Info.Document = &Document;
+						break;
+					}
 					default:
 						break;
 					}

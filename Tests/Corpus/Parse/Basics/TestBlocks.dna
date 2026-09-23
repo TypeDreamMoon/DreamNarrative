@@ -1,0 +1,27 @@
+// test 块的每一种行:步骤、given 下的赋值、talk / start 下的期望行、旁白、续行、id、选项、absent。
+
+file
+  with: story.dna
+
+test 全部步骤
+  seed 7
+  given
+    好感 = 2
+    墨梅册.第一页 = true
+  talk 村长
+    村长(笑): 你好,{玩家名}。
+    > 风吹过。
+    门开了。
+    #村长_初见.3
+    - 我去。
+    - #村长_派活.c2
+    absent 村长: 滚。
+    村长: 这一句
+      很长。
+  start 村长_派活 strict
+  expect 猎狼.active and 好感 >= 2
+  set 狼杀了 = 5
+  set 狼杀了 += 1
+  wait 20m
+  jump 第二章
+  save

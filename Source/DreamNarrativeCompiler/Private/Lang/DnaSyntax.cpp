@@ -47,7 +47,30 @@ namespace UE::DreamNarrative::Lang
 		case EDnaLineKind::Restore: return TEXT("Restore");
 		case EDnaLineKind::RestoreEntry: return TEXT("RestoreEntry");
 		case EDnaLineKind::StageEntry: return TEXT("StageEntry");
+		case EDnaLineKind::Test: return TEXT("Test");
+		case EDnaLineKind::TestStep: return TEXT("TestStep");
 		case EDnaLineKind::Unknown: return TEXT("Unknown");
+		}
+		return TEXT("?");
+	}
+
+	const TCHAR* LexToString(EDnaTestStepKind Kind)
+	{
+		switch (Kind)
+		{
+		case EDnaTestStepKind::None: return TEXT("?");
+		case EDnaTestStepKind::Seed: return TEXT("seed");
+		case EDnaTestStepKind::Given: return TEXT("given");
+		case EDnaTestStepKind::Talk: return TEXT("talk");
+		case EDnaTestStepKind::Start: return TEXT("start");
+		case EDnaTestStepKind::Expect: return TEXT("expect");
+		case EDnaTestStepKind::Set: return TEXT("set");
+		case EDnaTestStepKind::Wait: return TEXT("wait");
+		case EDnaTestStepKind::Jump: return TEXT("jump");
+		case EDnaTestStepKind::Save: return TEXT("save");
+		case EDnaTestStepKind::ExpectLine: return TEXT("line");
+		case EDnaTestStepKind::Absent: return TEXT("absent");
+		case EDnaTestStepKind::Pick: return TEXT("pick");
 		}
 		return TEXT("?");
 	}
@@ -74,7 +97,11 @@ namespace UE::DreamNarrative::Lang
 		case EDnaLineKind::Track:
 		case EDnaLineKind::Shots:
 		case EDnaLineKind::Restore:
+		case EDnaLineKind::Test:
 			return true;
+		case EDnaLineKind::TestStep:
+			return Payload.TestStep == EDnaTestStepKind::Given || Payload.TestStep == EDnaTestStepKind::Talk
+				|| Payload.TestStep == EDnaTestStepKind::Start;
 		default:
 			return false;
 		}
@@ -313,6 +340,35 @@ namespace UE::DreamNarrative::Lang
 					? FString::Printf(TEXT("%g%s..%g%s "), P.TimeStart, P.bPercent ? TEXT("%") : TEXT("s"), P.TimeEnd, P.bPercent ? TEXT("%") : TEXT("s"))
 					: FString::Printf(TEXT("%g%s "), P.TimeStart, P.bPercent ? TEXT("%") : TEXT("s"));
 				Detail += P.Name + TEXT(" ") + ArgsDump(P.Args);
+				break;
+			case EDnaLineKind::Test:
+				Detail = P.Name;
+				break;
+			case EDnaLineKind::TestStep:
+				Detail = LexToString(P.TestStep);
+				switch (P.TestStep)
+				{
+				case EDnaTestStepKind::Seed: Detail += FString::Printf(TEXT(" %d"), P.Seed); break;
+				case EDnaTestStepKind::Talk:
+				case EDnaTestStepKind::Start: Detail += TEXT(" ") + P.Name + (P.bStrict ? TEXT(" strict") : TEXT("")); break;
+				case EDnaTestStepKind::Expect: Detail += TEXT(" ") + ExprText(P.Condition); break;
+				case EDnaTestStepKind::Set: Detail += TEXT(" ") + P.Name + TEXT(" ") + LexToString(P.AssignOp) + TEXT(" ") + ExprText(P.Expr); break;
+				case EDnaTestStepKind::Wait: Detail += FString::Printf(TEXT(" %gs"), P.Seconds); break;
+				case EDnaTestStepKind::Jump: Detail += TEXT(" ") + P.Target; break;
+				case EDnaTestStepKind::ExpectLine:
+				case EDnaTestStepKind::Absent:
+					if (!P.Target.IsEmpty()) { Detail += TEXT(" #") + P.Target; }
+					else if (P.Name.IsEmpty()) { Detail += TEXT(" > ") + TextDump(P.Text); }
+					else
+					{
+						Detail += TEXT(" ") + P.Name;
+						if (P.SpeakerTags.Num() > 0) { Detail += TEXT("(") + FString::Join(P.SpeakerTags, TEXT(", ")) + TEXT(")"); }
+						Detail += TEXT(" ") + TextDump(P.Text);
+					}
+					break;
+				case EDnaTestStepKind::Pick: Detail += P.Target.IsEmpty() ? TEXT(" ") + TextDump(P.Text) : TEXT(" #") + P.Target; break;
+				default: break;
+				}
 				break;
 			default:
 				break;

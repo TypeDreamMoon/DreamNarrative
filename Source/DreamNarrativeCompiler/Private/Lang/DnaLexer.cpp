@@ -81,6 +81,7 @@ namespace UE::DreamNarrative::Lang
 	{
 		static const TSet<FString> Reserved = {
 			TEXT("file"), TEXT("character"), TEXT("fact"), TEXT("chapter"), TEXT("quest"), TEXT("dialogue"), TEXT("stage"),
+			TEXT("test"), TEXT("explore"),
 			TEXT("if"), TEXT("else"), TEXT("once"), TEXT("set"), TEXT("accept"), TEXT("complete"), TEXT("fail"),
 			TEXT("play"), TEXT("emit"), TEXT("wait"), TEXT("advance"), TEXT("end"),
 			TEXT("title"), TEXT("priority"), TEXT("track"), TEXT("timeout"), TEXT("available"), TEXT("journal"),

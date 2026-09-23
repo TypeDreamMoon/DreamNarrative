@@ -1,0 +1,27 @@
+character 甲
+fact 好感: int
+fact 金币: int extern
+chapter 开场
+
+dialogue 问候 for 甲
+  甲: 你好。
+
+test 名字写错
+  expect 好感度 > 0
+// EXPECT DNS3001 (10,10)
+  set 好感 = 1
+// EXPECT DNS9101 (12,3)
+  set 金币 = 1
+  talk 甲
+    乙: 你好。
+// EXPECT DNS3002 (16,5)
+  start 不存在的对话
+// EXPECT DNS3003 (18,3)
+  jump 不存在的章
+// EXPECT DNS3009 (20,3)
+  - 选项
+// EXPECT DNS2003 (22,3)
+
+test 名字写错
+// EXPECT DNS3004 (25,1)
+  expect 好感 == 0

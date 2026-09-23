@@ -80,6 +80,12 @@ namespace UE::DreamNarrative::Lang
 		/** `时间[..时间] 动词 args...` under a track. */
 		StageEntry,
 
+		// test
+		/** `test 名` opening a block of steps. */
+		Test,
+		/** One step of a test, or one expectation under its `talk` / `start`. Payload.TestStep says which. */
+		TestStep,
+
 		Unknown,
 	};
 
@@ -105,6 +111,39 @@ namespace UE::DreamNarrative::Lang
 		Fail,
 		Timeout,
 	};
+
+	enum class EDnaTestStepKind : uint8
+	{
+		None,
+		/** `seed n`. Payload.Seed. */
+		Seed,
+		/** `given`, a block of `fact = value` (Implication) lines. */
+		Given,
+		/** `talk 角色 [strict]`. Payload.Name, bStrict; children are expectations. */
+		Talk,
+		/** `start 节点 [strict]`. Payload.Name, bStrict; children are expectations. */
+		Start,
+		/** `expect 条件`. Payload.Condition. */
+		Expect,
+		/** `set fact = value`. Payload.Name, AssignOp, Expr. */
+		Set,
+		/** `wait 时长`. Payload.Seconds. */
+		Wait,
+		/** `jump 章节`. Payload.Target. */
+		Jump,
+		/** `save`. */
+		Save,
+		/** A line the dialogue must show: Payload.Name is the speaker (empty for narration) with
+		 *  SpeakerTags and Text, or Payload.Target is a line id. */
+		ExpectLine,
+		/** `absent` + a line the dialogue must not show, in the same fields as ExpectLine. */
+		Absent,
+		/** `- 文本` or `- #id`: the choice to take. Payload.Text, or Payload.Target for an id. */
+		Pick,
+	};
+
+	/** The source keyword of a step: `seed`, `talk`, ...; `line`, `absent` and `pick` for the expectations. */
+	DREAMNARRATIVECOMPILER_API const TCHAR* LexToString(EDnaTestStepKind Kind);
 
 	/** One run of a text: either a literal or an interpolated `{expression}`. */
 	struct FDnaTextPart
@@ -195,6 +234,12 @@ namespace UE::DreamNarrative::Lang
 		bool bPercent = false;
 		/** Everything after the verb (stage entry) or the name (shot, restore entry), as tokens. */
 		TArray<FDnaToken> Args;
+
+		// test
+		EDnaTestStepKind TestStep = EDnaTestStepKind::None;
+		int32 Seed = 0;
+		/** `talk` / `start ... strict`: every shown line must be expected, in order. */
+		bool bStrict = false;
 	};
 
 	struct FDnaLineNode;

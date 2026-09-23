@@ -1,0 +1,24 @@
+3: File
+4:   Property with = "story.dna"
+6: Test 全部步骤
+7:   TestStep seed 7
+8:   TestStep given
+9:     Implication 好感 = 2
+10:     Implication 墨梅册.第一页 = true
+11:   TestStep talk 村长
+12:     TestStep line 村长(笑) "你好,{玩家名}。" parts=['你好,' {玩家名} '。']
+13:     TestStep line > "风吹过。"
+14:     TestStep line > "门开了。"
+15:     TestStep line #村长_初见.3
+16:     TestStep pick "我去。"
+17:     TestStep pick #村长_派活.c2
+18:     TestStep absent 村长 "滚。"
+19:     TestStep line 村长 "这一句"
+20:       Continuation "很长。"
+21:   TestStep start 村长_派活 strict
+22:   TestStep expect (猎狼.active and (好感 >= 2))
+23:   TestStep set 狼杀了 = 5
+24:   TestStep set 狼杀了 += 1
+25:   TestStep wait 1200s
+26:   TestStep jump 第二章
+27:   TestStep save

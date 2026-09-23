@@ -26,6 +26,10 @@ namespace UE::DreamNarrative::Lang
 			Track,
 			Shots,
 			Restore,
+			/** The steps of a `test`. */
+			Test,
+			/** The expectations under a test's `talk` or `start`. */
+			TestDialogue,
 		};
 
 		enum class EModifierSet : uint8
@@ -361,6 +365,8 @@ namespace UE::DreamNarrative::Lang
 				case EContext::Track: ClassifyStageEntry(Node); break;
 				case EContext::Shots: ClassifyNamedEntry(Node, EDnaLineKind::Shot); break;
 				case EContext::Restore: ClassifyNamedEntry(Node, EDnaLineKind::RestoreEntry); break;
+				case EContext::Test: ClassifyTestStep(Node); break;
+				case EContext::TestDialogue: ClassifyTestExpectation(Node); break;
 				}
 			}
 
@@ -394,6 +400,12 @@ namespace UE::DreamNarrative::Lang
 				if (Word == TEXT("quest")) { ParseQuestHeader(Node); return; }
 				if (Word == TEXT("dialogue")) { ParseDialogueHeader(Node); return; }
 				if (Word == TEXT("stage")) { ParseStageHeader(Node); return; }
+				if (Word == TEXT("test")) { ParseTestHeader(Node); return; }
+				if (Word == TEXT("explore"))
+				{
+					Unexpected(Node, LOCTEXT("ExploreLater", "at the top level: 'explore' is reserved for the explorer and not available yet"));
+					return;
+				}
 
 				if (Content.StartsWith(TEXT("- ")) || Content == TEXT("-"))
 				{
@@ -402,7 +414,7 @@ namespace UE::DreamNarrative::Lang
 					MarkChildrenUnknown(Node);
 					return;
 				}
-				Unexpected(Node, LOCTEXT("AtTopLevel", "at the top level; expected file, character, fact, chapter, quest, dialogue or stage"));
+				Unexpected(Node, LOCTEXT("AtTopLevel", "at the top level; expected file, character, fact, chapter, quest, dialogue, stage or test"));
 			}
 
 			/** `[player] [was 旧名]` and friends: the optional tail of a declaration header. */
@@ -1463,6 +1475,238 @@ namespace UE::DreamNarrative::Lang
 					if (!Tokens[Index].Is(EDnaTokenKind::EndOfInput)) { Node.Payload.Args.Add(Tokens[Index]); }
 				}
 				RequireNoChildren(Node);
+			}
+
+			// ---------------------------------------------------------------- test
+
+			void ParseTestHeader(FDnaLineNode& Node)
+			{
+				Node.Kind = EDnaLineKind::Test;
+				TArray<FDnaToken> Tokens;
+				Tokenize(Node, 0, Tokens);
+				int32 Index = 1;
+				if (ExpectIdentifier(Tokens, Index, LOCTEXT("TestName", "a test name"), Node.Payload.Name))
+				{
+					ExpectEnd(Tokens, Index);
+				}
+				RequireBody(Node);
+				ClassifyChildren(Node, EContext::Test);
+			}
+
+			void ClassifyTestStep(FDnaLineNode& Node)
+			{
+				const FString& Content = Node.Raw.Content;
+				const FString Word = FirstWord(Content);
+				FDnaLinePayload& P = Node.Payload;
+				TArray<FDnaToken> Tokens;
+				int32 Index = 1;
+				// Tokenised only once the line is known to be a step, so a stray line reports one error, not two.
+				auto BeginStep = [this, &Node, &P, &Tokens](EDnaTestStepKind Kind)
+				{
+					Node.Kind = EDnaLineKind::TestStep;
+					P.TestStep = Kind;
+					Tokenize(Node, 0, Tokens);
+				};
+
+				if (Word == TEXT("seed"))
+				{
+					BeginStep(EDnaTestStepKind::Seed);
+					if (!Tokens[Index].Is(EDnaTokenKind::Int))
+					{
+						Fail(TEXT("DNS2007"), Tokens[Index].Span, LOCTEXT("SeedInt", "Expected a whole number after 'seed'"));
+					}
+					else
+					{
+						P.Seed = static_cast<int32>(Tokens[Index].Integer);
+						ExpectEnd(Tokens, Index + 1);
+					}
+					RequireNoChildren(Node);
+					return;
+				}
+				if (Word == TEXT("given"))
+				{
+					BeginStep(EDnaTestStepKind::Given);
+					ExpectEnd(Tokens, 1);
+					RequireBody(Node);
+					ClassifyChildren(Node, EContext::Implied);
+					return;
+				}
+				if (Word == TEXT("talk") || Word == TEXT("start"))
+				{
+					const bool bTalk = Word == TEXT("talk");
+					BeginStep(bTalk ? EDnaTestStepKind::Talk : EDnaTestStepKind::Start);
+					const FText What = bTalk ? LOCTEXT("TalkName", "a character name after 'talk'") : LOCTEXT("StartName", "a dialogue name after 'start'");
+					if (ExpectIdentifier(Tokens, Index, What, P.Name))
+					{
+						if (Tokens[Index].IsWord(TEXT("strict")))
+						{
+							P.bStrict = true;
+							++Index;
+						}
+						ExpectEnd(Tokens, Index);
+					}
+					// No body is fine: `talk 村长` alone runs the conversation and expects nothing of it.
+					ClassifyChildren(Node, EContext::TestDialogue);
+					return;
+				}
+				if (Word == TEXT("expect"))
+				{
+					BeginStep(EDnaTestStepKind::Expect);
+					if (Tokens[Index].Is(EDnaTokenKind::EndOfInput))
+					{
+						Fail(TEXT("DNS2007"), Node.Raw.Span, LOCTEXT("ExpectCondition", "Expected a condition after 'expect'"));
+					}
+					else
+					{
+						P.Condition = ExpectExpression(Tokens, Index);
+						if (P.Condition.IsValid()) { ExpectEnd(Tokens, Index); }
+					}
+					RequireNoChildren(Node);
+					return;
+				}
+				if (Word == TEXT("set"))
+				{
+					BeginStep(EDnaTestStepKind::Set);
+					if (ExpectDottedName(Tokens, Index, LOCTEXT("TestSetTarget", "a fact name after 'set'"), P.Name))
+					{
+						const FDnaToken& Op = Tokens[Index];
+						if (!(Op.Is(EDnaTokenKind::Assign) || Op.Is(EDnaTokenKind::PlusAssign) || Op.Is(EDnaTokenKind::MinusAssign)))
+						{
+							Fail(TEXT("DNS2007"), Op.Span, LOCTEXT("TestSetOp", "Expected '=', '+=' or '-=' after the fact name"));
+						}
+						else
+						{
+							P.AssignOp = Op.Kind;
+							++Index;
+							P.Expr = ExpectExpression(Tokens, Index);
+							if (P.Expr.IsValid()) { ExpectEnd(Tokens, Index); }
+						}
+					}
+					RequireNoChildren(Node);
+					return;
+				}
+				if (Word == TEXT("wait"))
+				{
+					BeginStep(EDnaTestStepKind::Wait);
+					if (!Tokens[Index].Is(EDnaTokenKind::Duration))
+					{
+						Fail(TEXT("DNS2007"), Tokens[Index].Span, LOCTEXT("TestWait", "Expected a duration such as 20m after 'wait'"));
+					}
+					else
+					{
+						P.Seconds = Tokens[Index].Real;
+						ExpectEnd(Tokens, Index + 1);
+					}
+					RequireNoChildren(Node);
+					return;
+				}
+				if (Word == TEXT("jump"))
+				{
+					BeginStep(EDnaTestStepKind::Jump);
+					if (ExpectIdentifier(Tokens, Index, LOCTEXT("JumpName", "a chapter name after 'jump'"), P.Target))
+					{
+						ExpectEnd(Tokens, Index);
+					}
+					RequireNoChildren(Node);
+					return;
+				}
+				if (Word == TEXT("save"))
+				{
+					BeginStep(EDnaTestStepKind::Save);
+					ExpectEnd(Tokens, 1);
+					RequireNoChildren(Node);
+					return;
+				}
+				Unexpected(Node, Content.StartsWith(TEXT("-"))
+					? LOCTEXT("PickOutsideTalk", "directly in a test; a choice to take belongs under 'talk' or 'start'")
+					: LOCTEXT("InTest", "inside a test; expected seed, given, talk, start, expect, set, wait, jump or save"));
+			}
+
+			/** Under a test's `talk` / `start`: a choice to take, or a line that must (not) be shown. */
+			void ClassifyTestExpectation(FDnaLineNode& Node)
+			{
+				const FString& Content = Node.Raw.Content;
+				FDnaLinePayload& P = Node.Payload;
+				Node.Kind = EDnaLineKind::TestStep;
+
+				if (Content.StartsWith(TEXT("- ")) || Content == TEXT("-"))
+				{
+					P.TestStep = EDnaTestStepKind::Pick;
+					const int32 Start = SkipSpaces(Content, 1);
+					if (Start < Content.Len() && NormalizeDnaPunctuation(Content[Start]) == TEXT('#'))
+					{
+						ParseLineIdReference(Node, Start + 1, LOCTEXT("PickId", "a choice id after '#'"));
+					}
+					else
+					{
+						ParseText(Node, Start, Content.Len(), P.Text);
+					}
+					RequireNoChildren(Node);
+					return;
+				}
+
+				int32 Start = 0;
+				P.TestStep = EDnaTestStepKind::ExpectLine;
+				if (WordAt(Content, 0, TEXT("absent")))
+				{
+					P.TestStep = EDnaTestStepKind::Absent;
+					Start = SkipSpaces(Content, 6);
+				}
+
+				if (Start < Content.Len() && NormalizeDnaPunctuation(Content[Start]) == TEXT('#'))
+				{
+					ParseLineIdReference(Node, Start + 1, LOCTEXT("LineId", "a line id after '#'"));
+					RequireNoChildren(Node);
+					return;
+				}
+				const FString Rest = Content.Mid(Start);
+				if (Rest.StartsWith(TEXT("> ")) || Rest == TEXT(">"))
+				{
+					ParseText(Node, SkipSpaces(Content, Start + 1), Content.Len(), P.Text);
+					ClassifyContinuations(Node);
+					return;
+				}
+				FString Speaker;
+				TArray<FString> Tags;
+				int32 TextStart = 0;
+				if (TryMatchSpeaker(Rest, Speaker, Tags, TextStart))
+				{
+					P.Name = Speaker;
+					P.SpeakerTags = MoveTemp(Tags);
+					ParseText(Node, Start + TextStart, Content.Len(), P.Text);
+				}
+				else
+				{
+					ParseText(Node, Start, Content.Len(), P.Text);
+				}
+				ClassifyContinuations(Node);
+			}
+
+			/**
+			 * `#id` into Payload.Target. Read as characters, not tokens: generated ids are `<node>.<n>`
+			 * and `<node>.c<n>`, and the tokenizer would read `.1` as a number.
+			 */
+			void ParseLineIdReference(FDnaLineNode& Node, int32 RelativeStart, const FText& What)
+			{
+				const FString& Content = Node.Raw.Content;
+				int32 End = RelativeStart;
+				while (End < Content.Len() && (IsDnaIdentifierChar(Content[End]) || Content[End] == TEXT('.')))
+				{
+					++End;
+				}
+				if (End == RelativeStart || !IsDnaIdentifierStart(Content[RelativeStart]))
+				{
+					Fail(TEXT("DNS2007"), SpanOf(Node, RelativeStart, FMath::Max(1, Content.Len() - RelativeStart)),
+						FText::Format(LOCTEXT("ExpectedId", "Expected {0}"), What));
+					return;
+				}
+				Node.Payload.Target = Content.Mid(RelativeStart, End - RelativeStart);
+				const int32 After = SkipSpaces(Content, End);
+				if (After < Content.Len())
+				{
+					Fail(TEXT("DNS2008"), SpanOf(Node, After, Content.Len() - After),
+						FText::Format(LOCTEXT("AfterId", "Unexpected '{0}' after the id"), FText::FromString(Content.Mid(After))));
+				}
 			}
 		};
 	}

@@ -16,6 +16,7 @@
 //   DNS4005  a built-in called with the wrong arguments
 //   DNS2010  `else` / `else if` with no `if` before it
 //   DNS5008  a choice group with no unconditional, non-`once` option
+//   DNS9101  a test's `set` writing a narrative-owned fact
 
 #pragma once
 

@@ -136,8 +136,117 @@ namespace UE::DreamNarrative::Lang
 					break;
 				case EDnaLineKind::Stage:
 					break;
+				case EDnaLineKind::Test:
+					CheckTest(Root);
+					break;
 				default:
 					break;
+				}
+			}
+
+			/** `set fact = / += / -= value`, in a dialogue or in a test. */
+			void CheckSetValue(const FDnaFactInfo& Fact, EDnaTokenKind AssignOp, const FDnaExprPtr& Expr, const FDnaSpan& LineSpan)
+			{
+				if (AssignOp == EDnaTokenKind::Assign)
+				{
+					CheckAssignment(Fact, Expr, LineSpan);
+					return;
+				}
+				if (Fact.Type != EDnaFactType::Int && Fact.Type != EDnaFactType::Float)
+				{
+					Fail(TEXT("DNS4001"), LineSpan,
+						FText::Format(LOCTEXT("CompoundOnNonNumber", "'{0}' is a {1} fact; '+=' and '-=' only apply to int and float facts"),
+							FText::FromString(Fact.Name), FText::FromString(::DreamNarrative::LexToString(Fact.Type))));
+				}
+				const FDnaTypeInfo Value = CheckExpr(*Expr);
+				if (!Value.IsUnknown() && !Value.IsNumeric())
+				{
+					Fail(TEXT("DNS4001"), Expr->Span,
+						FText::Format(LOCTEXT("CompoundValue", "Expected a number here, found {0}"), FText::FromString(Value.Describe())));
+				}
+			}
+
+			// ---------------------------------------------------------------- test
+
+			void CheckTest(FDnaLineNode& Root)
+			{
+				TArray<FDnaLineNode*> Steps;
+				Root.GetContentChildren(Steps);
+				for (FDnaLineNode* Step : Steps)
+				{
+					if (Step->Kind != EDnaLineKind::TestStep) { continue; }
+					const FDnaLinePayload& P = Step->Payload;
+					switch (P.TestStep)
+					{
+					case EDnaTestStepKind::Given:
+					{
+						TArray<FDnaLineNode*> Entries;
+						Step->GetContentChildren(Entries);
+						for (const FDnaLineNode* Entry : Entries)
+						{
+							if (Entry->Kind != EDnaLineKind::Implication) { continue; }
+							if (const FDnaFactInfo* Fact = RequireFact(Entry->Payload.Name, Entry->Raw.Span))
+							{
+								CheckAssignment(*Fact, Entry->Payload.Expr, Entry->Raw.Span);
+							}
+						}
+						break;
+					}
+					case EDnaTestStepKind::Talk:
+						RequireCharacter(P.Name, Step->Raw.Span, /*bIsSpeaker=*/false);
+						CheckTestExpectations(*Step);
+						break;
+					case EDnaTestStepKind::Start:
+						RequireDialogue(P.Name, Step->Raw.Span);
+						CheckTestExpectations(*Step);
+						break;
+					case EDnaTestStepKind::Expect:
+						if (P.Condition.IsValid()) { CheckCondition(P.Condition); }
+						break;
+					case EDnaTestStepKind::Set:
+					{
+						const FDnaFactInfo* Fact = RequireFact(P.Name, Step->Raw.Span);
+						if (!Fact || !P.Expr.IsValid()) { break; }
+						if (!Fact->bExtern)
+						{
+							Fail(TEXT("DNS9101"), Step->Raw.Span,
+								FText::Format(LOCTEXT("TestSetsNarrativeFact", "'{0}' belongs to the narrative, and 'set' in a test writes as the game does; put the starting value under 'given'"),
+									FText::FromString(Fact->Name)));
+						}
+						CheckSetValue(*Fact, P.AssignOp, P.Expr, Step->Raw.Span);
+						break;
+					}
+					case EDnaTestStepKind::Jump:
+						RequireChapter(P.Target, Step->Raw.Span);
+						break;
+					default:
+						break;
+					}
+				}
+			}
+
+			/** The lines under a test's talk / start: speakers must be characters, interpolations must check. */
+			void CheckTestExpectations(FDnaLineNode& Step)
+			{
+				TArray<FDnaLineNode*> Lines;
+				Step.GetContentChildren(Lines);
+				for (FDnaLineNode* Line : Lines)
+				{
+					if (Line->Kind != EDnaLineKind::TestStep) { continue; }
+					const FDnaLinePayload& P = Line->Payload;
+					const bool bLine = P.TestStep == EDnaTestStepKind::ExpectLine || P.TestStep == EDnaTestStepKind::Absent;
+					if (bLine && !P.Name.IsEmpty())
+					{
+						RequireCharacter(P.Name, Line->Raw.Span, /*bIsSpeaker=*/true);
+					}
+					CheckText(P.Text);
+					for (const FDnaLineNodePtr& Child : Line->Children)
+					{
+						if (Child.IsValid() && Child->Kind == EDnaLineKind::Continuation)
+						{
+							CheckText(Child->Payload.Text);
+						}
+					}
 				}
 			}
 
@@ -389,25 +498,9 @@ namespace UE::DreamNarrative::Lang
 				case EDnaCommandKind::Set:
 				{
 					const FDnaFactInfo* Fact = RequireFact(P.Name, Line.Raw.Span);
-					if (!Fact || !P.Expr.IsValid()) { break; }
-					if (P.AssignOp == EDnaTokenKind::Assign)
+					if (Fact && P.Expr.IsValid())
 					{
-						CheckAssignment(*Fact, P.Expr, Line.Raw.Span);
-					}
-					else
-					{
-						if (Fact->Type != EDnaFactType::Int && Fact->Type != EDnaFactType::Float)
-						{
-							Fail(TEXT("DNS4001"), Line.Raw.Span,
-								FText::Format(LOCTEXT("CompoundOnNonNumber", "'{0}' is a {1} fact; '+=' and '-=' only apply to int and float facts"),
-									FText::FromString(Fact->Name), FText::FromString(::DreamNarrative::LexToString(Fact->Type))));
-						}
-						const FDnaTypeInfo Value = CheckExpr(*P.Expr);
-						if (!Value.IsUnknown() && !Value.IsNumeric())
-						{
-							Fail(TEXT("DNS4001"), P.Expr->Span,
-								FText::Format(LOCTEXT("CompoundValue", "Expected a number here, found {0}"), FText::FromString(Value.Describe())));
-						}
+						CheckSetValue(*Fact, P.AssignOp, P.Expr, Line.Raw.Span);
 					}
 					break;
 				}
