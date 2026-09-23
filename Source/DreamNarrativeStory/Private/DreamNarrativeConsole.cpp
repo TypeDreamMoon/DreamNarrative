@@ -184,6 +184,60 @@ namespace
 			else { Say(FString::Printf(TEXT("No chapter '%s'"), *Args[0]), FColor::Red); }
 		}));
 
+	void QuestCommand(const TArray<FString>& Args, UWorld* World, EDnaQuestRequest What, const TCHAR* Usage)
+	{
+		UDreamNarrativeStory* Story = StoryOf(World);
+		if (!Story || Args.Num() < 1) { Say(Usage); return; }
+		if (Story->GetLedger() && Story->GetLedger()->GetScripts().Num() == 0) { Story->LoadAllScripts(); }
+		const FName Quest(*Args[0]);
+		// Asked as the game: this is what a game's own code does.
+		Story->RequestQuest(What, Quest, EDnaWriteSource::Game);
+		Say(FString::Printf(TEXT("%s: %s"), *Args[0], *::DreamNarrative::QuestStateMember(Story->GetQuestStateOf(Quest)).ToString()), FColor::Green);
+	}
+
+	FAutoConsoleCommandWithWorldAndArgs GAccept(
+		TEXT("dn.accept"), TEXT("dn.accept <quest> -- take a quest on, as the game"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			QuestCommand(Args, World, EDnaQuestRequest::Accept, TEXT("dn.accept <quest>"));
+		}));
+
+	FAutoConsoleCommandWithWorldAndArgs GComplete(
+		TEXT("dn.complete"), TEXT("dn.complete <quest> -- complete an active quest, as the game"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			QuestCommand(Args, World, EDnaQuestRequest::Complete, TEXT("dn.complete <quest>"));
+		}));
+
+	FAutoConsoleCommandWithWorldAndArgs GFail(
+		TEXT("dn.fail"), TEXT("dn.fail <quest> -- fail an active quest, as the game"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			QuestCommand(Args, World, EDnaQuestRequest::Fail, TEXT("dn.fail <quest>"));
+		}));
+
+	FAutoConsoleCommandWithWorldAndArgs GQuests(
+		TEXT("dn.quests"), TEXT("dn.quests -- every quest: its state, journal line, objectives and time left"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>&, UWorld* World)
+		{
+			UDreamNarrativeStory* Story = StoryOf(World);
+			UDreamNarrativeLedger* Ledger = Story ? Story->GetLedger() : nullptr;
+			if (!Ledger) { return; }
+			TArray<FName> Quests;
+			Story->GetQuestNames(Quests);
+			Quests.Sort(FNameLexicalLess());
+			for (const FName& Quest : Quests)
+			{
+				const double Left = Ledger->GetTimerRemaining(::DreamNarrative::QuestStateFact(Quest));
+				Say(FString::Printf(TEXT("%s: %s%s  %s"), *Quest.ToString(), *::DreamNarrative::QuestStateMember(Story->GetQuestStateOf(Quest)).ToString(),
+					Left >= 0.0 ? *FString::Printf(TEXT(" (%.0fs left)"), Left) : TEXT(""), *Story->GetQuestJournal(Quest).ToString()), FColor::Green);
+				for (const FDnaObjectiveView& Objective : Story->GetQuestObjectives(Quest))
+				{
+					Say(FString::Printf(TEXT("    [%s] %s%s"), Objective.bDone ? TEXT("x") : TEXT(" "), *Objective.Text.ToString(), Objective.bOptional ? TEXT(" (optional)") : TEXT("")), FColor::Silver);
+				}
+			}
+		}));
+
 	/** A recording's name is its test's name: letters, digits, underscores and CJK, not starting with a digit. */
 	FString MakeTestName(const FString& Wanted)
 	{
