@@ -130,6 +130,7 @@ namespace UE::DreamNarrative::Tests
 		ManualClock = MakeShared<FDnaManualClock>();
 		LedgerObject->SetClock(ManualClock);
 		LedgerObject->SetRandomSeed(DefaultSeed);
+		LedgerObject->SetRandomSource(&Rolls);
 
 		ExpressionPool = NewObject<UDreamNarrativeScript>(GetTransientPackage(), NAME_None, RF_Transient);
 	}
@@ -139,6 +140,10 @@ namespace UE::DreamNarrative::Tests
 		if (UDreamNarrativeDialogueRunner* Runner = StoryObject ? StoryObject->GetActiveRunner() : nullptr)
 		{
 			Runner->Abort();
+		}
+		if (LedgerObject && LedgerObject->GetRandomSource() == &Rolls)
+		{
+			LedgerObject->SetRandomSource(nullptr);
 		}
 	}
 

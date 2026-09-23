@@ -137,6 +137,10 @@ namespace UE::DreamNarrative::Tests
 				case EDnaTestStepKind::Save:
 					return World.CheckSaveRoundTrip(TEXT("save"));
 
+				case EDnaTestStepKind::Rolls:
+					World.ForceRolls(P.Rolls);
+					return true;
+
 				default:
 					return true;
 				}

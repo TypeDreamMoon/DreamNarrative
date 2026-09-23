@@ -12,6 +12,7 @@
 
 #include "CoreMinimal.h"
 #include "DreamNarrativeClock.h"
+#include "DreamNarrativeLedger.h"
 #include "DreamNarrativeTypes.h"
 #include "Generation/DnaGenerator.h"
 #include "Lang/DnaModel.h"
@@ -19,11 +20,9 @@
 
 class FAutomationTestBase;
 class UDreamNarrativeDialogueRunner;
-class UDreamNarrativeLedger;
 class UDreamNarrativeScript;
 class UDreamNarrativeStory;
 class UGameInstance;
-struct FDnaLedgerSnapshot;
 
 namespace UE::DreamNarrative::Tests
 {
@@ -104,6 +103,9 @@ namespace UE::DreamNarrative::Tests
 		/** The debug teleport: implied facts along the `after` chain, then the chapter. */
 		bool Jump(FName Chapter);
 
+		/** The next draws of `random` and `chance` come out as these units, in order; then the seeded stream again. */
+		void ForceRolls(const TArray<float>& Units) { Rolls.Queue.Append(Units); }
+
 		// ---------------------------------------------------------------- looking
 
 		/**
@@ -162,6 +164,22 @@ namespace UE::DreamNarrative::Tests
 		virtual FString GetReferencerName() const override { return TEXT("UE::DreamNarrative::Tests::FDnaTestWorld"); }
 
 	private:
+		/** The world's draws: forced rolls first, then the ledger's own seeded stream. */
+		struct FForcedRolls : IDnaRandomSource
+		{
+			TArray<float> Queue;
+			virtual float NextUnit(FRandomStream& Stream) override
+			{
+				if (Queue.Num() == 0)
+				{
+					return Stream.GetFraction();
+				}
+				const float Unit = Queue[0];
+				Queue.RemoveAt(0);
+				return Unit;
+			}
+		};
+
 		bool Drive(UDreamNarrativeDialogueRunner* Runner, const TArray<FString>& Choices, const FString& What);
 
 		FAutomationTestBase& Test;
@@ -177,5 +195,6 @@ namespace UE::DreamNarrative::Tests
 		TArray<FString> Transcript;
 		TArray<FString> LastDialogue;
 		FString Context;
+		FForcedRolls Rolls;
 	};
 }
