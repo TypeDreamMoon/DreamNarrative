@@ -1,0 +1,21 @@
+// explore 块写错的地方:性质写进了 test 块;depth 不是 1 到 1000 的整数;rolls 的值不对;性质后面缺条件。
+
+test 测试里没有性质
+  depth 3
+// EXPECT DNS2003 (4,3)
+  always 好感 > 0
+// EXPECT DNS2003 (6,3)
+
+explore 写错的性质
+  depth 0
+// EXPECT DNS2007 (10,9)
+  depth 很深
+// EXPECT DNS2007 (12,9)
+  rolls 1.5
+// EXPECT DNS2007 (14,9)
+  rolls low high
+// EXPECT DNS2008 (16,13)
+  always
+// EXPECT DNS2007 (18,3)
+  softlock
+// EXPECT DNS2007 (20,3)

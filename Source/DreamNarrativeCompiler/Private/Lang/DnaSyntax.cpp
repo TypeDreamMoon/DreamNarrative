@@ -48,6 +48,7 @@ namespace UE::DreamNarrative::Lang
 		case EDnaLineKind::RestoreEntry: return TEXT("RestoreEntry");
 		case EDnaLineKind::StageEntry: return TEXT("StageEntry");
 		case EDnaLineKind::Test: return TEXT("Test");
+		case EDnaLineKind::Explore: return TEXT("Explore");
 		case EDnaLineKind::TestStep: return TEXT("TestStep");
 		case EDnaLineKind::Unknown: return TEXT("Unknown");
 		}
@@ -71,6 +72,11 @@ namespace UE::DreamNarrative::Lang
 		case EDnaTestStepKind::ExpectLine: return TEXT("line");
 		case EDnaTestStepKind::Absent: return TEXT("absent");
 		case EDnaTestStepKind::Pick: return TEXT("pick");
+		case EDnaTestStepKind::Rolls: return TEXT("rolls");
+		case EDnaTestStepKind::Depth: return TEXT("depth");
+		case EDnaTestStepKind::Always: return TEXT("always");
+		case EDnaTestStepKind::Eventually: return TEXT("eventually");
+		case EDnaTestStepKind::Softlock: return TEXT("softlock");
 		}
 		return TEXT("?");
 	}
@@ -98,6 +104,7 @@ namespace UE::DreamNarrative::Lang
 		case EDnaLineKind::Shots:
 		case EDnaLineKind::Restore:
 		case EDnaLineKind::Test:
+		case EDnaLineKind::Explore:
 			return true;
 		case EDnaLineKind::TestStep:
 			return Payload.TestStep == EDnaTestStepKind::Given || Payload.TestStep == EDnaTestStepKind::Talk
@@ -342,6 +349,7 @@ namespace UE::DreamNarrative::Lang
 				Detail += P.Name + TEXT(" ") + ArgsDump(P.Args);
 				break;
 			case EDnaLineKind::Test:
+			case EDnaLineKind::Explore:
 				Detail = P.Name;
 				break;
 			case EDnaLineKind::TestStep:
@@ -369,6 +377,15 @@ namespace UE::DreamNarrative::Lang
 					}
 					break;
 				case EDnaTestStepKind::Pick: Detail += P.Target.IsEmpty() ? TEXT(" ") + TextDump(P.Text) : TEXT(" #") + P.Target; break;
+				case EDnaTestStepKind::Rolls:
+					for (const float Roll : P.Rolls) { Detail += FString::Printf(TEXT(" %.9g"), Roll); }
+					break;
+				case EDnaTestStepKind::Depth: Detail += FString::Printf(TEXT(" %d"), P.Depth); break;
+				case EDnaTestStepKind::Always:
+				case EDnaTestStepKind::Eventually: Detail += TEXT(" ") + ExprText(P.Condition); break;
+				case EDnaTestStepKind::Softlock:
+					for (int32 Index = 0; Index < P.Goals.Num(); ++Index) { Detail += (Index == 0 ? TEXT(" ") : TEXT(", ")) + ExprText(P.Goals[Index]); }
+					break;
 				default: break;
 				}
 				break;

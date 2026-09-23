@@ -70,7 +70,10 @@ namespace UE::DreamNarrative::Lang
 		double DurationSeconds = 0.0;
 	};
 
-	/** A `test` block. Tests are a namespace of their own: a test may share its name with a dialogue. */
+	/**
+	 * A `test` or `explore` block. The two share a namespace of their own: a test may share its name
+	 * with a dialogue, not with an explore block.
+	 */
 	struct FDnaTestInfo : FDnaDeclBase
 	{
 	};
@@ -90,6 +93,7 @@ namespace UE::DreamNarrative::Lang
 		TMap<FString, FDnaDialogueInfo> Dialogues;
 		TMap<FString, FDnaStageInfo> Stages;
 		TMap<FString, FDnaTestInfo> Tests;
+		TMap<FString, FDnaTestInfo> Explores;
 
 		const FDnaFactInfo* FindFact(const FString& DottedName) const { return Facts.Find(DottedName); }
 		bool IsQuest(const FString& Name) const { return Quests.Contains(Name); }

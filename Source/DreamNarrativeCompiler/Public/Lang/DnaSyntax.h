@@ -83,7 +83,10 @@ namespace UE::DreamNarrative::Lang
 		// test
 		/** `test 名` opening a block of steps. */
 		Test,
-		/** One step of a test, or one expectation under its `talk` / `start`. Payload.TestStep says which. */
+		/** `explore 名` opening a block of steps (the start of the exploration) and properties. */
+		Explore,
+		/** One step of a test or an explore block, one expectation under its `talk` / `start`, or one
+		 *  explore property. Payload.TestStep says which. */
 		TestStep,
 
 		Unknown,
@@ -141,6 +144,16 @@ namespace UE::DreamNarrative::Lang
 		Absent,
 		/** `- 文本` or `- #id`: the choice to take. Payload.Text, or Payload.Target for an id. */
 		Pick,
+		/** `rolls low, high, 0.25`: what the next draws come out as. Payload.Rolls. */
+		Rolls,
+		/** `depth n` (explore): how many steps from the start at most. Payload.Depth. */
+		Depth,
+		/** `always 条件` (explore): holds in every state reached. Payload.Condition. */
+		Always,
+		/** `eventually 条件` (explore): holds in some state reached. Payload.Condition. */
+		Eventually,
+		/** `softlock 条件或任务, ...` (explore): reachable from every state reached. Payload.Goals. */
+		Softlock,
 	};
 
 	/** The source keyword of a step: `seed`, `talk`, ...; `line`, `absent` and `pick` for the expectations. */
@@ -243,6 +256,12 @@ namespace UE::DreamNarrative::Lang
 		bool bStrict = false;
 		/** An Absent step about a choice (`absent - 文本`) rather than a line. */
 		bool bChoice = false;
+		/** `rolls`: unit draws in [0, 1); `low` and `high` are LowestDraw and HighestDraw. */
+		TArray<float> Rolls;
+		/** `depth n`. */
+		int32 Depth = 0;
+		/** `softlock`: one condition per goal, or a bare quest name standing for its completion. */
+		TArray<FDnaExprPtr> Goals;
 	};
 
 	struct FDnaLineNode;

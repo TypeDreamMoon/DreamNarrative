@@ -207,15 +207,16 @@ namespace UE::DreamNarrative::Lang
 						break;
 					}
 					case EDnaLineKind::Test:
+					case EDnaLineKind::Explore:
 					{
 						if (P.Name.IsEmpty()) { break; }
-						if (Program.Tests.Contains(P.Name))
+						if (Program.Tests.Contains(P.Name) || Program.Explores.Contains(P.Name))
 						{
 							bOk = Diagnostics.Error(TEXT("DNS3004"), Root.Raw.Span,
-								FText::Format(LOCTEXT("DuplicateTest", "A test called '{0}' already exists; test names are unique"), FText::FromString(P.Name)));
+								FText::Format(LOCTEXT("DuplicateTest", "A test or explore block called '{0}' already exists; their names are unique"), FText::FromString(P.Name)));
 							break;
 						}
-						FDnaTestInfo& Info = Program.Tests.Add(P.Name);
+						FDnaTestInfo& Info = (Root.Kind == EDnaLineKind::Explore ? Program.Explores : Program.Tests).Add(P.Name);
 						Info.Name = P.Name;
 						Info.Node = &Root;
 						Info.Document = &Document;

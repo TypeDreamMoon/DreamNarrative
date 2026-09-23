@@ -1,0 +1,17 @@
+character 甲
+fact 好感: int
+
+dialogue 问候 for 甲
+  甲: 你好。
+
+explore 名字写错
+  always 好感度 > 0
+// EXPECT DNS3001 (8,10)
+  softlock 好感 > 1, 不存在的事
+// EXPECT DNS3001 (10,20)
+  talk 乙
+// EXPECT DNS3002 (12,3)
+
+test 名字写错
+// EXPECT DNS3004 (15,1)
+  expect 好感 == 0

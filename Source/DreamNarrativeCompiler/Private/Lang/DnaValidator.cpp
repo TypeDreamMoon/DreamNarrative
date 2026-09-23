@@ -137,6 +137,7 @@ namespace UE::DreamNarrative::Lang
 				case EDnaLineKind::Stage:
 					break;
 				case EDnaLineKind::Test:
+				case EDnaLineKind::Explore:
 					CheckTest(Root);
 					break;
 				default:
@@ -219,10 +220,26 @@ namespace UE::DreamNarrative::Lang
 					case EDnaTestStepKind::Jump:
 						RequireChapter(P.Target, Step->Raw.Span);
 						break;
+					case EDnaTestStepKind::Always:
+					case EDnaTestStepKind::Eventually:
+						if (P.Condition.IsValid()) { CheckCondition(P.Condition); }
+						break;
+					case EDnaTestStepKind::Softlock:
+						for (const FDnaExprPtr& Goal : P.Goals)
+						{
+							// A bare quest name stands for the quest's completion.
+							if (Goal.IsValid() && !IsBareQuest(*Goal)) { CheckCondition(Goal); }
+						}
+						break;
 					default:
 						break;
 					}
 				}
+			}
+
+			bool IsBareQuest(const FDnaExpr& Expr) const
+			{
+				return Expr.Kind == EDnaExprKind::Name && Expr.Path.Num() == 1 && Program.IsQuest(Expr.Path[0]);
 			}
 
 			/** The lines under a test's talk / start: speakers must be characters, interpolations must check. */

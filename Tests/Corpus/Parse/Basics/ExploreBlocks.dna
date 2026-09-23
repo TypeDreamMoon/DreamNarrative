@@ -1,0 +1,16 @@
+// explore 块的每一种行:和 test 块同一套步骤,加 rolls、depth、always、eventually、
+// softlock(条件、任务名、逗号分开的几个)。test 块也能用 rolls。
+
+explore 全部性质
+  jump 序章
+  rolls low, high, 0.25
+  talk 村长
+    - 我去。
+  depth 30
+  always 好感 <= 10
+  eventually 猎狼.completed
+  softlock 猎狼, 好感 >= 3 and chapter == 第二章, 墨梅册.第一页
+
+test 测试里也能强制抽取
+  rolls high
+  expect not chance(30%)

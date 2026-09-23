@@ -1,0 +1,12 @@
+4: Explore 全部性质
+5:   TestStep jump 序章
+6:   TestStep rolls 0 0.99999994 0.25
+7:   TestStep talk 村长
+8:     TestStep pick "我去。"
+9:   TestStep depth 30
+10:   TestStep always (好感 <= 10)
+11:   TestStep eventually 猎狼.completed
+12:   TestStep softlock 猎狼, ((好感 >= 3) and (chapter == 第二章)), 墨梅册.第一页
+14: Test 测试里也能强制抽取
+15:   TestStep rolls 0.99999994
+16:   TestStep expect (not chance(0.3))

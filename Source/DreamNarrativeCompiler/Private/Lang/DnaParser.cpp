@@ -1,6 +1,7 @@
 // Copyright DreamMoon. All Rights Reserved.
 
 #include "Lang/DnaParser.h"
+#include "DreamNarrativeExpression.h"
 #include "Misc/FileHelper.h"
 
 #define LOCTEXT_NAMESPACE "DreamNarrativeLang"
@@ -28,6 +29,8 @@ namespace UE::DreamNarrative::Lang
 			Restore,
 			/** The steps of a `test`. */
 			Test,
+			/** The steps and properties of an `explore`. */
+			Explore,
 			/** The expectations under a test's `talk` or `start`. */
 			TestDialogue,
 		};
@@ -365,7 +368,8 @@ namespace UE::DreamNarrative::Lang
 				case EContext::Track: ClassifyStageEntry(Node); break;
 				case EContext::Shots: ClassifyNamedEntry(Node, EDnaLineKind::Shot); break;
 				case EContext::Restore: ClassifyNamedEntry(Node, EDnaLineKind::RestoreEntry); break;
-				case EContext::Test: ClassifyTestStep(Node); break;
+				case EContext::Test: ClassifyTestStep(Node, /*bExplore=*/false); break;
+				case EContext::Explore: ClassifyTestStep(Node, /*bExplore=*/true); break;
 				case EContext::TestDialogue: ClassifyTestExpectation(Node); break;
 				}
 			}
@@ -400,12 +404,8 @@ namespace UE::DreamNarrative::Lang
 				if (Word == TEXT("quest")) { ParseQuestHeader(Node); return; }
 				if (Word == TEXT("dialogue")) { ParseDialogueHeader(Node); return; }
 				if (Word == TEXT("stage")) { ParseStageHeader(Node); return; }
-				if (Word == TEXT("test")) { ParseTestHeader(Node); return; }
-				if (Word == TEXT("explore"))
-				{
-					Unexpected(Node, LOCTEXT("ExploreLater", "at the top level: 'explore' is reserved for the explorer and not available yet"));
-					return;
-				}
+				if (Word == TEXT("test")) { ParseTestHeader(Node, EDnaLineKind::Test); return; }
+				if (Word == TEXT("explore")) { ParseTestHeader(Node, EDnaLineKind::Explore); return; }
 
 				if (Content.StartsWith(TEXT("- ")) || Content == TEXT("-"))
 				{
@@ -414,7 +414,7 @@ namespace UE::DreamNarrative::Lang
 					MarkChildrenUnknown(Node);
 					return;
 				}
-				Unexpected(Node, LOCTEXT("AtTopLevel", "at the top level; expected file, character, fact, chapter, quest, dialogue, stage or test"));
+				Unexpected(Node, LOCTEXT("AtTopLevel", "at the top level; expected file, character, fact, chapter, quest, dialogue, stage, test or explore"));
 			}
 
 			/** `[player] [was 旧名]` and friends: the optional tail of a declaration header. */
@@ -1479,21 +1479,23 @@ namespace UE::DreamNarrative::Lang
 
 			// ---------------------------------------------------------------- test
 
-			void ParseTestHeader(FDnaLineNode& Node)
+			/** `test 名` or `explore 名`: the same steps, and an explore block's properties besides. */
+			void ParseTestHeader(FDnaLineNode& Node, EDnaLineKind Kind)
 			{
-				Node.Kind = EDnaLineKind::Test;
+				const bool bExplore = Kind == EDnaLineKind::Explore;
+				Node.Kind = Kind;
 				TArray<FDnaToken> Tokens;
 				Tokenize(Node, 0, Tokens);
 				int32 Index = 1;
-				if (ExpectIdentifier(Tokens, Index, LOCTEXT("TestName", "a test name"), Node.Payload.Name))
+				if (ExpectIdentifier(Tokens, Index, bExplore ? LOCTEXT("ExploreName", "a name for the exploration") : LOCTEXT("TestName", "a test name"), Node.Payload.Name))
 				{
 					ExpectEnd(Tokens, Index);
 				}
 				RequireBody(Node);
-				ClassifyChildren(Node, EContext::Test);
+				ClassifyChildren(Node, bExplore ? EContext::Explore : EContext::Test);
 			}
 
-			void ClassifyTestStep(FDnaLineNode& Node)
+			void ClassifyTestStep(FDnaLineNode& Node, bool bExplore)
 			{
 				const FString& Content = Node.Raw.Content;
 				const FString Word = FirstWord(Content);
@@ -1617,9 +1619,114 @@ namespace UE::DreamNarrative::Lang
 					RequireNoChildren(Node);
 					return;
 				}
+				if (Word == TEXT("rolls"))
+				{
+					BeginStep(EDnaTestStepKind::Rolls);
+					ParseRolls(Tokens, Index, P.Rolls);
+					RequireNoChildren(Node);
+					return;
+				}
+				const bool bProperty = Word == TEXT("depth") || Word == TEXT("always") || Word == TEXT("eventually") || Word == TEXT("softlock");
+				if (bProperty && !bExplore)
+				{
+					Unexpected(Node, FText::Format(LOCTEXT("PropertyInTest", "inside a test; '{0}' belongs to an explore block"), FText::FromString(Word)));
+					return;
+				}
+				if (Word == TEXT("depth"))
+				{
+					BeginStep(EDnaTestStepKind::Depth);
+					if (!Tokens[Index].Is(EDnaTokenKind::Int) || Tokens[Index].Integer < 1 || Tokens[Index].Integer > 1000)
+					{
+						Fail(TEXT("DNS2007"), Tokens[Index].Span, LOCTEXT("DepthInt", "Expected a whole number from 1 to 1000 after 'depth'"));
+					}
+					else
+					{
+						P.Depth = static_cast<int32>(Tokens[Index].Integer);
+						ExpectEnd(Tokens, Index + 1);
+					}
+					RequireNoChildren(Node);
+					return;
+				}
+				if (Word == TEXT("always") || Word == TEXT("eventually"))
+				{
+					BeginStep(Word == TEXT("always") ? EDnaTestStepKind::Always : EDnaTestStepKind::Eventually);
+					if (Tokens[Index].Is(EDnaTokenKind::EndOfInput))
+					{
+						Fail(TEXT("DNS2007"), Node.Raw.Span, FText::Format(LOCTEXT("PropertyCondition", "Expected a condition after '{0}'"), FText::FromString(Word)));
+					}
+					else
+					{
+						P.Condition = ExpectExpression(Tokens, Index);
+						if (P.Condition.IsValid()) { ExpectEnd(Tokens, Index); }
+					}
+					RequireNoChildren(Node);
+					return;
+				}
+				if (Word == TEXT("softlock"))
+				{
+					BeginStep(EDnaTestStepKind::Softlock);
+					if (Tokens[Index].Is(EDnaTokenKind::EndOfInput))
+					{
+						Fail(TEXT("DNS2007"), Node.Raw.Span, LOCTEXT("SoftlockGoal", "Expected a condition or a quest after 'softlock'"));
+					}
+					while (!Tokens[Index].Is(EDnaTokenKind::EndOfInput))
+					{
+						const FDnaExprPtr Goal = ExpectExpression(Tokens, Index);
+						if (!Goal.IsValid()) { break; }
+						P.Goals.Add(Goal);
+						if (Tokens[Index].Is(EDnaTokenKind::Comma))
+						{
+							++Index;
+							continue;
+						}
+						ExpectEnd(Tokens, Index);
+						break;
+					}
+					RequireNoChildren(Node);
+					return;
+				}
 				Unexpected(Node, Content.StartsWith(TEXT("-"))
-					? LOCTEXT("PickOutsideTalk", "directly in a test; a choice to take belongs under 'talk' or 'start'")
-					: LOCTEXT("InTest", "inside a test; expected seed, given, talk, start, expect, set, wait, jump or save"));
+					? (bExplore
+						? LOCTEXT("PickOutsideTalkExplore", "directly in an explore block; a choice to take belongs under 'talk' or 'start'")
+						: LOCTEXT("PickOutsideTalk", "directly in a test; a choice to take belongs under 'talk' or 'start'"))
+					: (bExplore
+						? LOCTEXT("InExplore", "inside an explore block; expected seed, given, talk, start, expect, set, wait, jump, save, rolls, depth, always, eventually or softlock")
+						: LOCTEXT("InTest", "inside a test; expected seed, given, talk, start, expect, set, wait, jump, save or rolls")));
+			}
+
+			/** `low`, `high` or a number in [0, 1), separated by commas. */
+			void ParseRolls(const TArray<FDnaToken>& Tokens, int32 Index, TArray<float>& Out)
+			{
+				for (;;)
+				{
+					const FDnaToken& Token = Tokens[Index];
+					const bool bNumber = Token.Is(EDnaTokenKind::Int) || Token.Is(EDnaTokenKind::Float);
+					const double Number = Token.Is(EDnaTokenKind::Int) ? static_cast<double>(Token.Integer) : Token.Real;
+					if (Token.IsWord(TEXT("low")))
+					{
+						Out.Add(::DreamNarrative::LowestDraw);
+					}
+					else if (Token.IsWord(TEXT("high")))
+					{
+						Out.Add(::DreamNarrative::HighestDraw);
+					}
+					else if (bNumber && Number >= 0.0 && Number < 1.0)
+					{
+						Out.Add(static_cast<float>(Number));
+					}
+					else
+					{
+						Fail(TEXT("DNS2007"), Token.Span, LOCTEXT("RollValue", "Expected low, high or a number from 0 up to (not including) 1"));
+						return;
+					}
+					++Index;
+					if (!Tokens[Index].Is(EDnaTokenKind::Comma))
+					{
+						ExpectEnd(Tokens, Index);
+						return;
+					}
+					++Index;
+				}
 			}
 
 			/** Under a test's `talk` / `start`: a choice to take, or a line that must (not) be shown. */
