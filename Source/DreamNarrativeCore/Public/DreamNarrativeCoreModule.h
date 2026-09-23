@@ -15,7 +15,7 @@ namespace DreamNarrative
 		inline const TCHAR* PluginName = TEXT("DreamNarrative");
 
 		/** Extension of a narrative source file. */
-		inline const TCHAR* SourceExtension = TEXT("dns");
+		inline const TCHAR* SourceExtension = TEXT("dna");
 
 		/** Directory under the project that narrative sources are looked for in, by convention. */
 		inline const TCHAR* DefaultSourceDirectory = TEXT("DNarrative");
