@@ -4,8 +4,6 @@
 #include "DreamNarrativeLedger.h"
 #include "DreamNarrativeStory.h"
 #include "DreamNarrativeStoryModule.h"
-#include "Engine/World.h"
-#include "TimerManager.h"
 
 bool UDreamNarrativeDialogueRunner::Start(UDreamNarrativeStory* InStory, UDreamNarrativeLedger* InLedger, const UDnaDialogueSection* InSection, FName InNode)
 {
@@ -231,12 +229,12 @@ void UDreamNarrativeDialogueRunner::Run()
 			++PC;
 			Transcript.Add(FString::Printf(TEXT("[wait %gs]"), Ins.Seconds));
 			State = EDnaRunnerState::Waiting;
-			OnWait.Broadcast(this, Ins.Seconds);
-			UWorld* World = bManualWait ? nullptr : GetWorld();
-			if (World)
+			// Scheduled before the broadcast: a listener that ends the wait on the spot cancels it.
+			if (!bManualWait)
 			{
-				World->GetTimerManager().SetTimer(WaitTimer, FTimerDelegate::CreateUObject(this, &UDreamNarrativeDialogueRunner::NotifyWaitFinished), Ins.Seconds, false);
+				WaitHandle = Ledger->GetClock().Schedule(Ins.Seconds, FSimpleDelegate::CreateUObject(this, &UDreamNarrativeDialogueRunner::NotifyWaitFinished));
 			}
+			OnWait.Broadcast(this, Ins.Seconds);
 			return;
 		}
 		case EDnaOpCode::GoTo:
@@ -304,6 +302,11 @@ void UDreamNarrativeDialogueRunner::NotifyWaitFinished()
 	{
 		return;
 	}
+	// Whoever ends the wait, nothing may be left on the clock to end the next one early.
+	if (WaitHandle.IsValid() && Ledger)
+	{
+		Ledger->GetClock().Cancel(WaitHandle);
+	}
 	State = EDnaRunnerState::Idle;
 	Run();
 }
@@ -323,9 +326,9 @@ void UDreamNarrativeDialogueRunner::Finish()
 	{
 		return;
 	}
-	if (UWorld* World = GetWorld())
+	if (WaitHandle.IsValid() && Ledger)
 	{
-		World->GetTimerManager().ClearTimer(WaitTimer);
+		Ledger->GetClock().Cancel(WaitHandle);
 	}
 	if (Ledger && !NodeName.IsNone())
 	{

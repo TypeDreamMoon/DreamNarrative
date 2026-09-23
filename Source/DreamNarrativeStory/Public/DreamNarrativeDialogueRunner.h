@@ -7,6 +7,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "DreamNarrativeClock.h"
 #include "DreamNarrativeDialogue.h"
 #include "DreamNarrativeDialogueRunner.generated.h"
 
@@ -21,7 +22,7 @@ enum class EDnaRunnerState : uint8
 	ShowingLine,
 	/** Choices are on screen; call Choose(). */
 	AwaitingChoice,
-	/** A `wait` is in progress; continues on its own, or on NotifyWaitFinished() when no world drives it. */
+	/** A `wait` is in progress; continues when the ledger's clock says so, or on NotifyWaitFinished(). */
 	Waiting,
 	/** A blocking `play`; continues on NotifyStageFinished(). */
 	PlayingStage,
@@ -108,7 +109,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Dialogue")
 	void NotifyStageFinished();
 
-	/** For a `wait` the game drives itself (no world timer): continue. */
+	/** Ends the current `wait` now, whether the clock or the game was driving it. */
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Dialogue")
 	void NotifyWaitFinished();
 
@@ -124,7 +125,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Narrative|Dialogue")
 	const TArray<FDnaChoiceView>& GetChoices() const { return CurrentChoices; }
 
-	/** When set, `wait` does not start a world timer; the game calls NotifyWaitFinished(). Tests use it. */
+	/** When set, `wait` does not start the clock; the game paces waits itself and calls NotifyWaitFinished(). */
 	UPROPERTY(BlueprintReadWrite, Category = "Narrative|Dialogue")
 	bool bManualWait = false;
 
@@ -180,7 +181,7 @@ private:
 	int32 CurrentGroup = INDEX_NONE;
 	TArray<int32> CurrentOptionIndices;
 
-	FTimerHandle WaitTimer;
+	FDnaClockHandle WaitHandle;
 	TArray<FString> Transcript;
 	/** Guards against runaway loops in a node that never yields. */
 	int32 StepBudget = 0;
