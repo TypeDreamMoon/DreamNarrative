@@ -13,6 +13,7 @@
 #include "CoreMinimal.h"
 #include "DreamNarrativeDialogueRunner.h"
 #include "DreamNarrativeLedger.h"
+#include "DreamNarrativeStory.h"
 #include "DreamNarrativeRecorder.generated.h"
 
 class UDreamNarrativeStory;
@@ -54,6 +55,7 @@ private:
 	void HandleStart(FName Node);
 	void HandleFactWritten(FName Fact, const FDnaValue& Value, EDnaWriteSource Source);
 	void HandleJump(FName Chapter);
+	void HandleQuestRequested(EDnaQuestRequest What, FName Quest, EDnaWriteSource Who);
 
 	UFUNCTION()
 	void HandleDialogueStarted(UDreamNarrativeDialogueRunner* InRunner);
@@ -100,4 +102,5 @@ private:
 	FDelegateHandle StartHandle;
 	FDelegateHandle WriteHandle;
 	FDelegateHandle JumpHandle;
+	FDelegateHandle QuestHandle;
 };

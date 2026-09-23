@@ -37,10 +37,30 @@ namespace
 		return Default;
 	}
 
-	/** A quest's hidden facts (`@名`, `@名.objectives`) are the quests' own bookkeeping, not the story's facts. */
+	/** A quest's hidden facts (`@名`, `@名.objectives`) are written as quest states, never as facts. */
 	bool IsQuestFact(FName Fact)
 	{
 		return Fact.ToString().StartsWith(TEXT("@"));
+	}
+
+	/** The quest whose state fact this is (`@猎狼` -> 猎狼); None for the objectives fact and every other fact. */
+	FName QuestOfStateFact(FName Fact)
+	{
+		const FString Text = Fact.ToString();
+		return Text.StartsWith(TEXT("@")) && !Text.EndsWith(TEXT(".objectives")) ? FName(*Text.Mid(1)) : NAME_None;
+	}
+
+	FString QuestExpectText(FName Quest, EDnaQuestState State)
+	{
+		switch (State)
+		{
+		case EDnaQuestState::Accepted:
+		case EDnaQuestState::Going: return FString::Printf(TEXT("expect %s.active"), *Quest.ToString());
+		case EDnaQuestState::Completed: return FString::Printf(TEXT("expect %s.completed"), *Quest.ToString());
+		case EDnaQuestState::Failed:
+		case EDnaQuestState::TimedOut: return FString::Printf(TEXT("expect %s.failed"), *Quest.ToString());
+		default: return FString::Printf(TEXT("expect not %s.active and not %s.completed and not %s.failed"), *Quest.ToString(), *Quest.ToString(), *Quest.ToString());
+		}
 	}
 
 	FString ExpectText(const FString& Fact, const FDnaValue& Value)
@@ -89,6 +109,7 @@ void UDreamNarrativeRecorder::Begin(UDreamNarrativeStory* InStory, const FString
 	Story->OnDialogueStarted.AddDynamic(this, &UDreamNarrativeRecorder::HandleDialogueStarted);
 	WriteHandle = Ledger->OnFactWritten.AddUObject(this, &UDreamNarrativeRecorder::HandleFactWritten);
 	JumpHandle = Ledger->OnJumpRequested.AddUObject(this, &UDreamNarrativeRecorder::HandleJump);
+	QuestHandle = Story->OnQuestRequested.AddUObject(this, &UDreamNarrativeRecorder::HandleQuestRequested);
 	PassOn = Ledger->GetRandomSource();
 	Ledger->SetRandomSource(this);
 }
@@ -135,6 +156,24 @@ FString UDreamNarrativeRecorder::End()
 	TArray<FName> Once = StartSnapshot.ChosenOnce;
 	Once.Sort(FNameLexicalLess());
 	for (const FName& Id : Once) { GivenLines.Add(TEXT("    once #") + Id.ToString()); }
+	TArray<FString> Quests;
+	for (const FDnaFactSnapshotEntry& Entry : StartSnapshot.Facts)
+	{
+		const FName Quest = QuestOfStateFact(Entry.Fact);
+		EDnaQuestState State = EDnaQuestState::Inactive;
+		if (Quest.IsNone() || !::DreamNarrative::TryParseQuestState(Entry.Value.Tag, State) || State == EDnaQuestState::Inactive)
+		{
+			continue;
+		}
+		FString Line = FString::Printf(TEXT("    quest %s = %s"), *Quest.ToString(), *::DreamNarrative::QuestStateMember(State).ToString().ToLower());
+		if (const float* Remaining = StartSnapshot.Timers.Find(Entry.Fact))
+		{
+			Line += FString::Printf(TEXT(" %.9gs"), *Remaining);
+		}
+		Quests.Add(Line);
+	}
+	Quests.Sort();
+	GivenLines.Append(Quests);
 	if (!StartSnapshot.Chapter.IsNone()) { GivenLines.Add(TEXT("    chapter = ") + StartSnapshot.Chapter.ToString()); }
 	if (GivenLines.Num() > 0)
 	{
@@ -158,7 +197,18 @@ FString UDreamNarrativeRecorder::End()
 		const FDnaValue Now = Ledger->GetFact(Fact);
 		const FDnaValue* Then = Before.Find(Fact);
 		const FDnaValue Old = Then ? *Then : (Decl ? DefaultOf(*Decl) : FDnaValue());
-		if (!IsQuestFact(Fact) && !(Now.Type == Old.Type && Now.Equals(Old)))
+		if (Now.Type == Old.Type && Now.Equals(Old))
+		{
+			continue;
+		}
+		const FName Quest = QuestOfStateFact(Fact);
+		EDnaQuestState State = EDnaQuestState::Inactive;
+		if (!Quest.IsNone() && ::DreamNarrative::TryParseQuestState(Now.Tag, State))
+		{
+			Out.Add(TEXT("  ") + QuestExpectText(Quest, State));
+			++Expects;
+		}
+		else if (!IsQuestFact(Fact))
 		{
 			Out.Add(TEXT("  ") + ExpectText(Fact.ToString(), Now));
 			++Expects;
@@ -201,6 +251,7 @@ void UDreamNarrativeRecorder::Detach()
 	{
 		Story->OnTalkRequested.Remove(TalkHandle);
 		Story->OnStartRequested.Remove(StartHandle);
+		Story->OnQuestRequested.Remove(QuestHandle);
 		Story->OnDialogueStarted.RemoveDynamic(this, &UDreamNarrativeRecorder::HandleDialogueStarted);
 	}
 	if (Ledger)
@@ -292,6 +343,23 @@ void UDreamNarrativeRecorder::HandleJump(FName Chapter)
 	ReleaseRunner();
 	Flush();
 	NextStep(TEXT("jump ") + Chapter.ToString());
+}
+
+void UDreamNarrativeRecorder::HandleQuestRequested(EDnaQuestRequest What, FName Quest, EDnaWriteSource Who)
+{
+	// What the story's own commands do to quests follows from the steps already written down.
+	if (Who != EDnaWriteSource::Game)
+	{
+		return;
+	}
+	FStep Step;
+	Step.Header = FString::Printf(TEXT("%s %s"), What == EDnaQuestRequest::Accept ? TEXT("accept") : What == EDnaQuestRequest::Complete ? TEXT("complete") : TEXT("fail"), *Quest.ToString());
+	if (Runner)
+	{
+		WrittenDuringDialogue.Add(MoveTemp(Step));
+		return;
+	}
+	NextStep(MoveTemp(Step));
 }
 
 void UDreamNarrativeRecorder::HandleFactWritten(FName Fact, const FDnaValue& Value, EDnaWriteSource Source)

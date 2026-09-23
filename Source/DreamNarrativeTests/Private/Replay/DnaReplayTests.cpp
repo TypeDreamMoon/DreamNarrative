@@ -192,6 +192,52 @@ bool FDnaRecordAndReplayTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRecordsQuestsTest, "DreamNarrative.Replay.RecordsQuests", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+
+bool FDnaRecordsQuestsTest::RunTest(const FString& Parameters)
+{
+	using namespace UE::DreamNarrative::Tests;
+
+	TArray<FDnaTestSource> Story;
+	if (!ReadPluginSources(*this, { TEXT("Tests/Corpus/Validate/Samples/rpg.dna") }, Story))
+	{
+		return false;
+	}
+
+	// Recording starts halfway through the wolf hunt, with its clock running.
+	FDnaTestWorld Played(*this);
+	if (!Played.Compile(Story))
+	{
+		return false;
+	}
+	Played.Talk(TEXT("村长"), { TEXT("我去。") });
+	Played.SetExtern(TEXT("狼杀了"), FDnaValue::FromInt(3));
+	Played.Wait(30.0);
+	Played.Story().StartRecording(TEXT("猎狼后半"));
+	Played.SetExtern(TEXT("狼杀了"), FDnaValue::FromInt(5));
+	Played.Story().FailQuest(TEXT("猎狼_头狼"));
+	const FString Recorded = Played.Story().StopRecording();
+
+	for (const TCHAR* Expected : {
+		TEXT("    quest 猎狼 = going 1170s"), TEXT("    狼杀了 = 3"), TEXT("    chapter = 第一章"),
+		TEXT("  set 狼杀了 = 5"), TEXT("  fail 猎狼_头狼"),
+		TEXT("  expect 猎狼.completed"), TEXT("  expect 猎狼_头狼.failed"), TEXT("  expect chapter == 第二章") })
+	{
+		TestTrue(FString::Printf(TEXT("the recording has \"%s\""), Expected), Recorded.Contains(Expected));
+	}
+	TestFalse(TEXT("the quests' own facts are not written as facts"), Recorded.Contains(TEXT("@")));
+
+	FDnaTestWorld Replayed(*this);
+	TArray<FDnaTestSource> Sources = Story;
+	Sources.Add({ TEXT("Recorded.dna"), Recorded });
+	if (Replayed.Compile(Sources))
+	{
+		const TArray<FString> Failures = Replay::RunCollecting(Replayed, TEXT("猎狼后半"), TEXT("Recorded.dna"));
+		TestEqual(TEXT("the recording plays back"), FString::Join(Failures, TEXT("\n")), FString());
+	}
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRecordsDrawsTest, "DreamNarrative.Replay.RecordsDraws", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
 
 bool FDnaRecordsDrawsTest::RunTest(const FString& Parameters)
