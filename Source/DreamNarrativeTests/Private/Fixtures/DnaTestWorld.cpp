@@ -343,7 +343,13 @@ namespace UE::DreamNarrative::Tests
 
 	void FDnaTestWorld::ReportError(const FString& Message)
 	{
-		Test.AddError(Context.IsEmpty() ? Message : Context + TEXT(": ") + Message);
+		const FString Full = Context.IsEmpty() ? Message : Context + TEXT(": ") + Message;
+		if (ErrorCapture)
+		{
+			ErrorCapture->Add(Full);
+			return;
+		}
+		Test.AddError(Full);
 	}
 
 	bool FDnaTestWorld::FinishStep(const FString& What, bool bStepOk)
@@ -484,10 +490,19 @@ namespace UE::DreamNarrative::Tests
 		return true;
 	}
 
+	int32 FDnaTestWorld::CompileAst(const FDnaExprPtr& Expr)
+	{
+		return Expr.IsValid() ? CompileDnaExpression(ProgramModel, Expr, *ExpressionPool) : INDEX_NONE;
+	}
+
+	const FDnaCompiledExpr* FDnaTestWorld::GetPooledExpression(int32 Index) const
+	{
+		return ExpressionPool->GetExpression(Index);
+	}
+
 	bool FDnaTestWorld::EvaluateAst(const FDnaExprPtr& Expr, FDnaValue& OutValue)
 	{
-		const int32 Index = Expr.IsValid() ? CompileDnaExpression(ProgramModel, Expr, *ExpressionPool) : INDEX_NONE;
-		const FDnaCompiledExpr* Compiled = ExpressionPool->GetExpression(Index);
+		const FDnaCompiledExpr* Compiled = ExpressionPool->GetExpression(CompileAst(Expr));
 		if (!Compiled)
 		{
 			ReportError(FString::Printf(TEXT("`%s` could not be compiled"), Expr.IsValid() ? *Expr->ToString() : TEXT("<null>")));
@@ -534,6 +549,18 @@ namespace UE::DreamNarrative::Tests
 
 	bool FDnaTestWorld::CheckSaveRoundTrip(const FString& Where)
 	{
+		const TArray<FString> Differences = SaveRoundTripDifferences();
+		if (Differences.Num() > 0)
+		{
+			ReportError(FString::Printf(TEXT("After \"%s\", saving and loading does not give the same ledger:\n    %s"),
+				*Where, *FString::Join(Differences, TEXT("\n    "))));
+			return false;
+		}
+		return true;
+	}
+
+	TArray<FString> FDnaTestWorld::SaveRoundTripDifferences()
+	{
 		const FDnaLedgerSnapshot Saved = LedgerObject->MakeSnapshot();
 
 		// Written the strict way: an archive that keeps only SaveGame properties, as many games' save
@@ -566,13 +593,6 @@ namespace UE::DreamNarrative::Tests
 		Fresh->ApplySnapshot(Loaded);
 		Fresh->SetTrace(nullptr);
 
-		const TArray<FString> Differences = DiffSnapshots(Saved, Fresh->MakeSnapshot());
-		if (Differences.Num() > 0)
-		{
-			ReportError(FString::Printf(TEXT("After \"%s\", saving and loading does not give the same ledger:\n    %s"),
-				*Where, *FString::Join(Differences, TEXT("\n    "))));
-			return false;
-		}
-		return true;
+		return DiffSnapshots(Saved, Fresh->MakeSnapshot());
 	}
 }

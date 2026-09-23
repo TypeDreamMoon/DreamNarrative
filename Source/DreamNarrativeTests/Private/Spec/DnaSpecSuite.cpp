@@ -88,25 +88,28 @@ namespace UE::DreamNarrative::Tests::Spec
 
 	void FindTestFiles(TArray<FString>& OutRelative)
 	{
+		FindFilesUnder(TEXT("Spec"), OutRelative);
+		FindFilesUnder(TEXT("Samples"), OutRelative);
+	}
+
+	void FindFilesUnder(const FString& Directory, TArray<FString>& OutRelative)
+	{
 		const FString TestsDir = GetTestsDir();
 		if (TestsDir.IsEmpty())
 		{
 			return;
 		}
-		for (const TCHAR* Suite : { TEXT("Spec"), TEXT("Samples") })
+		TArray<FString> Files;
+		IFileManager::Get().FindFilesRecursive(Files, *(TestsDir / Directory), TEXT("*.dna"), true, false, false);
+		Files.Sort();
+		for (FString& File : Files)
 		{
-			TArray<FString> Files;
-			IFileManager::Get().FindFilesRecursive(Files, *(TestsDir / Suite), TEXT("*.dna"), true, false, false);
-			Files.Sort();
-			for (FString& File : Files)
-			{
-				FPaths::MakePathRelativeTo(File, *(TestsDir / TEXT("")));
-				OutRelative.Add(File.Replace(TEXT("\\"), TEXT("/")));
-			}
+			FPaths::MakePathRelativeTo(File, *(TestsDir / TEXT("")));
+			OutRelative.Add(File.Replace(TEXT("\\"), TEXT("/")));
 		}
 	}
 
-	TArray<FString> ScanTestNames(const FString& Relative)
+	TArray<FString> ScanBlockNames(const FString& Relative, const TCHAR* Keyword)
 	{
 		TArray<FString> Names;
 		FString Text;
@@ -116,11 +119,11 @@ namespace UE::DreamNarrative::Tests::Spec
 		}
 		for (const FDnaRawLine& Line : ScanLines(Relative, Text))
 		{
-			if (Line.IsFloating() || Line.IndentLevel != 0 || WordAt(Line.Content, 0) != TEXT("test"))
+			if (Line.IsFloating() || Line.IndentLevel != 0 || WordAt(Line.Content, 0) != Keyword)
 			{
 				continue;
 			}
-			const FString Name = WordAt(Line.Content, SkipSpaces(Line.Content, 4));
+			const FString Name = WordAt(Line.Content, SkipSpaces(Line.Content, FCString::Strlen(Keyword)));
 			if (!Name.IsEmpty())
 			{
 				Names.Add(Name);
@@ -138,8 +141,9 @@ namespace UE::DreamNarrative::Tests::Spec
 		return Display;
 	}
 
-	bool RunSpecTest(FAutomationTestBase& Test, const FString& Relative, const FString& BlockName, IDnaTrace* Trace)
+	bool CompileTestFile(FDnaTestWorld& World, const FString& Relative, const FString& Appended)
 	{
+		FAutomationTestBase& Test = World.GetTest();
 		// The test file, then whatever it pulls in with `with:`.
 		TArray<FDnaTestSource> Sources;
 		FDnaTestSource Main;
@@ -159,11 +163,19 @@ namespace UE::DreamNarrative::Tests::Spec
 				return false;
 			}
 		}
+		if (!Appended.IsEmpty())
+		{
+			Main.Text += (Main.Text.EndsWith(TEXT("\n")) ? TEXT("\n") : TEXT("\n\n")) + Appended + TEXT("\n");
+		}
 		Sources.Insert(MoveTemp(Main), 0);
+		return World.Compile(Sources);
+	}
 
+	bool RunSpecTest(FAutomationTestBase& Test, const FString& Relative, const FString& BlockName, IDnaTrace* Trace)
+	{
 		FDnaTestWorld World(Test);
 		World.Ledger().SetTrace(Trace);
-		if (!World.Compile(Sources))
+		if (!CompileTestFile(World, Relative))
 		{
 			return false;
 		}

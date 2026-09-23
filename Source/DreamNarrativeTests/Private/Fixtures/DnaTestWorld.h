@@ -135,6 +135,9 @@ namespace UE::DreamNarrative::Tests
 		 */
 		bool CheckSaveRoundTrip(const FString& Where);
 
+		/** What CheckSaveRoundTrip compares, one line per difference; empty when the ledger comes back the same. */
+		TArray<FString> SaveRoundTripDifferences();
+
 		/** Every step runs CheckSaveRoundTrip unless this is cleared. */
 		bool bCheckSaveAfterEachStep = true;
 
@@ -145,6 +148,17 @@ namespace UE::DreamNarrative::Tests
 
 		/** Reports a failure with the current context. */
 		void ReportError(const FString& Message);
+
+		/** From now on failures go into Into instead of the test (null: back to the test). For checking that something fails. */
+		void CaptureErrors(TArray<FString>* Into) { ErrorCapture = Into; }
+
+		/** Lowers an expression of the compiled program (already checked) into the world's pool; INDEX_NONE if it cannot be. */
+		int32 CompileAst(const Lang::FDnaExprPtr& Expr);
+
+		/** An expression CompileAst or CompileExpression put in the pool. */
+		const FDnaCompiledExpr* GetPooledExpression(int32 Index) const;
+
+		FAutomationTestBase& GetTest() const { return Test; }
 
 		/** Evaluates an expression of the compiled program (already checked) against the ledger. */
 		bool EvaluateAst(const Lang::FDnaExprPtr& Expr, FDnaValue& OutValue);
@@ -196,5 +210,6 @@ namespace UE::DreamNarrative::Tests
 		TArray<FString> LastDialogue;
 		FString Context;
 		FForcedRolls Rolls;
+		TArray<FString>* ErrorCapture = nullptr;
 	};
 }

@@ -25,7 +25,7 @@ void FDnaSpecTest::GetTests(TArray<FString>& OutBeautifiedNames, TArray<FString>
 	FindTestFiles(Files);
 	for (const FString& Relative : Files)
 	{
-		for (const FString& Name : ScanTestNames(Relative))
+		for (const FString& Name : ScanBlockNames(Relative, TEXT("test")))
 		{
 			OutBeautifiedNames.Add(ToDisplayPath(Relative) + TEXT(".") + Name);
 			OutTestCommands.Add(Relative + TEXT("|") + Name);
@@ -97,7 +97,7 @@ bool FDnaSpecCoverageTest::RunTest(const FString& Parameters)
 	FindTestFiles(Files);
 	for (const FString& Relative : Files)
 	{
-		for (const FString& Name : ScanTestNames(Relative))
+		for (const FString& Name : ScanBlockNames(Relative, TEXT("test")))
 		{
 			RunSpecTest(*this, Relative, Name, &Coverage);
 			++Blocks;

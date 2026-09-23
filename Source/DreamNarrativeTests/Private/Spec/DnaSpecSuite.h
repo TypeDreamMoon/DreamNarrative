@@ -11,6 +11,11 @@
 class FAutomationTestBase;
 class IDnaTrace;
 
+namespace UE::DreamNarrative::Tests
+{
+	class FDnaTestWorld;
+}
+
 namespace UE::DreamNarrative::Tests::Spec
 {
 	/** The plugin's Tests directory, absolute; empty when the plugin is not loaded. */
@@ -19,11 +24,20 @@ namespace UE::DreamNarrative::Tests::Spec
 	/** Every test file of the suite, relative to Tests/ with forward slashes: Spec/... first, then Samples/... */
 	void FindTestFiles(TArray<FString>& OutRelative);
 
-	/** The names of the `test` blocks in a file, in order, without a full parse. */
-	TArray<FString> ScanTestNames(const FString& Relative);
+	/** Every .dna under Tests/<Directory>, relative to Tests/ with forward slashes, sorted. */
+	void FindFilesUnder(const FString& Directory, TArray<FString>& OutRelative);
+
+	/** The names of a file's top-level blocks that start with Keyword (`test`, `explore`), in order, without a full parse. */
+	TArray<FString> ScanBlockNames(const FString& Relative, const TCHAR* Keyword);
 
 	/** `Spec/Dialogue/Choices.dna` -> `Dialogue.Choices`; `Samples/Ring.dna` -> `Samples.Ring`. */
 	FString ToDisplayPath(const FString& Relative);
+
+	/**
+	 * Compiles a test file with its `with:` companions into World. Appended, when given, is compiled as
+	 * if it stood at the end of the file (a repro block being tried, say). Failures go to the world's test.
+	 */
+	bool CompileTestFile(FDnaTestWorld& World, const FString& Relative, const FString& Appended = FString());
 
 	/**
 	 * Compiles a test file with its `with:` companions and runs one of its test blocks. Trace, when
