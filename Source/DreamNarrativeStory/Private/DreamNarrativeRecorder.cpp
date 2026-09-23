@@ -37,6 +37,12 @@ namespace
 		return Default;
 	}
 
+	/** A quest's hidden facts (`@名`, `@名.objectives`) are the quests' own bookkeeping, not the story's facts. */
+	bool IsQuestFact(FName Fact)
+	{
+		return Fact.ToString().StartsWith(TEXT("@"));
+	}
+
 	FString ExpectText(const FString& Fact, const FDnaValue& Value)
 	{
 		if (Value.Type == EDnaFactType::Bool)
@@ -112,7 +118,7 @@ FString UDreamNarrativeRecorder::End()
 	auto AddGiven = [this, &Given](FName Fact, const FDnaValue& Value)
 	{
 		const FDnaFactDecl* Decl = Ledger->FindFactDecl(Fact);
-		if (Decl && !(Value.Type == Decl->Type && Value.Equals(DefaultOf(*Decl))))
+		if (Decl && !IsQuestFact(Fact) && !(Value.Type == Decl->Type && Value.Equals(DefaultOf(*Decl))))
 		{
 			Given.Emplace(Fact.ToString(), ValueText(Value));
 		}
@@ -152,7 +158,7 @@ FString UDreamNarrativeRecorder::End()
 		const FDnaValue Now = Ledger->GetFact(Fact);
 		const FDnaValue* Then = Before.Find(Fact);
 		const FDnaValue Old = Then ? *Then : (Decl ? DefaultOf(*Decl) : FDnaValue());
-		if (!(Now.Type == Old.Type && Now.Equals(Old)))
+		if (!IsQuestFact(Fact) && !(Now.Type == Old.Type && Now.Equals(Old)))
 		{
 			Out.Add(TEXT("  ") + ExpectText(Fact.ToString(), Now));
 			++Expects;

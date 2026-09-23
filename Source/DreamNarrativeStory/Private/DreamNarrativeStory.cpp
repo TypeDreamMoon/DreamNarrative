@@ -15,6 +15,7 @@ void UDreamNarrativeStory::Initialize(FSubsystemCollectionBase& Collection)
 	if (Ledger)
 	{
 		Ledger->SetQuestStateProvider(this);
+		WatchLedger();
 	}
 }
 
@@ -24,6 +25,7 @@ void UDreamNarrativeStory::InitializeStandalone(UDreamNarrativeLedger* InLedger)
 	if (Ledger)
 	{
 		Ledger->SetQuestStateProvider(this);
+		WatchLedger();
 	}
 }
 
@@ -32,6 +34,7 @@ void UDreamNarrativeStory::Deinitialize()
 	StopRecording();
 	if (Ledger)
 	{
+		UnwatchLedger();
 		Ledger->SetQuestStateProvider(nullptr);
 	}
 	Super::Deinitialize();
@@ -45,6 +48,24 @@ void UDreamNarrativeStory::RegisterScript(UDreamNarrativeScript* Script)
 	}
 	Ledger->RegisterScript(Script);
 	Scripts.AddUnique(Script);
+
+	if (const UDnaQuestSection* Quests = Script->FindSection<UDnaQuestSection>())
+	{
+		for (int32 Index = 0; Index < Quests->Quests.Num(); ++Index)
+		{
+			const FName Name = Quests->Quests[Index].Name;
+			FQuestRef& Ref = QuestIndex.FindOrAdd(Name);
+			Ref.Section = Quests;
+			Ref.QuestIndex = Index;
+			QuestOrder.AddUnique(Name);
+		}
+	}
+	// A hidden quest that can start already does, rather than at the first write -- including one whose
+	// condition reads facts only this script declares.
+	if (!Ledger->IsApplyingSnapshot())
+	{
+		CheckQuests();
+	}
 
 	const UDnaDialogueSection* Dialogue = Script->FindSection<UDnaDialogueSection>();
 	if (!Dialogue)

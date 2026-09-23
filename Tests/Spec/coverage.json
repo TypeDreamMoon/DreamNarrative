@@ -146,10 +146,28 @@
     "chapter.restored": "读档恢复章节"
   },
   "pending": {
-    "expr.QuestState": "任务尚未实现",
-    "dialogue.op.Accept": "任务尚未实现",
-    "dialogue.op.Complete": "任务尚未实现",
-    "dialogue.op.Fail": "任务尚未实现",
+    "expr.QuestState": "任务已实现,规格测试还没写",
+    "dialogue.op.Accept": "任务已实现,规格测试还没写",
+    "dialogue.op.Complete": "任务已实现,规格测试还没写",
+    "dialogue.op.Fail": "任务已实现,规格测试还没写",
+    "quest.accept": "任务已实现,规格测试还没写",
+    "quest.accept-again": "任务已实现,规格测试还没写",
+    "quest.going": "任务已实现,规格测试还没写",
+    "quest.update": "任务已实现,规格测试还没写",
+    "quest.objective": "任务已实现,规格测试还没写",
+    "quest.objective.optional": "任务已实现,规格测试还没写",
+    "quest.complete": "任务已实现,规格测试还没写",
+    "quest.fail": "任务已实现,规格测试还没写",
+    "quest.fail-if": "任务已实现,规格测试还没写",
+    "quest.timeout": "任务已实现,规格测试还没写",
+    "quest.complete-command": "任务已实现,规格测试还没写",
+    "quest.fail-command": "任务已实现,规格测试还没写",
+    "quest.subquest-auto": "任务已实现,规格测试还没写",
+    "quest.start-hidden": "任务已实现,规格测试还没写",
+    "quest.handler": "任务已实现,规格测试还没写",
+    "quest.reward": "任务已实现,规格测试还没写",
+    "ledger.timer.start": "任务已实现,规格测试还没写",
+    "ledger.timer.fired": "任务已实现,规格测试还没写",
     "dialogue.play.blocking": "要有演出监听者;Stage 运行时之后由它接上"
   },
   "outside": {
@@ -163,6 +181,8 @@
     "ledger.write.RefusedType": "编译期 DNS4001 拦下;只有 C++ 能写错类型",
     "ledger.write.RefusedDomain": "编译期 DNS4002 拦下;只有 C++ 能写集合外的 tag",
     "ledger.snapshot.renamed": "要用旧名字写的存档;was 改名迁移由 C++ 覆盖",
-    "ledger.snapshot.dropped": "要带已删除 fact 的存档;由 C++ 覆盖"
+    "ledger.snapshot.dropped": "要带已删除 fact 的存档;由 C++ 覆盖",
+    "quest.accept-refused": "接不了的任务被要求接:对话里是 Warning,游戏代码拿到 false;由 DreamNarrative.Quest.Refusals 覆盖",
+    "quest.finish-refused": "没在进行的任务被要求完成或失败;由 DreamNarrative.Quest.Refusals 覆盖"
   }
 }

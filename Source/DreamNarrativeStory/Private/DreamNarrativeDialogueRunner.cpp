@@ -315,10 +315,19 @@ void UDreamNarrativeDialogueRunner::Run()
 		case EDnaOpCode::Accept:
 		case EDnaOpCode::Complete:
 		case EDnaOpCode::Fail:
-			// Quests are not implemented yet; the command is recorded so a transcript shows it happened.
 			++PC;
 			Transcript.Add(FString::Printf(TEXT("[%s %s]"),
 				Ins.Op == EDnaOpCode::Accept ? TEXT("accept") : Ins.Op == EDnaOpCode::Complete ? TEXT("complete") : TEXT("fail"), *Ins.Name.ToString()));
+			if (Story)
+			{
+				Story->RequestQuest(Ins.Op == EDnaOpCode::Accept ? EDnaQuestRequest::Accept : Ins.Op == EDnaOpCode::Complete ? EDnaQuestRequest::Complete : EDnaQuestRequest::Fail,
+					Ins.Name, EDnaWriteSource::Narrative);
+				// A quest's own blocks may have ended this dialogue.
+				if (State == EDnaRunnerState::Ended)
+				{
+					return;
+				}
+			}
 			continue;
 		case EDnaOpCode::Advance:
 			++PC;
