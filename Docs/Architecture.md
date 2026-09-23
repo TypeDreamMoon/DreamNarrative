@@ -164,3 +164,10 @@ fact key 集中声明,并标明归谁写 —— 叙事侧写的,还是游戏系�
   比较、只往一个方向变的数在最远的比较边界封顶;默认查运行时报错、对话停不下来与走不出去、存读档、不可达内容,
   性质有 `always` `eventually` `softlock`,每个失败附一个贴进文件就能复现的块(DNS51xx、DNS9201)。为此账本的
   抽取可以交给外部来源(`IDnaRandomSource`),runner 可以重复启动。
+- 2026-09-24 录制回放。游戏里 `dn.record start 名字` … `dn.record stop` 把期间发生的事写成 test 块,放在内容根的
+  `Tests/Recorded/`:开始时账本里不是默认值的一切写成 `given`,每次和角色说话、开对话、游戏写 fact、传送写成步骤,
+  看到的台词按宽松匹配写在下面,抽取原样写成 `rolls`,结束时变了的 fact 与章节写成 `expect`。为此 `given` 能写整份
+  起点(`visited(对话) = n`、`once #选项`、`chapter = 章节`,章节最后设,开头的 given 不触发推进规则);运行时加了
+  观察用的通知(要说话、要开对话、选了哪个选项、谁写了哪个 fact、传送),录制器不占用 trace 的单一插槽。内容根
+  `Tests/` 下的 test 块注册为 `DreamNarrative.Project.*`;录制的回放变红时用同样的输入再录一遍写成 `.actual`,报告
+  逐行差异,确认无误就拿它替换原文件。
