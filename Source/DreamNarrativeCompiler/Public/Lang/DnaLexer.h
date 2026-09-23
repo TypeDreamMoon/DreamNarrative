@@ -141,4 +141,7 @@ namespace UE::DreamNarrative::Lang
 	 *   DNS1005  a character the tokenizer cannot place (emitted as Unknown so the parser fails there)
 	 */
 	DREAMNARRATIVECOMPILER_API void TokenizeDnaSegment(const FDnaSourceText& Source, int32 Offset, int32 Length, TArray<FDnaToken>& OutTokens, FDnaDiagnosticSink& Diagnostics);
+
+	/** True, with the seconds, when Text is one duration such as `20m`, `1.5s` or `300ms` and nothing else. */
+	DREAMNARRATIVECOMPILER_API bool TryParseDnaDuration(const FString& Text, double& OutSeconds);
 }

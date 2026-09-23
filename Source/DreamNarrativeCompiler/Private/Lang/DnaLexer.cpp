@@ -527,6 +527,20 @@ namespace UE::DreamNarrative::Lang
 
 		PushToken(OutTokens, Source, EDnaTokenKind::EndOfInput, Cursor.End, 0);
 	}
+
+	bool TryParseDnaDuration(const FString& Text, double& OutSeconds)
+	{
+		const FDnaSourceText Source(TEXT("<duration>"), Text.TrimStartAndEnd());
+		TArray<FDnaToken> Tokens;
+		FDnaDiagnosticSink Scratch;
+		TokenizeDnaSegment(Source, 0, Source.Len(), Tokens, Scratch);
+		if (Tokens.Num() != 2 || !Tokens[0].Is(EDnaTokenKind::Duration) || Scratch.HasErrors())
+		{
+			return false;
+		}
+		OutSeconds = Tokens[0].Real;
+		return true;
+	}
 }
 
 #undef LOCTEXT_NAMESPACE

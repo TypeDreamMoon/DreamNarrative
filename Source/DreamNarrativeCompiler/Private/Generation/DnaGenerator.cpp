@@ -3,9 +3,11 @@
 #include "Generation/DnaGenerator.h"
 #include "DreamNarrativeCompilerModule.h"
 #include "DreamNarrativeDialogue.h"
+#include "DreamNarrativeQuest.h"
 #include "DreamNarrativeScript.h"
 #include "DreamNarrativeSettings.h"
 #include "Generation/DnaExprCompiler.h"
+#include "Lang/DnaLexer.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 #include "UObject/Package.h"
@@ -64,6 +66,155 @@ namespace UE::DreamNarrative::Lang
 #else
 			return FText::FromString(Source);
 #endif
+		}
+
+		/** One command line (`set`, `accept`, `play`, ...) as an instruction at the end of Code. */
+		void AppendCommand(TArray<FDnaInstruction>& Code, const FDnaLineNode& Line, FDnaExprCompiler& Exprs, const FDnaProgram& Program)
+		{
+			const FDnaLinePayload& P = Line.Payload;
+			FDnaInstruction& Ins = Code.AddDefaulted_GetRef();
+			Ins.SourceLine = Line.LineNumber();
+			Ins.Name = FName(*P.Name);
+			switch (P.Command)
+			{
+			case EDnaCommandKind::Set:
+				Ins.Op = EDnaOpCode::Set;
+				Ins.Expr = Exprs.CompileValueFor(P.Expr, Program.FindFact(P.Name));
+				Ins.Assign = P.AssignOp == EDnaTokenKind::PlusAssign ? EDnaAssignOp::Add
+					: P.AssignOp == EDnaTokenKind::MinusAssign ? EDnaAssignOp::Sub : EDnaAssignOp::Set;
+				break;
+			case EDnaCommandKind::Accept: Ins.Op = EDnaOpCode::Accept; break;
+			case EDnaCommandKind::Complete: Ins.Op = EDnaOpCode::Complete; break;
+			case EDnaCommandKind::Fail: Ins.Op = EDnaOpCode::Fail; break;
+			case EDnaCommandKind::Advance: Ins.Op = EDnaOpCode::Advance; break;
+			case EDnaCommandKind::Emit: Ins.Op = EDnaOpCode::Emit; break;
+			case EDnaCommandKind::Play:
+				Ins.Op = EDnaOpCode::Play;
+				Ins.bAsync = P.bAsync;
+				break;
+			case EDnaCommandKind::Wait:
+				Ins.Op = EDnaOpCode::Wait;
+				Ins.Name = NAME_None;
+				Ins.Seconds = static_cast<float>(P.Seconds);
+				break;
+			default:
+				Code.Pop();
+				break;
+			}
+		}
+
+		FDnaQuestText MakeQuestText(const FDnaText& Text, FDnaExprCompiler& Exprs, const FString& Namespace, const FString& Key)
+		{
+			FTextBuilder Builder;
+			Builder.Append(Text, Exprs);
+			FDnaQuestText Out;
+			Out.Text = MakeLocalizable(Namespace, Key, Builder.Pattern);
+			Out.Args = MoveTemp(Builder.Args);
+			return Out;
+		}
+
+		/** A quest's rules, from its block. Validation already checked every name and value. */
+		void CompileQuest(const FDnaLineNode& Root, FDnaQuestData& Out, FDnaExprCompiler& Exprs, const FDnaProgram& Program, const FString& Namespace)
+		{
+			const FDnaLinePayload& P = Root.Payload;
+			const FString Key = TEXT("quest.") + P.Name;
+			Out.Name = FName(*P.Name);
+			Out.Title = FText::FromString(P.Name);
+			Out.SourceLine = Root.LineNumber();
+			Out.WasName = P.WasName.IsEmpty() ? NAME_None : FName(*P.WasName);
+
+			TArray<FDnaLineNode*> Lines;
+			Root.GetContentChildren(Lines);
+			for (const FDnaLineNode* Line : Lines)
+			{
+				const FDnaLinePayload& L = Line->Payload;
+				TArray<FDnaLineNode*> Children;
+				Line->GetContentChildren(Children);
+				switch (Line->Kind)
+				{
+				case EDnaLineKind::Property:
+					if (L.Name == TEXT("title"))
+					{
+						Out.Title = MakeLocalizable(Namespace, Key + TEXT(".title"), L.Value);
+					}
+					else if (L.Name == TEXT("priority"))
+					{
+						Out.Priority = L.Value == TEXT("main") ? EDnaQuestPriority::Main : L.Value == TEXT("hidden") ? EDnaQuestPriority::Hidden : EDnaQuestPriority::Side;
+					}
+					else if (L.Name == TEXT("timeout"))
+					{
+						double Seconds = 0.0;
+						Out.Timeout = TryParseDnaDuration(L.Value, Seconds) ? static_cast<float>(Seconds) : 0.f;
+					}
+					break;
+				case EDnaLineKind::Flag:
+					Out.bTrack |= L.Name == TEXT("track");
+					break;
+				case EDnaLineKind::Available:
+					Out.Available = Exprs.Compile(L.Condition);
+					break;
+				case EDnaLineKind::FailIf:
+					Out.FailIf = Exprs.Compile(L.Condition);
+					break;
+				case EDnaLineKind::Journal:
+					for (const FDnaLineNode* Entry : Children)
+					{
+						if (Entry->Kind != EDnaLineKind::Property) { continue; }
+						const FString& Which = Entry->Payload.Name;
+						FDnaQuestText* Slot = Which == TEXT("accepted") ? &Out.JournalAccepted : Which == TEXT("going") ? &Out.JournalGoing
+							: Which == TEXT("completed") ? &Out.JournalCompleted : Which == TEXT("failed") ? &Out.JournalFailed : nullptr;
+						if (Slot)
+						{
+							*Slot = MakeQuestText(Entry->Payload.Text, Exprs, Namespace, Key + TEXT(".journal.") + Which);
+						}
+					}
+					break;
+				case EDnaLineKind::Objective:
+				{
+					FDnaObjectiveData& Objective = Out.Objectives.AddDefaulted_GetRef();
+					Objective.Condition = Exprs.Compile(L.Condition);
+					Objective.bOptional = L.bOptional;
+					Objective.SourceLine = Line->LineNumber();
+					for (const FDnaLineNode* Entry : Children)
+					{
+						if (Entry->Kind == EDnaLineKind::Property && Entry->Payload.Name == TEXT("show"))
+						{
+							Objective.Show = MakeQuestText(Entry->Payload.Text, Exprs, Namespace, FString::Printf(TEXT("%s.objective%d"), *Key, Out.Objectives.Num()));
+						}
+					}
+					break;
+				}
+				case EDnaLineKind::On:
+				{
+					FDnaQuestHandlerData& Handler = L.OnKind == EDnaOnKind::Accept ? Out.OnAccept : L.OnKind == EDnaOnKind::Complete ? Out.OnComplete
+						: L.OnKind == EDnaOnKind::Fail ? Out.OnFail : Out.OnTimeout;
+					for (const FDnaLineNode* Entry : Children)
+					{
+						if (Entry->Kind == EDnaLineKind::Reward)
+						{
+							FDnaReward& Reward = Handler.Rewards.AddDefaulted_GetRef();
+							Reward.Category = FName(*Entry->Payload.RewardCategory);
+							Reward.Item = Entry->Payload.RewardItem.IsEmpty() ? NAME_None : FName(*Entry->Payload.RewardItem);
+							Reward.Amount = Entry->Payload.RewardAmount;
+						}
+						else if (Entry->Kind == EDnaLineKind::Command)
+						{
+							AppendCommand(Handler.Code, *Entry, Exprs, Program);
+						}
+					}
+					break;
+				}
+				case EDnaLineKind::Subquest:
+				{
+					FDnaSubquestData& Subquest = Out.Subquests.AddDefaulted_GetRef();
+					Subquest.Quest = FName(*L.Name);
+					Subquest.bAuto = L.bAuto;
+					break;
+				}
+				default:
+					break;
+				}
+			}
 		}
 
 		class FDialogueCompiler
@@ -269,36 +420,7 @@ namespace UE::DreamNarrative::Lang
 
 			void CompileCommand(const FDnaLineNode& Line)
 			{
-				const FDnaLinePayload& P = Line.Payload;
-				switch (P.Command)
-				{
-				case EDnaCommandKind::Set:
-				{
-					FDnaInstruction& Ins = At(Emit(EDnaOpCode::Set, Line.LineNumber()));
-					Ins.Name = FName(*P.Name);
-					Ins.Expr = Exprs.CompileValueFor(P.Expr, Program.FindFact(P.Name));
-					Ins.Assign = P.AssignOp == EDnaTokenKind::PlusAssign ? EDnaAssignOp::Add
-						: P.AssignOp == EDnaTokenKind::MinusAssign ? EDnaAssignOp::Sub : EDnaAssignOp::Set;
-					break;
-				}
-				case EDnaCommandKind::Accept: At(Emit(EDnaOpCode::Accept, Line.LineNumber())).Name = FName(*P.Name); break;
-				case EDnaCommandKind::Complete: At(Emit(EDnaOpCode::Complete, Line.LineNumber())).Name = FName(*P.Name); break;
-				case EDnaCommandKind::Fail: At(Emit(EDnaOpCode::Fail, Line.LineNumber())).Name = FName(*P.Name); break;
-				case EDnaCommandKind::Advance: At(Emit(EDnaOpCode::Advance, Line.LineNumber())).Name = FName(*P.Name); break;
-				case EDnaCommandKind::Emit: At(Emit(EDnaOpCode::Emit, Line.LineNumber())).Name = FName(*P.Name); break;
-				case EDnaCommandKind::Play:
-				{
-					FDnaInstruction& Ins = At(Emit(EDnaOpCode::Play, Line.LineNumber()));
-					Ins.Name = FName(*P.Name);
-					Ins.bAsync = P.bAsync;
-					break;
-				}
-				case EDnaCommandKind::Wait:
-					At(Emit(EDnaOpCode::Wait, Line.LineNumber())).Seconds = static_cast<float>(P.Seconds);
-					break;
-				default:
-					break;
-				}
+				AppendCommand(Data->Code, Line, Exprs, Program);
 			}
 		};
 
@@ -437,6 +559,39 @@ namespace UE::DreamNarrative::Lang
 						Rule.ConditionExpr = Exprs.Compile(Line->Payload.Condition);
 					}
 				}
+			}
+
+			// -- quests: the rules in a section, the state in two facts each
+			TArray<FDnaLineNode*> QuestRoots;
+			Document.GetRootsOfKind(EDnaLineKind::Quest, QuestRoots);
+			if (QuestRoots.Num() > 0)
+			{
+				UDnaQuestSection* Section = NewObject<UDnaQuestSection>(Script, NAME_None, Options.bTransient ? RF_Transient : RF_NoFlags);
+				for (const FDnaLineNode* Root : QuestRoots)
+				{
+					FDnaQuestData& Quest = Section->Quests.AddDefaulted_GetRef();
+					CompileQuest(*Root, Quest, Exprs, Program, Namespace);
+
+					FDnaFactDecl& State = Script->Facts.AddDefaulted_GetRef();
+					State.Name = ::DreamNarrative::QuestStateFact(Quest.Name);
+					State.Type = EDnaFactType::Tag;
+					State.Owner = EDnaFactOwner::Narrative;
+					for (const EDnaQuestState Each : { EDnaQuestState::Inactive, EDnaQuestState::Accepted, EDnaQuestState::Going,
+						EDnaQuestState::Completed, EDnaQuestState::Failed, EDnaQuestState::TimedOut })
+					{
+						State.Domain.Add(::DreamNarrative::QuestStateMember(Each));
+					}
+					State.Default = FDnaValue::FromTag(::DreamNarrative::QuestStateMember(EDnaQuestState::Inactive));
+					State.WasName = Quest.WasName.IsNone() ? NAME_None : ::DreamNarrative::QuestStateFact(Quest.WasName);
+
+					FDnaFactDecl& Done = Script->Facts.AddDefaulted_GetRef();
+					Done.Name = ::DreamNarrative::QuestObjectivesFact(Quest.Name);
+					Done.Type = EDnaFactType::Int;
+					Done.Owner = EDnaFactOwner::Narrative;
+					Done.Default = FDnaValue::FromInt(0);
+					Done.WasName = Quest.WasName.IsNone() ? NAME_None : ::DreamNarrative::QuestObjectivesFact(Quest.WasName);
+				}
+				Script->Sections.Add(Section);
 			}
 
 			// -- dialogue
