@@ -1,6 +1,7 @@
 // Copyright DreamMoon. All Rights Reserved.
 
 #include "Spec/DnaTestBlocks.h"
+#include "DreamNarrativeDialogue.h"
 #include "DreamNarrativeDialogueRunner.h"
 #include "DreamNarrativeLedger.h"
 #include "DreamNarrativeStory.h"
@@ -64,6 +65,25 @@ namespace UE::DreamNarrative::Tests
 				return FString::Printf(TEXT("%s(%d)"), *File, Node.LineNumber());
 			}
 
+			bool IsOnceChoice(FName Id) const
+			{
+				for (const TObjectPtr<UDreamNarrativeScript>& Script : World.GetScripts())
+				{
+					const UDnaDialogueSection* Dialogue = Script ? Script->FindSection<UDnaDialogueSection>() : nullptr;
+					for (const FDnaDialogueNodeData& Node : Dialogue ? Dialogue->Nodes : TArray<FDnaDialogueNodeData>())
+					{
+						for (const FDnaChoiceGroupData& Group : Node.ChoiceGroups)
+						{
+							if (Group.Options.ContainsByPredicate([Id](const FDnaChoiceData& Option) { return Option.bOnce && Option.Id == Id; }))
+							{
+								return true;
+							}
+						}
+					}
+				}
+				return false;
+			}
+
 			bool RunStep(const FDnaLineNode& Step)
 			{
 				const FDnaLinePayload& P = Step.Payload;
@@ -75,17 +95,53 @@ namespace UE::DreamNarrative::Tests
 
 				case EDnaTestStepKind::Given:
 				{
+					// Facts first, then visits and once-choices, the chapter last: setting a chapter runs no
+					// advance rule, so a test that starts with a given starts exactly there.
 					bool bOk = true;
 					TArray<FDnaLineNode*> Entries;
 					Step.GetContentChildren(Entries);
+					const FDnaLineNode* Chapter = nullptr;
 					for (const FDnaLineNode* Entry : Entries)
 					{
-						if (Entry->Kind != EDnaLineKind::Implication) { continue; }
 						World.SetContext(Where(*Entry));
-						FDnaValue Value;
-						bOk &= World.EvaluateValueFor(Entry->Payload.Expr, Entry->Payload.Name, Value) && World.Given(FName(*Entry->Payload.Name), Value);
+						const FDnaLinePayload& E = Entry->Payload;
+						if (Entry->Kind == EDnaLineKind::Implication)
+						{
+							FDnaValue Value;
+							bOk &= World.EvaluateValueFor(E.Expr, E.Name, Value) && World.Given(FName(*E.Name), Value);
+						}
+						else if (Entry->Kind != EDnaLineKind::TestStep)
+						{
+							continue;
+						}
+						else if (E.TestStep == EDnaTestStepKind::GivenVisited)
+						{
+							World.Ledger().SetVisited(FName(*E.Target), E.Count);
+						}
+						else if (E.TestStep == EDnaTestStepKind::GivenOnce)
+						{
+							if (IsOnceChoice(FName(*E.Target)))
+							{
+								World.Ledger().MarkChosenOnce(FName(*E.Target));
+							}
+							else
+							{
+								World.ReportError(FString::Printf(TEXT("given: no dialogue has a once-choice #%s"), *E.Target));
+								bOk = false;
+							}
+						}
+						else if (E.TestStep == EDnaTestStepKind::GivenChapter)
+						{
+							Chapter = Entry;
+						}
 					}
-					return bOk;
+					if (Chapter)
+					{
+						World.SetContext(Where(*Chapter));
+						bOk &= World.Ledger().SetChapter(FName(*Chapter->Payload.Target));
+					}
+					World.SetContext(Where(Step));
+					return World.FinishStep(TEXT("given"), bOk);
 				}
 
 				case EDnaTestStepKind::Talk:

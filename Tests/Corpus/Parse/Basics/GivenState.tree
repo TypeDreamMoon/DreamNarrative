@@ -1,0 +1,7 @@
+3: Test 从中途开始
+4:   TestStep given
+5:     Implication 好感 = 2
+6:     TestStep visited(村长_初见) = 3
+7:     TestStep once #村长_派活.c1
+8:     TestStep chapter = 第二章
+9:   TestStep talk 村长

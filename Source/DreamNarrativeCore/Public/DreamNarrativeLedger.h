@@ -190,6 +190,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Dialogue")
 	void MarkVisited(FName Dialogue);
 
+	/** Sets a visit count outright, for tools that put the story in a given state. */
+	UFUNCTION(BlueprintCallable, Category = "Narrative|Dialogue")
+	void SetVisited(FName Dialogue, int32 Count);
+
 	UFUNCTION(BlueprintPure, Category = "Narrative|Dialogue")
 	bool WasChosenOnce(FName LineId) const { return ChosenOnce.Contains(LineId); }
 

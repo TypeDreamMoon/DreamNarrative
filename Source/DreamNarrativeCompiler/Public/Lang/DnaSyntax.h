@@ -120,7 +120,7 @@ namespace UE::DreamNarrative::Lang
 		None,
 		/** `seed n`. Payload.Seed. */
 		Seed,
-		/** `given`, a block of `fact = value` (Implication) lines. */
+		/** `given`, a block of `fact = value` (Implication) lines and GivenChapter / GivenVisited / GivenOnce lines. */
 		Given,
 		/** `talk 角色 [strict]`. Payload.Name, bStrict; children are expectations. */
 		Talk,
@@ -154,6 +154,12 @@ namespace UE::DreamNarrative::Lang
 		Eventually,
 		/** `softlock 条件或任务, ...` (explore): reachable from every state reached. Payload.Goals. */
 		Softlock,
+		/** Under `given`: `chapter = 章节`. Payload.Target. */
+		GivenChapter,
+		/** Under `given`: `visited(对话) = n`. Payload.Target, Count. */
+		GivenVisited,
+		/** Under `given`: `once #选项id`, a once-choice already taken. Payload.Target. */
+		GivenOnce,
 	};
 
 	/** The source keyword of a step: `seed`, `talk`, ...; `line`, `absent` and `pick` for the expectations. */
@@ -260,6 +266,8 @@ namespace UE::DreamNarrative::Lang
 		TArray<float> Rolls;
 		/** `depth n`. */
 		int32 Depth = 0;
+		/** `visited(x) = n` under `given`. */
+		int32 Count = 0;
 		/** `softlock`: one condition per goal, or a bare quest name standing for its completion. */
 		TArray<FDnaExprPtr> Goals;
 	};

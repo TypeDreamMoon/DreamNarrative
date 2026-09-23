@@ -1,0 +1,9 @@
+// given 的完整起点:fact 之外还有 visited、once 和章节。
+
+test 从中途开始
+  given
+    好感 = 2
+    visited(村长_初见) = 3
+    once #村长_派活.c1
+    chapter = 第二章
+  talk 村长

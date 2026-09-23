@@ -1,0 +1,12 @@
+character 甲
+chapter 开场
+
+dialogue 问候 for 甲
+  甲: 你好。
+
+test 起点写错
+  given
+    chapter = 不存在的章
+// EXPECT DNS3009 (9,5)
+    visited(不存在的对话) = 1
+// EXPECT DNS3003 (11,5)

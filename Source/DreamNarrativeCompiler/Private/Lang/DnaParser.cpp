@@ -33,6 +33,8 @@ namespace UE::DreamNarrative::Lang
 			Explore,
 			/** The expectations under a test's `talk` or `start`. */
 			TestDialogue,
+			/** The entries of a test's `given`: facts, and the chapter, visits and once-choices of a starting state. */
+			Given,
 		};
 
 		enum class EModifierSet : uint8
@@ -371,6 +373,7 @@ namespace UE::DreamNarrative::Lang
 				case EContext::Test: ClassifyTestStep(Node, /*bExplore=*/false); break;
 				case EContext::Explore: ClassifyTestStep(Node, /*bExplore=*/true); break;
 				case EContext::TestDialogue: ClassifyTestExpectation(Node); break;
+				case EContext::Given: ClassifyGivenEntry(Node); break;
 				}
 			}
 
@@ -1530,7 +1533,7 @@ namespace UE::DreamNarrative::Lang
 					BeginStep(EDnaTestStepKind::Given);
 					ExpectEnd(Tokens, 1);
 					RequireBody(Node);
-					ClassifyChildren(Node, EContext::Implied);
+					ClassifyChildren(Node, EContext::Given);
 					return;
 				}
 				if (Word == TEXT("talk") || Word == TEXT("start"))
@@ -1727,6 +1730,73 @@ namespace UE::DreamNarrative::Lang
 					}
 					++Index;
 				}
+			}
+
+			/** Under `given`: `fact = value`, or `chapter = 章节`, `visited(对话) = n`, `once #选项id`. */
+			void ClassifyGivenEntry(FDnaLineNode& Node)
+			{
+				const FString& Content = Node.Raw.Content;
+				const FString Word = FirstWord(Content);
+				FDnaLinePayload& P = Node.Payload;
+				if (Word == TEXT("once"))
+				{
+					Node.Kind = EDnaLineKind::TestStep;
+					P.TestStep = EDnaTestStepKind::GivenOnce;
+					const int32 Hash = SkipSpaces(Content, 4);
+					if (Hash >= Content.Len() || NormalizeDnaPunctuation(Content[Hash]) != TEXT('#'))
+					{
+						Fail(TEXT("DNS2007"), SpanOf(Node, FMath::Min(Hash, Content.Len()), 1), LOCTEXT("OnceId", "Expected '#' and a choice id after 'once'"));
+					}
+					else
+					{
+						ParseLineIdReference(Node, Hash + 1, LOCTEXT("OnceChoiceId", "a choice id after '#'"));
+					}
+					RequireNoChildren(Node);
+					return;
+				}
+				if (Word != TEXT("chapter") && Word != TEXT("visited"))
+				{
+					ClassifyImplication(Node);
+					return;
+				}
+				Node.Kind = EDnaLineKind::TestStep;
+				TArray<FDnaToken> Tokens;
+				Tokenize(Node, 0, Tokens);
+				int32 Index = 1;
+				if (Word == TEXT("chapter"))
+				{
+					P.TestStep = EDnaTestStepKind::GivenChapter;
+					if (!Tokens[Index].Is(EDnaTokenKind::Assign))
+					{
+						Fail(TEXT("DNS2007"), Tokens[Index].Span, LOCTEXT("GivenChapterAssign", "Expected '=' after 'chapter'"));
+					}
+					else if (ExpectIdentifier(Tokens, ++Index, LOCTEXT("GivenChapterName", "a chapter name"), P.Target))
+					{
+						ExpectEnd(Tokens, Index);
+					}
+				}
+				else
+				{
+					P.TestStep = EDnaTestStepKind::GivenVisited;
+					if (!Tokens[Index].Is(EDnaTokenKind::LeftParen))
+					{
+						Fail(TEXT("DNS2007"), Tokens[Index].Span, LOCTEXT("GivenVisitedParen", "Expected '(' and a dialogue name after 'visited'"));
+					}
+					else if (ExpectIdentifier(Tokens, ++Index, LOCTEXT("GivenVisitedName", "a dialogue name"), P.Target))
+					{
+						if (!Tokens[Index].Is(EDnaTokenKind::RightParen) || !Tokens[Index + 1].Is(EDnaTokenKind::Assign)
+							|| !Tokens[Index + 2].Is(EDnaTokenKind::Int) || Tokens[Index + 2].Integer < 0)
+						{
+							Fail(TEXT("DNS2007"), Tokens[Index].Span, LOCTEXT("GivenVisitedCount", "Expected ') = ' and a whole number of visits"));
+						}
+						else
+						{
+							P.Count = static_cast<int32>(Tokens[Index + 2].Integer);
+							ExpectEnd(Tokens, Index + 3);
+						}
+					}
+				}
+				RequireNoChildren(Node);
 			}
 
 			/** Under a test's `talk` / `start`: a choice to take, or a line that must (not) be shown. */

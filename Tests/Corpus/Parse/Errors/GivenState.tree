@@ -1,0 +1,6 @@
+1: Test 写错的起点
+2:   TestStep given
+3:     TestStep chapter =
+5:     TestStep visited() = 0
+7:     TestStep visited(村长) = 0
+9:     TestStep once #

@@ -185,6 +185,16 @@ namespace UE::DreamNarrative::Lang
 						Step->GetContentChildren(Entries);
 						for (const FDnaLineNode* Entry : Entries)
 						{
+							if (Entry->Kind == EDnaLineKind::TestStep && Entry->Payload.TestStep == EDnaTestStepKind::GivenChapter)
+							{
+								RequireChapter(Entry->Payload.Target, Entry->Raw.Span);
+								continue;
+							}
+							if (Entry->Kind == EDnaLineKind::TestStep && Entry->Payload.TestStep == EDnaTestStepKind::GivenVisited)
+							{
+								RequireDialogue(Entry->Payload.Target, Entry->Raw.Span);
+								continue;
+							}
 							if (Entry->Kind != EDnaLineKind::Implication) { continue; }
 							if (const FDnaFactInfo* Fact = RequireFact(Entry->Payload.Name, Entry->Raw.Span))
 							{

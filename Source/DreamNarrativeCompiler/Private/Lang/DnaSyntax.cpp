@@ -77,6 +77,9 @@ namespace UE::DreamNarrative::Lang
 		case EDnaTestStepKind::Always: return TEXT("always");
 		case EDnaTestStepKind::Eventually: return TEXT("eventually");
 		case EDnaTestStepKind::Softlock: return TEXT("softlock");
+		case EDnaTestStepKind::GivenChapter: return TEXT("chapter");
+		case EDnaTestStepKind::GivenVisited: return TEXT("visited");
+		case EDnaTestStepKind::GivenOnce: return TEXT("once");
 		}
 		return TEXT("?");
 	}
@@ -381,6 +384,9 @@ namespace UE::DreamNarrative::Lang
 					for (const float Roll : P.Rolls) { Detail += FString::Printf(TEXT(" %.9g"), Roll); }
 					break;
 				case EDnaTestStepKind::Depth: Detail += FString::Printf(TEXT(" %d"), P.Depth); break;
+				case EDnaTestStepKind::GivenChapter: Detail += TEXT(" = ") + P.Target; break;
+				case EDnaTestStepKind::GivenVisited: Detail += FString::Printf(TEXT("(%s) = %d"), *P.Target, P.Count); break;
+				case EDnaTestStepKind::GivenOnce: Detail += TEXT(" #") + P.Target; break;
 				case EDnaTestStepKind::Always:
 				case EDnaTestStepKind::Eventually: Detail += TEXT(" ") + ExprText(P.Condition); break;
 				case EDnaTestStepKind::Softlock:

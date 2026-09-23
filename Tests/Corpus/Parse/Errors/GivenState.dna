@@ -1,0 +1,10 @@
+test 写错的起点
+  given
+    chapter 第二章
+// EXPECT DNS2007 (3,13)
+    visited 村长 = 1
+// EXPECT DNS2007 (5,13)
+    visited(村长) = 多
+// EXPECT DNS2007 (7,15)
+    once 村长_派活.c1
+// EXPECT DNS2007 (9,10)

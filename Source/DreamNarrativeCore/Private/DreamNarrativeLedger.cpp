@@ -368,6 +368,18 @@ void UDreamNarrativeLedger::MarkVisited(FName Dialogue)
 	++VisitCounts.FindOrAdd(Dialogue);
 }
 
+void UDreamNarrativeLedger::SetVisited(FName Dialogue, int32 Count)
+{
+	if (Count > 0)
+	{
+		VisitCounts.Add(Dialogue, Count);
+	}
+	else
+	{
+		VisitCounts.Remove(Dialogue);
+	}
+}
+
 void UDreamNarrativeLedger::EmitEvent(FName Event)
 {
 	OnEvent.Broadcast(Event);

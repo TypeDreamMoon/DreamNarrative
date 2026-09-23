@@ -1,5 +1,5 @@
-// test 块的每一种步骤都走一遍:seed、given、talk 与 start(宽松、strict)、按文字与按 id 选项、absent、
-// 带插值的期望行、续行、set extern(= += -=)、wait、jump、save。
+// test 块的每一种步骤都走一遍:seed、given(连同 visited、once、章节)、talk 与 start(宽松、strict)、
+// 按文字与按 id 选项、absent、带插值的期望行、续行、set extern(= += -=)、wait、jump、save。
 
 character 甲
 character 乙
@@ -31,6 +31,15 @@ dialogue 甲_熟人 for 甲 if 好感 >= 5
 dialogue 乙_掷骰
   set 骰子 = random(1, 6)
   乙: 掷出了 {骰子}。
+
+dialogue 乙_问路 for 乙
+  if visited(乙_问路) == 0
+    乙: 第一次来?
+  else
+    乙: 又是你。
+  - 问路 once
+      乙: 往东。
+  - 算了
 
 test 宽松匹配与按文字选
   talk 甲
@@ -81,3 +90,16 @@ test 随机带种子
   seed 42
   start 乙_掷骰
   expect 骰子 >= 1 and 骰子 <= 6
+
+// 章节最后设,而且设章节不补 implied:好感还是 1,不是「后来」的 5。
+test 起点写出整份快照
+  given
+    visited(乙_问路) = 2
+    once #乙_问路.c1
+    chapter = 后来
+    好感 = 1
+  expect chapter == 后来 and visited(乙_问路) == 2 and 好感 == 1
+  talk 乙
+    乙: 又是你。
+    absent - 问路
+    - 算了
