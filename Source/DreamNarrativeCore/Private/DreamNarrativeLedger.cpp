@@ -366,20 +366,25 @@ FDnaLedgerSnapshot UDreamNarrativeLedger::MakeSnapshot() const
 
 void UDreamNarrativeLedger::ApplySnapshot(const FDnaLedgerSnapshot& Snapshot)
 {
-	FBatchScope Batch(*this);
-	ResetToDefaults();
-	for (const FDnaFactSnapshotEntry& Entry : Snapshot.Facts)
 	{
-		const FName Name = Resolve(Entry.Fact);
-		if (!FactDecls.Contains(Name))
+		FBatchScope Batch(*this);
+		ResetToDefaults();
+		for (const FDnaFactSnapshotEntry& Entry : Snapshot.Facts)
 		{
-			UE_LOG(LogDreamNarrative, Warning, TEXT("ApplySnapshot: fact '%s' is no longer declared; its value was dropped"), *Entry.Fact.ToString());
-			continue;
+			const FName Name = Resolve(Entry.Fact);
+			if (!FactDecls.Contains(Name))
+			{
+				UE_LOG(LogDreamNarrative, Warning, TEXT("ApplySnapshot: fact '%s' is no longer declared; its value was dropped"), *Entry.Fact.ToString());
+				continue;
+			}
+			SetFact(Name, Entry.Value, EDnaWriteSource::Narrative);
 		}
-		SetFact(Name, Entry.Value, EDnaWriteSource::Narrative);
+		VisitCounts = Snapshot.Visited;
+		ChosenOnce = TSet<FName>(Snapshot.ChosenOnce);
 	}
-	VisitCounts = Snapshot.Visited;
-	ChosenOnce = TSet<FName>(Snapshot.ChosenOnce);
+	// Set after the batch has committed, while no chapter is current, so no advance rule runs: loading
+	// a save restores the chapter it was saved in. A rule it satisfies runs at the next write, as it
+	// would have before the save.
 	if (!Snapshot.Chapter.IsNone())
 	{
 		SetChapter(Snapshot.Chapter);
