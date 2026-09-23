@@ -4,6 +4,7 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "DreamNarrativeSettings.h"
 #include "DreamNarrativeStoryModule.h"
+#include "DreamNarrativeTrace.h"
 #include "Engine/GameInstance.h"
 
 void UDreamNarrativeStory::Initialize(FSubsystemCollectionBase& Collection)
@@ -128,13 +129,17 @@ UDreamNarrativeDialogueRunner* UDreamNarrativeStory::StartDialogue(FName Node)
 
 FName UDreamNarrativeStory::SelectEntry(FName Character) const
 {
+	IDnaTrace* Tracer = Ledger ? Ledger->GetTrace() : nullptr;
 	const TArray<FName>* Entries = EntriesByCharacter.Find(Character);
 	if (!Entries || !Ledger)
 	{
+		if (Tracer) { Tracer->OnEvent(TEXT("dialogue.entry.none")); }
 		return NAME_None;
 	}
 	FName Best;
 	int32 BestPriority = INT_MIN;
+	const FDnaDialogueNodeData* BestNode = nullptr;
+	TArray<const FDnaDialogueNodeData*, TInlineAllocator<8>> Applicable;
 	for (const FName& Name : *Entries)
 	{
 		const UDnaDialogueSection* Section = nullptr;
@@ -145,10 +150,32 @@ FName UDreamNarrativeStory::SelectEntry(FName Character) const
 			const FDnaCompiledExpr* Condition = Section->GetScript() ? Section->GetScript()->GetExpression(Node->Condition) : nullptr;
 			if (!Condition || !Ledger->EvaluateCondition(*Condition)) { continue; }
 		}
+		Applicable.Add(Node);
 		if (Node->Priority > BestPriority)
 		{
 			Best = Name;
 			BestPriority = Node->Priority;
+			BestNode = Node;
+		}
+	}
+	if (Tracer)
+	{
+		if (!BestNode)
+		{
+			Tracer->OnEvent(TEXT("dialogue.entry.none"));
+		}
+		else
+		{
+			Tracer->OnEvent(BestNode->Condition != INDEX_NONE ? TEXT("dialogue.entry.conditional") : TEXT("dialogue.entry.fallback"));
+			if (BestNode->bExplicitPriority) { Tracer->OnEvent(TEXT("dialogue.entry.explicit-priority")); }
+			for (const FDnaDialogueNodeData* Other : Applicable)
+			{
+				if (Other != BestNode)
+				{
+					// Equal priority loses to the one declared first; lower priority simply loses.
+					Tracer->OnEvent(Other->Priority == BestPriority ? TEXT("dialogue.entry.tie") : TEXT("dialogue.entry.outranked"));
+				}
+			}
 		}
 	}
 	return Best;

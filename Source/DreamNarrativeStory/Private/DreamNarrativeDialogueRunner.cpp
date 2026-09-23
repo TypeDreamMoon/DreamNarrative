@@ -4,6 +4,69 @@
 #include "DreamNarrativeLedger.h"
 #include "DreamNarrativeStory.h"
 #include "DreamNarrativeStoryModule.h"
+#include "DreamNarrativeTrace.h"
+
+namespace
+{
+	const TCHAR* OpEvent(EDnaOpCode Op)
+	{
+		switch (Op)
+		{
+		case EDnaOpCode::Line: return TEXT("dialogue.op.Line");
+		case EDnaOpCode::Choice: return TEXT("dialogue.op.Choice");
+		case EDnaOpCode::Jump: return TEXT("dialogue.op.Jump");
+		case EDnaOpCode::JumpIfFalse: return TEXT("dialogue.op.JumpIfFalse");
+		case EDnaOpCode::Set: return TEXT("dialogue.op.Set");
+		case EDnaOpCode::Accept: return TEXT("dialogue.op.Accept");
+		case EDnaOpCode::Complete: return TEXT("dialogue.op.Complete");
+		case EDnaOpCode::Fail: return TEXT("dialogue.op.Fail");
+		case EDnaOpCode::Advance: return TEXT("dialogue.op.Advance");
+		case EDnaOpCode::Play: return TEXT("dialogue.op.Play");
+		case EDnaOpCode::Emit: return TEXT("dialogue.op.Emit");
+		case EDnaOpCode::Wait: return TEXT("dialogue.op.Wait");
+		case EDnaOpCode::GoTo: return TEXT("dialogue.op.GoTo");
+		case EDnaOpCode::End: return TEXT("dialogue.op.End");
+		}
+		return TEXT("dialogue.op.?");
+	}
+
+	/** `combo.<What>.<a>+<b>` for every pair of the modifiers present, in the order given. */
+	void TraceCombos(IDnaTrace& Tracer, const TCHAR* What, const TArray<const TCHAR*>& Present)
+	{
+		for (int32 First = 0; First < Present.Num(); ++First)
+		{
+			for (int32 Second = First + 1; Second < Present.Num(); ++Second)
+			{
+				Tracer.OnEvent(*FString::Printf(TEXT("combo.%s.%s+%s"), What, Present[First], Present[Second]));
+			}
+		}
+	}
+
+	void TraceShownLine(IDnaTrace& Tracer, const FDnaLineData& Line)
+	{
+		Tracer.OnEvent(Line.Speaker.IsNone() ? TEXT("dialogue.line.narration") : TEXT("dialogue.line.speech"));
+		TArray<const TCHAR*> Modifiers;
+		if (Line.Condition != INDEX_NONE) { Tracer.OnEvent(TEXT("dialogue.line.if")); Modifiers.Add(TEXT("if")); }
+		if (Line.Duration > 0.f) { Tracer.OnEvent(TEXT("dialogue.line.for")); Modifiers.Add(TEXT("for")); }
+		if (!Line.Stage.IsNone()) { Tracer.OnEvent(TEXT("dialogue.line.stage")); Modifiers.Add(TEXT("stage")); }
+		if (Line.bExplicitId) { Tracer.OnEvent(TEXT("dialogue.line.id")); Modifiers.Add(TEXT("id")); }
+		if (Line.TextArgs.Num() > 0) { Tracer.OnEvent(TEXT("dialogue.line.interpolated")); }
+		if (Line.Tags.Num() > 0) { Tracer.OnEvent(TEXT("dialogue.line.tags")); }
+		if (Line.Text.ToString().Contains(TEXT("\n"))) { Tracer.OnEvent(TEXT("dialogue.line.continued")); }
+		TraceCombos(Tracer, TEXT("line"), Modifiers);
+	}
+
+	void TraceShownOption(IDnaTrace& Tracer, const FDnaChoiceData& Option)
+	{
+		Tracer.OnEvent(TEXT("dialogue.choice.shown"));
+		TArray<const TCHAR*> Modifiers;
+		if (Option.Condition != INDEX_NONE) { Tracer.OnEvent(TEXT("dialogue.choice.if")); Modifiers.Add(TEXT("if")); }
+		if (Option.bOnce) { Tracer.OnEvent(TEXT("dialogue.choice.once")); Modifiers.Add(TEXT("once")); }
+		if (Option.bExplicitId) { Tracer.OnEvent(TEXT("dialogue.choice.id")); Modifiers.Add(TEXT("id")); }
+		if (Option.LabelArgs.Num() > 0) { Tracer.OnEvent(TEXT("dialogue.choice.interpolated")); }
+		TraceCombos(Tracer, TEXT("choice"), Modifiers);
+	}
+}
 
 bool UDreamNarrativeDialogueRunner::Start(UDreamNarrativeStory* InStory, UDreamNarrativeLedger* InLedger, const UDnaDialogueSection* InSection, FName InNode)
 {
@@ -100,9 +163,11 @@ void UDreamNarrativeDialogueRunner::Run()
 
 	while (PC >= 0 && PC < Node->Code.Num())
 	{
+		IDnaTrace* Tracer = Ledger->GetTrace();
 		if (--StepBudget <= 0)
 		{
 			UE_LOG(LogDreamNarrativeStory, Error, TEXT("Dialogue '%s' ran %d steps without yielding; aborting"), *NodeName.ToString(), 10000);
+			if (Tracer) { Tracer->OnEvent(TEXT("dialogue.runaway")); }
 			Finish();
 			return;
 		}
@@ -117,6 +182,10 @@ void UDreamNarrativeDialogueRunner::Run()
 				return;
 			}
 		}
+		if (Tracer)
+		{
+			Tracer->OnEvent(OpEvent(Ins.Op));
+		}
 		switch (Ins.Op)
 		{
 		case EDnaOpCode::Line:
@@ -125,7 +194,12 @@ void UDreamNarrativeDialogueRunner::Run()
 			++PC;
 			if (!Condition(Line.Condition))
 			{
+				if (Tracer) { Tracer->OnEvent(TEXT("dialogue.line.hidden")); }
 				continue;
+			}
+			if (Tracer)
+			{
+				TraceShownLine(*Tracer, Line);
 			}
 			CurrentLine = FDnaLineView();
 			CurrentLine.Id = Line.Id;
@@ -153,11 +227,17 @@ void UDreamNarrativeDialogueRunner::Run()
 				const FDnaChoiceData& Option = Group.Options[OptionIndex];
 				if (Option.bOnce && Ledger->WasChosenOnce(Option.Id))
 				{
+					if (Tracer) { Tracer->OnEvent(TEXT("dialogue.choice.once-hidden")); }
 					continue;
 				}
 				if (!Condition(Option.Condition))
 				{
+					if (Tracer) { Tracer->OnEvent(TEXT("dialogue.choice.if-hidden")); }
 					continue;
+				}
+				if (Tracer)
+				{
+					TraceShownOption(*Tracer, Option);
 				}
 				FDnaChoiceView& View = CurrentChoices.AddDefaulted_GetRef();
 				View.Index = CurrentChoices.Num() - 1;
@@ -168,6 +248,7 @@ void UDreamNarrativeDialogueRunner::Run()
 			if (CurrentChoices.Num() == 0)
 			{
 				// Every option was hidden: fall through to the gather. DNS5008 makes this rare.
+				if (Tracer) { Tracer->OnEvent(TEXT("dialogue.choice.all-hidden")); }
 				PC = Group.Gather;
 				continue;
 			}
@@ -184,8 +265,12 @@ void UDreamNarrativeDialogueRunner::Run()
 			PC = Ins.Index;
 			continue;
 		case EDnaOpCode::JumpIfFalse:
-			PC = Condition(Ins.Expr) ? PC + 1 : Ins.Index;
+		{
+			const bool bEnter = Condition(Ins.Expr);
+			if (Tracer) { Tracer->OnEvent(bEnter ? TEXT("dialogue.branch.enter") : TEXT("dialogue.branch.skip")); }
+			PC = bEnter ? PC + 1 : Ins.Index;
 			continue;
+		}
 		case EDnaOpCode::Set:
 		{
 			++PC;
@@ -195,6 +280,10 @@ void UDreamNarrativeDialogueRunner::Run()
 			{
 				Ledger->BeginBatch();
 				bBatchOpen = true;
+			}
+			if (Tracer)
+			{
+				Tracer->OnEvent(Ins.Assign == EDnaAssignOp::Set ? TEXT("dialogue.set.assign") : Ins.Assign == EDnaAssignOp::Add ? TEXT("dialogue.set.add") : TEXT("dialogue.set.sub"));
 			}
 			FDnaValue Value = Ledger->Evaluate(*Compiled);
 			if (Ins.Assign != EDnaAssignOp::Set)
@@ -219,6 +308,7 @@ void UDreamNarrativeDialogueRunner::Run()
 			continue;
 		case EDnaOpCode::Advance:
 			++PC;
+			if (Tracer) { Tracer->OnEvent(TEXT("chapter.advance-command")); }
 			Ledger->SetChapter(Ins.Name);
 			Transcript.Add(FString::Printf(TEXT("[advance %s]"), *Ins.Name.ToString()));
 			continue;
@@ -227,10 +317,12 @@ void UDreamNarrativeDialogueRunner::Run()
 			Transcript.Add(FString::Printf(TEXT("[play %s%s]"), *Ins.Name.ToString(), Ins.bAsync ? TEXT(" async") : TEXT("")));
 			if (OnPlayStage.IsBound() && !Ins.bAsync)
 			{
+				if (Tracer) { Tracer->OnEvent(TEXT("dialogue.play.blocking")); }
 				State = EDnaRunnerState::PlayingStage;
 				OnPlayStage.Broadcast(this, Ins.Name, true);
 				return;
 			}
+			if (Tracer) { Tracer->OnEvent(Ins.bAsync ? TEXT("dialogue.play.async") : TEXT("dialogue.play.unheard")); }
 			OnPlayStage.Broadcast(this, Ins.Name, false);
 			continue;
 		case EDnaOpCode::Emit:
@@ -244,6 +336,7 @@ void UDreamNarrativeDialogueRunner::Run()
 			Transcript.Add(FString::Printf(TEXT("[wait %gs]"), Ins.Seconds));
 			State = EDnaRunnerState::Waiting;
 			// Scheduled before the broadcast: a listener that ends the wait on the spot cancels it.
+			if (Tracer) { Tracer->OnEvent(bManualWait ? TEXT("dialogue.wait.manual") : TEXT("dialogue.wait.clock")); }
 			if (!bManualWait)
 			{
 				WaitHandle = Ledger->GetClock().Schedule(Ins.Seconds, FSimpleDelegate::CreateUObject(this, &UDreamNarrativeDialogueRunner::NotifyWaitFinished));
@@ -287,6 +380,10 @@ bool UDreamNarrativeDialogueRunner::Choose(int32 Index)
 	const FDnaChoiceGroupData& Group = Node->ChoiceGroups[CurrentGroup];
 	const FDnaChoiceData& Option = Group.Options[CurrentOptionIndices[Index]];
 	Transcript.Add(FString::Printf(TEXT("[choose %s]"), *CurrentChoices[Index].Label.ToString()));
+	if (IDnaTrace* Tracer = Ledger ? Ledger->GetTrace() : nullptr)
+	{
+		Tracer->OnEvent(Option.bOnce ? TEXT("dialogue.choice.once-taken") : TEXT("dialogue.choice.taken"));
+	}
 	if (Option.bOnce)
 	{
 		Ledger->MarkChosenOnce(Option.Id);
@@ -330,6 +427,10 @@ void UDreamNarrativeDialogueRunner::Abort()
 	if (State != EDnaRunnerState::Ended)
 	{
 		Transcript.Add(TEXT("[abort]"));
+		if (IDnaTrace* Tracer = Ledger ? Ledger->GetTrace() : nullptr)
+		{
+			Tracer->OnEvent(TEXT("dialogue.abort"));
+		}
 		Finish();
 	}
 }
