@@ -2,15 +2,21 @@
 //
 // The `dn.` console commands: enough to walk a dialogue in PIE without any UI. Lines and choices go
 // to the log and to the screen as debug messages; the game's real UI replaces all of this.
+// `dn.record` writes whatever is done to the story, through these commands or the game's own UI,
+// down as a test that plays it back.
 
 #include "DreamNarrativeDialogueRunner.h"
 #include "DreamNarrativeLedger.h"
+#include "DreamNarrativeRecorder.h"
 #include "DreamNarrativeStory.h"
 #include "DreamNarrativeStoryModule.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "HAL/FileManager.h"
 #include "HAL/IConsoleManager.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 
 namespace
 {
@@ -176,6 +182,52 @@ namespace
 			if (!Ledger || Args.Num() < 1) { Say(TEXT("dn.jump <chapter>")); return; }
 			if (Ledger->JumpToChapter(FName(*Args[0]))) { Say(FString::Printf(TEXT("chapter = %s"), *Ledger->GetChapter().ToString()), FColor::Green); }
 			else { Say(FString::Printf(TEXT("No chapter '%s'"), *Args[0]), FColor::Red); }
+		}));
+
+	/** A recording's name is its test's name: letters, digits, underscores and CJK, not starting with a digit. */
+	FString MakeTestName(const FString& Wanted)
+	{
+		FString Name;
+		for (const TCHAR Char : Wanted)
+		{
+			Name.AppendChar(FChar::IsAlnum(Char) || Char == TEXT('_') || Char > 0x7F ? Char : TEXT('_'));
+		}
+		return Name.IsEmpty() || FChar::IsDigit(Name[0]) ? TEXT("录制_") + Name : Name;
+	}
+
+	FAutoConsoleCommandWithWorldAndArgs GRecord(
+		TEXT("dn.record"), TEXT("dn.record start <name> | stop -- write what happens to the story down as a test; alone, says whether it is recording"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			UDreamNarrativeStory* Story = StoryOf(World);
+			if (!Story) { Say(TEXT("No story is running"), FColor::Red); return; }
+			UDreamNarrativeRecorder* Recorder = Story->GetRecorder();
+			const bool bRecording = Recorder && Recorder->IsRecording();
+			if (Args.Num() >= 2 && Args[0] == TEXT("start"))
+			{
+				if (Story->GetLedger() && Story->GetLedger()->GetScripts().Num() == 0) { Story->LoadAllScripts(); }
+				const FString Name = MakeTestName(Args[1]);
+				Story->StartRecording(Name);
+				Say(FString::Printf(TEXT("Recording %s; dn.record stop writes %s"), *Name, *UDreamNarrativeRecorder::GetDefaultPath(Name)), FColor::Green);
+				return;
+			}
+			if (Args.Num() >= 1 && Args[0] == TEXT("stop"))
+			{
+				if (!bRecording) { Say(TEXT("Nothing is being recorded"), FColor::Red); return; }
+				const FString Path = UDreamNarrativeRecorder::GetDefaultPath(Recorder->GetName());
+				const FString Text = Story->StopRecording();
+				IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), /*Tree=*/true);
+				if (FFileHelper::SaveStringToFile(Text, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+				{
+					Say(FString::Printf(TEXT("Wrote %s"), *Path), FColor::Green);
+				}
+				else
+				{
+					Say(FString::Printf(TEXT("Could not write %s"), *Path), FColor::Red);
+				}
+				return;
+			}
+			Say(bRecording ? FString::Printf(TEXT("Recording %s"), *Recorder->GetName()) : FString(TEXT("Not recording. dn.record start <name>")));
 		}));
 
 	FAutoConsoleCommandWithWorldAndArgs GLoad(

@@ -82,6 +82,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FDnaFactChangedSignature, FName, 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDnaChapterChangedSignature, FName, OldChapter, FName, NewChapter);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDnaEventSignature, FName, Event);
 DECLARE_MULTICAST_DELEGATE_OneParam(FDnaBatchCommittedSignature, const TArray<FName>& /*ChangedFacts*/);
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FDnaFactWrittenSignature, FName /*Fact*/, const FDnaValue& /*Value*/, EDnaWriteSource /*Source*/);
+DECLARE_MULTICAST_DELEGATE_OneParam(FDnaJumpRequestedSignature, FName /*Chapter*/);
 
 UCLASS()
 class DREAMNARRATIVECORE_API UDreamNarrativeLedger : public UGameInstanceSubsystem, public IDnaEvalContext
@@ -270,6 +272,12 @@ public:
 
 	/** Fires after a batch commits with the facts that changed in it. Observers subscribe here. */
 	FDnaBatchCommittedSignature OnBatchCommitted;
+
+	/** Fires for every write that changes a fact, saying who wrote it: what a recorder keeps of the game's writes. */
+	FDnaFactWrittenSignature OnFactWritten;
+
+	/** Fires when a debug teleport starts, before it writes the implied facts. */
+	FDnaJumpRequestedSignature OnJumpRequested;
 
 private:
 	/** Follows `was` redirects to the current name. */

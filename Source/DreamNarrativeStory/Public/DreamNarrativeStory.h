@@ -13,6 +13,10 @@
 #include "DreamNarrativeStory.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDnaDialogueStartedSignature, UDreamNarrativeDialogueRunner*, Runner);
+DECLARE_MULTICAST_DELEGATE_OneParam(FDnaTalkRequestedSignature, FName /*Character*/);
+DECLARE_MULTICAST_DELEGATE_OneParam(FDnaStartRequestedSignature, FName /*Node*/);
+
+class UDreamNarrativeRecorder;
 
 UCLASS()
 class DREAMNARRATIVESTORY_API UDreamNarrativeStory : public UGameInstanceSubsystem, public IDnaQuestStateProvider
@@ -64,10 +68,29 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Narrative|Story")
 	FDnaDialogueStartedSignature OnDialogueStarted;
 
+	/** TalkTo was called; the entry is picked right after, so anything it draws comes after this. */
+	FDnaTalkRequestedSignature OnTalkRequested;
+
+	/** StartDialogue was called for a node by name (TalkTo does not fire this). */
+	FDnaStartRequestedSignature OnStartRequested;
+
+	// ---------------------------------------------------------------- recording
+
+	/** Starts writing down what happens to the story (`dn.record`), from the ledger as it stands. A recording already running ends unsaved. */
+	UDreamNarrativeRecorder* StartRecording(const FString& Name);
+
+	/** Stops recording and hands back the test block it wrote; empty when nothing was being recorded. */
+	FString StopRecording();
+
+	UDreamNarrativeRecorder* GetRecorder() const { return Recorder; }
+
 	// IDnaQuestStateProvider -- quests are not implemented yet, so every query is false.
 	virtual bool GetQuestState(FName Quest, EDnaQuestStateQuery Query) const override { return false; }
 
 private:
+	/** Starts a node: what StartDialogue and TalkTo share once they know which node. */
+	UDreamNarrativeDialogueRunner* Begin(FName Node);
+
 	UFUNCTION()
 	void HandleRunnerEnded(UDreamNarrativeDialogueRunner* Runner);
 
@@ -85,6 +108,9 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UDreamNarrativeDialogueRunner> ActiveRunner;
+
+	UPROPERTY()
+	TObjectPtr<UDreamNarrativeRecorder> Recorder;
 
 	TMap<FName, FNodeRef> NodeIndex;
 	/** Entry nodes per character, in declaration order. */

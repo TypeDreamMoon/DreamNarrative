@@ -192,6 +192,7 @@ bool UDreamNarrativeLedger::SetFact(FName Fact, const FDnaValue& InValue, EDnaWr
 	Slot = Value;
 
 	OnFactChanged.Broadcast(Name, Old, Value);
+	OnFactWritten.Broadcast(Name, Value, Source);
 	DirtyFacts.AddUnique(Name);
 	if (BatchDepth == 0)
 	{
@@ -294,6 +295,8 @@ bool UDreamNarrativeLedger::JumpToChapter(FName Chapter)
 		UE_LOG(LogDreamNarrative, Error, TEXT("JumpToChapter: no chapter called '%s'"), *Chapter.ToString());
 		return false;
 	}
+
+	OnJumpRequested.Broadcast(Target);
 
 	// Walk the `after` chain back to the first chapter, then apply forwards.
 	TArray<FName> Chain;

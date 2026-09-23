@@ -2,6 +2,7 @@
 
 #include "DreamNarrativeStory.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "DreamNarrativeRecorder.h"
 #include "DreamNarrativeSettings.h"
 #include "DreamNarrativeStoryModule.h"
 #include "DreamNarrativeTrace.h"
@@ -28,6 +29,7 @@ void UDreamNarrativeStory::InitializeStandalone(UDreamNarrativeLedger* InLedger)
 
 void UDreamNarrativeStory::Deinitialize()
 {
+	StopRecording();
 	if (Ledger)
 	{
 		Ledger->SetQuestStateProvider(nullptr);
@@ -109,6 +111,12 @@ const FDnaDialogueNodeData* UDreamNarrativeStory::FindNode(FName Node, const UDn
 
 UDreamNarrativeDialogueRunner* UDreamNarrativeStory::StartDialogue(FName Node)
 {
+	OnStartRequested.Broadcast(Node);
+	return Begin(Node);
+}
+
+UDreamNarrativeDialogueRunner* UDreamNarrativeStory::Begin(FName Node)
+{
 	const UDnaDialogueSection* Section = nullptr;
 	if (!FindNode(Node, &Section))
 	{
@@ -183,13 +191,33 @@ FName UDreamNarrativeStory::SelectEntry(FName Character) const
 
 UDreamNarrativeDialogueRunner* UDreamNarrativeStory::TalkTo(FName Character)
 {
+	OnTalkRequested.Broadcast(Character);
 	const FName Entry = SelectEntry(Character);
 	if (Entry.IsNone())
 	{
 		UE_LOG(LogDreamNarrativeStory, Log, TEXT("TalkTo: no entry of '%s' applies right now"), *Character.ToString());
 		return nullptr;
 	}
-	return StartDialogue(Entry);
+	return Begin(Entry);
+}
+
+UDreamNarrativeRecorder* UDreamNarrativeStory::StartRecording(const FString& Name)
+{
+	StopRecording();
+	Recorder = NewObject<UDreamNarrativeRecorder>(this);
+	Recorder->Begin(this, Name);
+	return Recorder;
+}
+
+FString UDreamNarrativeStory::StopRecording()
+{
+	if (!Recorder)
+	{
+		return FString();
+	}
+	UDreamNarrativeRecorder* Stopping = Recorder;
+	Recorder = nullptr;
+	return Stopping->IsRecording() ? Stopping->End() : FString();
 }
 
 void UDreamNarrativeStory::HandleRunnerEnded(UDreamNarrativeDialogueRunner* Runner)

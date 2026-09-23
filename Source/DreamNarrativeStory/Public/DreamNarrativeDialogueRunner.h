@@ -80,6 +80,7 @@ struct DREAMNARRATIVESTORY_API FDnaChoiceView
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDnaRunnerLineSignature, UDreamNarrativeDialogueRunner*, Runner, const FDnaLineView&, Line);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDnaRunnerChoicesSignature, UDreamNarrativeDialogueRunner*, Runner, const TArray<FDnaChoiceView>&, Choices);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDnaRunnerChoiceMadeSignature, UDreamNarrativeDialogueRunner*, Runner, const FDnaChoiceView&, Choice);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDnaRunnerEndedSignature, UDreamNarrativeDialogueRunner*, Runner);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FDnaRunnerStageSignature, UDreamNarrativeDialogueRunner*, Runner, FName, Stage, bool, bBlocking);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDnaRunnerWaitSignature, UDreamNarrativeDialogueRunner*, Runner, float, Seconds);
@@ -137,6 +138,10 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Narrative|Dialogue")
 	FDnaRunnerChoicesSignature OnChoices;
+
+	/** A choice was taken; fires before the dialogue goes on. The choices it was taken from are still in GetChoices(). */
+	UPROPERTY(BlueprintAssignable, Category = "Narrative|Dialogue")
+	FDnaRunnerChoiceMadeSignature OnChoiceMade;
 
 	UPROPERTY(BlueprintAssignable, Category = "Narrative|Dialogue")
 	FDnaRunnerEndedSignature OnEnded;

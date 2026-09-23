@@ -394,6 +394,7 @@ bool UDreamNarrativeDialogueRunner::Choose(int32 Index)
 	const FDnaChoiceGroupData& Group = Node->ChoiceGroups[CurrentGroup];
 	const FDnaChoiceData& Option = Group.Options[CurrentOptionIndices[Index]];
 	Transcript.Add(FString::Printf(TEXT("[choose %s]"), *CurrentChoices[Index].Label.ToString()));
+	OnChoiceMade.Broadcast(this, CurrentChoices[Index]);
 	if (IDnaTrace* Tracer = Ledger ? Ledger->GetTrace() : nullptr)
 	{
 		Tracer->OnEvent(Option.bOnce ? TEXT("dialogue.choice.once-taken") : TEXT("dialogue.choice.taken"));
