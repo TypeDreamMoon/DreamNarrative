@@ -185,7 +185,7 @@ $common = Invoke-Git $RepoPath @('rev-parse', '--path-format=absolute', '--git-c
 if ($common.Code -ne 0) { Stop-WithFailure @("$RepoPath is not a git working tree: $($common.Output -join ' ')") }
 $RepoCommonDir = ConvertTo-NormalPath ([string]$common.Output[0])
 $RepoTopLevel = ConvertTo-NormalPath ([string](Invoke-Git $RepoPath @('rev-parse', '--show-toplevel')).Output[0])
-if (Test-PathUnder $Root $RepoTopLevel) { Stop-WithFailure @("The host ($Root) may not live inside the repository's working tree ($RepoTopLevel).") }
+if (Test-PathUnder $Root $RepoTopLevel) { Stop-WithFailure @("The host ($Root) may not live inside the working tree $RepoTopLevel.") }
 Write-Info "Git dir:    $RepoCommonDir"
 
 $uprojectTemplate = Get-Content -LiteralPath (Join-Path $TemplateDir "$HostName.uproject") -Raw | ConvertFrom-Json
@@ -210,6 +210,8 @@ $keptDifferent = $false
 
 Write-Step "Plugins\$PluginName as a worktree of the repository"
 $entries = @(Get-WorktreeEntries $RepoPath)
+# git lists the main working tree first.
+$MainTree = $entries[0].Path
 if (Test-Path -LiteralPath $WorktreePath) {
     $top = Invoke-Git $WorktreePath @('rev-parse', '--show-toplevel') -AllowFailure
     if ($top.Code -ne 0) { Stop-WithFailure @("$WorktreePath exists but is not a git working tree. Move it away to let this script create the worktree.") }
@@ -217,7 +219,8 @@ if (Test-Path -LiteralPath $WorktreePath) {
     if (-not (Test-SamePath $topPath $WorktreePath)) { Stop-WithFailure @("$WorktreePath is a folder inside the working tree $topPath, not a worktree of its own.") }
     $theirCommon = ConvertTo-NormalPath ([string](Invoke-Git $WorktreePath @('rev-parse', '--path-format=absolute', '--git-common-dir')).Output[0])
     if (-not (Test-SamePath $theirCommon $RepoCommonDir)) { Stop-WithFailure @("$WorktreePath belongs to another repository (git dir $theirCommon).") }
-    if (Test-SamePath (Resolve-PhysicalPath $WorktreePath) $RepoTopLevel) { Stop-WithFailure @("$WorktreePath is the repository's own working tree reached through a link, not a worktree.") }
+    # The host must have a worktree of its own, not the main one -- directly or through a link.
+    if (Test-SamePath (Resolve-PhysicalPath $WorktreePath) $MainTree) { Stop-WithFailure @("$WorktreePath is the repository's main working tree ($MainTree), not a worktree of its own.") }
     $mine = @($entries | Where-Object { Test-SamePath $_.Path $WorktreePath })
     if ($mine.Count -eq 0) { Stop-WithFailure @("$WorktreePath is not in the repository's worktree list.") }
     $head = if ($mine[0].Detached) { 'a detached commit' } else { "branch $($mine[0].Branch)" }
@@ -289,14 +292,14 @@ $recordPath = Join-Path $Root '.dreamnarrative-testhost.json'
 $record = [ordered]@{
     schema            = 1
     templateVersion   = $TemplateVersion
-    repoPath          = $RepoPath
+    repoPath          = $MainTree
     gitCommonDir      = $RepoCommonDir
     worktreePath      = $WorktreePath
     branch            = $Branch
     engineAssociation = $association
     engineRoot        = $EngineRoot
 }
-$recordText = ($record | ConvertTo-Json) + "`n"
+$recordText = (($record | ConvertTo-Json) -replace "`r`n", "`n") + "`n"
 $currentRecord = if (Test-Path -LiteralPath $recordPath) { [IO.File]::ReadAllText($recordPath) } else { '' }
 if ($currentRecord.Replace("`r`n", "`n") -ne $recordText) {
     if ($PSCmdlet.ShouldProcess($recordPath, 'write the host record')) {
