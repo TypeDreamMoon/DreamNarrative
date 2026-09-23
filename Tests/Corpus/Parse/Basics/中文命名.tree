@@ -1,0 +1,21 @@
+4: Character 掌柜
+5:   Property display = "老掌柜"
+7: FactGroup 账目
+8:   Fact 欠款: int range 0..100 = 0
+9:   Fact 已结清: bool
+11: Fact 心情: tag in (平静, 焦躁) = 平静
+13: Chapter 开张
+14:   Property title = "开张大吉"
+16: Quest 讨债
+17:   Objective 账目.已结清
+19: Stage 拍桌
+20:   Duration 1s
+22: Dialogue 掌柜_问候 for 掌柜 if (心情 == 平静)
+23:   Speech 掌柜(抬头, 眯眼) "客官里边请。"
+24:   Choice "结账" if=(账目.欠款 > 0)
+25:     Command set 账目.已结清 = true
+26:     Command play 拍桌
+27:   Choice "走了"
+28:   Jump 掌柜_告别
+30: Dialogue 掌柜_告别
+31:   Speech 掌柜 "慢走。"

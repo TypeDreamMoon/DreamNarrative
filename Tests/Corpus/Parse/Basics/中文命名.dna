@@ -1,0 +1,31 @@
+// 名字全用中文:角色、fact 与 fact 组、章节、任务、演出、对话、tag 成员、情绪 tag。
+// 文件名也是中文,测试名因此带中文,用来验证命令行能按中文名过滤测试。
+
+character 掌柜
+  display: 老掌柜
+
+fact 账目
+  欠款: int range 0..100 = 0
+  已结清: bool
+
+fact 心情: tag in (平静, 焦躁) = 平静
+
+chapter 开张
+  title: 开张大吉
+
+quest 讨债
+  objective 账目.已结清
+
+stage 拍桌
+  duration 1.0s
+
+dialogue 掌柜_问候 for 掌柜 if 心情 == 平静
+  掌柜(抬头, 眯眼): 客官里边请。
+  - 结账 if 账目.欠款 > 0
+      set 账目.已结清 = true
+      play 拍桌
+  - 走了
+  -> 掌柜_告别
+
+dialogue 掌柜_告别
+  掌柜: 慢走。
