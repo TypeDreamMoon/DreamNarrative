@@ -477,6 +477,7 @@ void UDreamNarrativeLedger::ApplySnapshot(const FDnaLedgerSnapshot& Snapshot)
 	{
 		Trace->OnEvent(TEXT("ledger.snapshot.apply"));
 	}
+	TGuardValue<bool> Applying(bApplyingSnapshot, true);
 	{
 		FBatchScope Batch(*this);
 		ResetToDefaults();
@@ -517,6 +518,7 @@ void UDreamNarrativeLedger::ApplySnapshot(const FDnaLedgerSnapshot& Snapshot)
 	{
 		StartTimer(Pair.Key, Pair.Value);
 	}
+	OnSnapshotApplied.Broadcast();
 }
 
 void UDreamNarrativeLedger::ResetToDefaults()

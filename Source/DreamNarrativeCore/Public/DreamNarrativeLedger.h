@@ -89,6 +89,7 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FDnaBatchCommittedSignature, const TArray<FN
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FDnaFactWrittenSignature, FName /*Fact*/, const FDnaValue& /*Value*/, EDnaWriteSource /*Source*/);
 DECLARE_MULTICAST_DELEGATE_OneParam(FDnaJumpRequestedSignature, FName /*Chapter*/);
 DECLARE_MULTICAST_DELEGATE_OneParam(FDnaTimerFiredSignature, FName /*Timer*/);
+DECLARE_MULTICAST_DELEGATE(FDnaSnapshotAppliedSignature);
 
 UCLASS()
 class DREAMNARRATIVECORE_API UDreamNarrativeLedger : public UGameInstanceSubsystem, public IDnaEvalContext
@@ -302,6 +303,12 @@ public:
 	/** Fires when a timer runs out; it is no longer running by then. */
 	FDnaTimerFiredSignature OnTimerFired;
 
+	/** Fires once a snapshot is in place: what observers kept about the ledger before it is stale now. */
+	FDnaSnapshotAppliedSignature OnSnapshotApplied;
+
+	/** True while a snapshot goes in: the batches it commits restore a story, nothing happens in it. */
+	bool IsApplyingSnapshot() const { return bApplyingSnapshot; }
+
 private:
 	/** Follows `was` redirects to the current name. */
 	FName Resolve(FName Fact) const;
@@ -329,6 +336,7 @@ private:
 	int32 BatchDepth = 0;
 	TArray<FName> DirtyFacts;
 	bool bCommitting = false;
+	bool bApplyingSnapshot = false;
 
 	IDnaQuestStateProvider* QuestStateProvider = nullptr;
 	FRandomStream Random;
