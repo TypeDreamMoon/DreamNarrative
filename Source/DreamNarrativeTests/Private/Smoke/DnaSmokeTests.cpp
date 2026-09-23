@@ -243,6 +243,64 @@ bool FDnaSmokeWorldClockTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaSmokeQuestTimeoutSaveTest, "DreamNarrative.Smoke.InProcess.QuestTimeoutAcrossASave", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+
+bool FDnaSmokeQuestTimeoutSaveTest::RunTest(const FString& Parameters)
+{
+	FDnaScratchAssets Assets(*this, { TEXT("Tests/Smoke/QuestClock.dna") });
+	if (!Assets.IsValid())
+	{
+		return false;
+	}
+	const FName Quest(TEXT("送信"));
+	const FName Timer = ::DreamNarrative::QuestStateFact(Quest);
+
+	// One session takes the errand on, lets some game time pass, and saves. (The game clock moves at
+	// most 0.4 s a frame, and a timer set now starts counting on the next frame.)
+	TArray<uint8> Bytes;
+	double Left = 0.0;
+	{
+		FDnaStandaloneGame Session;
+		FDnaConsole Console(*this, Session);
+		Console.Says(TEXT("dn.accept 送信"), TEXT("送信: Accepted"));
+		Session.Tick(0.4f, 3);
+		Left = Session.GetLedger()->GetTimerRemaining(Timer);
+		TestTrue(FString::Printf(TEXT("game time ran on the quest's clock (%.2f s of 3 left)"), Left), Left > 0.5 && Left < 3.0);
+
+		UDnaSmokeSaveGame* SaveGame = Cast<UDnaSmokeSaveGame>(UGameplayStatics::CreateSaveGameObject(UDnaSmokeSaveGame::StaticClass()));
+		if (!TestNotNull(TEXT("save game object"), SaveGame))
+		{
+			return false;
+		}
+		SaveGame->Narrative = Session.GetLedger()->MakeSnapshot();
+		const float* Saved = SaveGame->Narrative.Timers.Find(Timer);
+		TestTrue(TEXT("the save keeps what the quest's clock had left"), Saved && FMath::IsNearlyEqual(*Saved, Left, 0.01));
+		TestTrue(TEXT("saved to memory"), UGameplayStatics::SaveGameToMemory(SaveGame, Bytes));
+	}
+
+	// A new session loads it: the quest is still taken on, and its clock goes on from what it had left.
+	FDnaStandaloneGame Session;
+	FDnaConsole Console(*this, Session);
+	Console.Says(TEXT("dn.load"), TEXT("Registered 1 script(s)"));
+	UDnaSmokeSaveGame* Loaded = Cast<UDnaSmokeSaveGame>(UGameplayStatics::LoadGameFromMemory(Bytes));
+	if (!TestNotNull(TEXT("loaded from memory"), Loaded))
+	{
+		return false;
+	}
+	Session.GetLedger()->ApplySnapshot(Loaded->Narrative);
+	UDreamNarrativeStory* Story = Session.GetStory();
+	TestEqual(TEXT("still taken on after loading"), Story->GetQuestStateOf(Quest), EDnaQuestState::Accepted);
+	TestEqual(TEXT("with the time it had left"), Session.GetLedger()->GetTimerRemaining(Timer), Left, 0.01);
+	// Short of what was left, it holds; a frame or two past it, it has run out.
+	const int32 Frames = FMath::CeilToInt(Left / 0.4);
+	Session.Tick(0.4f, Frames - 1);
+	TestEqual(TEXT("not out of time before what was left runs out"), Story->GetQuestStateOf(Quest), EDnaQuestState::Accepted);
+	Session.Tick(0.4f, 2);
+	TestEqual(TEXT("out of time once it has"), Story->GetQuestStateOf(Quest), EDnaQuestState::TimedOut);
+	Console.Says(TEXT("dn.quests"), TEXT("信没送到。"));
+	return !HasAnyErrors();
+}
+
 // ---------------------------------------------------------------- in a game process
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaSmokeGameRingTest, "DreamNarrative.Smoke.Game.RingInTheGame", EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)

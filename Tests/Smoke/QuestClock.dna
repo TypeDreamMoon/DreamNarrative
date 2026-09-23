@@ -1,0 +1,8 @@
+// 冒烟层用:一个三秒就超时的任务,在真的游戏时钟上走,中途存读档。
+// 游戏时钟每帧最多走 0.4 秒(世界设置的 MaxUndilatedFrameTime),所以超时要短,帧数才不多。
+
+quest 送信
+  timeout: 3s
+  journal
+    accepted: 三秒内把信送到。
+    failed: 信没送到。
