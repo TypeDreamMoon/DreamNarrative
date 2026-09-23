@@ -1,0 +1,15 @@
+// 探索器夹具:不可达内容只是警告。「秘密」要一个谁也不写的 fact,这段对话和它那一句都出不来。
+
+character 甲
+
+fact 知道秘密: bool
+
+dialogue 秘密 for 甲 if 知道秘密
+  甲: 其实……
+
+dialogue 平常 for 甲
+  甲: 今天天气不错。
+
+// EXPECT DNS5110, DNS5110
+explore 看得见的都看了
+  depth 5

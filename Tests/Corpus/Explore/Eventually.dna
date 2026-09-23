@@ -1,0 +1,12 @@
+// 探索器夹具:eventually 到不了。门一直没人开,探索完全之后照样没开。
+
+character 甲
+
+fact 门开了: bool
+
+dialogue 敲门 for 甲
+  甲: 没人应。
+
+// EXPECT DNS5108
+explore 门会开
+  eventually 门开了

@@ -1,0 +1,13 @@
+// 探索器夹具:对话停不下来。两个对话互相跳,一句台词也不出。
+
+character 甲
+
+dialogue 原地 for 甲
+  -> 转圈
+
+dialogue 转圈
+  -> 原地
+
+// EXPECT DNS5102
+explore 转不出来
+  depth 3

@@ -1,0 +1,14 @@
+// 探索器夹具:探索未穷尽。次数一直涨,又要按奇偶挑台词,封不了顶,状态没有尽头。
+
+character 甲
+
+fact 次数: int
+
+dialogue 数 for 甲
+  甲: 单数。 if 次数 % 2 == 1
+  甲: 双数。 if 次数 % 2 == 0
+  set 次数 += 1
+
+// EXPECT DNS9201
+explore 数不完
+  depth 6

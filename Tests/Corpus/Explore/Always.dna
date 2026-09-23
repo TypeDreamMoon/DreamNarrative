@@ -1,0 +1,17 @@
+// 探索器夹具:always 的反例。每聊一次加一点好感,聊到第四次就破了「好感 <= 3」。
+// 好感只往上加、只和常数比,封顶在最远的边界,所以状态是有限的。
+
+character 甲
+
+fact 好感: int
+
+dialogue 聊天 for 甲 if 好感 < 5
+  甲: 又来了。
+  set 好感 += 1
+
+dialogue 冷淡 for 甲
+  甲: 嗯。
+
+// EXPECT DNS5107
+explore 好感有上限
+  always 好感 <= 3

@@ -1,0 +1,31 @@
+// 探索器夹具:软锁。第一次见村长选「我考虑一下。」之后,村长只剩日常那一句,猎狼再也接不到。
+// 做得到(先接活、狼杀够、再回来),但不是从每个状态都做得到。
+
+character 村长
+
+fact 接了猎狼: bool
+fact 犹豫过: bool
+fact 狼杀了: int extern
+fact 猎狼完成: bool
+
+dialogue 村长_派活 for 村长 if not 接了猎狼 and not 犹豫过
+  村长: 狼又来了,你能去吗?
+  - 我去。
+      set 接了猎狼 = true
+  - 我考虑一下。
+      set 犹豫过 = true
+
+dialogue 村长_交差 for 村长 if 接了猎狼 and 狼杀了 >= 5 and not 猎狼完成
+  村长: 干得好。
+  set 猎狼完成 = true
+
+dialogue 村长_日常 for 村长
+  村长: 忙你的去。
+
+// EXPECT DNS5105
+explore 猎狼不许卡死
+  softlock 猎狼完成
+
+// 同一个故事只问做不做得到:做得到,不报。
+explore 猎狼做得到
+  eventually 猎狼完成

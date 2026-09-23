@@ -1,0 +1,16 @@
+// 探索器夹具:抽取两头都走。三成的机会翻到钥匙;翻到了,「always not 有钥匙」就不成立,
+// 复现里要把那次抽取写成 rolls,单独跑才会同样翻到。
+
+character 甲
+
+fact 有钥匙: bool
+
+dialogue 翻找 for 甲
+  甲: 翻一翻。
+  if chance(30%)
+    set 有钥匙 = true
+    甲: 找到了。
+
+// EXPECT DNS5107
+explore 钥匙翻不到
+  always not 有钥匙

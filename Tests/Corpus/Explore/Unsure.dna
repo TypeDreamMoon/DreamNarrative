@@ -1,0 +1,24 @@
+// 探索器夹具:疑似软锁。选「再说。」之后差事再也接不到,但闲聊次数一直涨、封不了顶,
+// 那一片没探索完,只能报「疑似」(警告),同时报未穷尽。
+
+character 村长
+
+fact 犹豫过: bool
+fact 办完了: bool
+fact 闲聊次数: int
+
+dialogue 村长_派活 for 村长 if not 犹豫过 and not 办完了
+  村长: 去吗?
+  - 去。
+      set 办完了 = true
+  - 再说。
+      set 犹豫过 = true
+
+dialogue 村长_闲聊 for 村长
+  村长: 单数次。 if 闲聊次数 % 2 == 1
+  set 闲聊次数 += 1
+
+// EXPECT DNS5106, DNS9201
+explore 说不清卡没卡死
+  depth 4
+  softlock 办完了
