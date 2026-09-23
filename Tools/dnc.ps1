@@ -1,61 +1,130 @@
+#Requires -Version 7.2
 <#
 .SYNOPSIS
-    Headless driver for DreamNarrative: build, lint, dump and test without opening the editor.
+    Headless driver for DreamNarrative: build, lint, dump, check and test without opening the editor.
 
 .DESCRIPTION
-    Wraps `UnrealEditor-Cmd.exe <project> -run=DreamNarrative ...` and the automation runner, and
-    reads the verdict back out of the log so an agent or a CI job gets a clean exit code instead of
-    several hundred lines of engine boot.
-
     Commands
       build   compile every .dna under the project's source directory into script assets
       lint    parse and validate only; nothing is written
       dump    print the syntax tree of one file (or all)
-      test    run the DreamNarrative automation tests (corpus, lexer, expressions, runtime)
+      check   the static checks (Tools/StaticChecks.ps1) over this repository
+      test    static checks, build, then one preset of the automation tests in a headless editor
 
-    The engine is resolved from the .uproject's EngineAssociation; the project is found by walking
-    up from -Project, the target file, or the working directory.
+    build / lint / dump run `UnrealEditor-Cmd.exe <project> -run=DreamNarrative` and keep the lines
+    that matter. Any command that writes assets wants the editor CLOSED: two processes saving the same
+    package means the second one silently wins.
 
-    Any command that writes assets wants the editor CLOSED: two processes saving the same package
-    means the second one silently wins.
+    test works like this:
+      1. The project is -Project, else the test host (Tools/TestHost) when it exists, else the project
+         the working directory is in. It refuses to run while an editor has that project open
+         (-AllowEditorOpen overrides): the build would fight it over the DLLs.
+      2. Static checks, unless -SkipStaticChecks.
+      3. Build <Project>Editor Win64 Development, the whole target, with -NoEngineChanges, unless
+         -NoBuild. Then the plugin's module manifest must carry the engine's BuildId and every module
+         with a DLL -- a plugin that fails to load otherwise looks like "0 tests, nothing failed".
+      4. Each run of the preset in its own headless editor, killed after its time limit. The engine
+         writes index.json (the verdict), the log and the console output into the report directory,
+         <project>\Saved\DreamNarrativeTestReports\<time>-<preset>.
+      5. The digest: passed / failed / not run, the first error of each failure, crashes and ensures
+         from the log, the slowest tests, and summary.md beside the rest.
+
+    Presets
+      Quick    language, corpus, ledger, dialogue, spec and in-process smoke tests (the daily one)
+      Explore  the explorer
+      Smoke    the standalone-game smoke tests, in an editor binary running -game
+      All      the three above, one editor each
+
+    Exit codes of test: 0 green; 1 red (a test failed, or an ensure fired); 2 not judged (static
+    checks, build, manifest, crash, timeout, no report, fewer tests than the preset's floor).
 
 .EXAMPLE
-    ./dnc.ps1 build
-
+    pwsh -NoProfile -File Tools\dnc.ps1 test
 .EXAMPLE
-    ./dnc.ps1 lint -File DNarrative/ring.dna
-
+    pwsh -NoProfile -File Tools\dnc.ps1 test -Filter StartsWith:DreamNarrative.Corpus -NoBuild
 .EXAMPLE
-    ./dnc.ps1 test -Filter DreamNarrative.Corpus
+    pwsh -NoProfile -File Tools\dnc.ps1 lint -File DNarrative/ring.dna -Project I:\UnrealProject_Moon\DEV_58\DevTest\DevTest.uproject
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory, Position = 0)]
-    [ValidateSet('build', 'lint', 'dump', 'test')]
+    [ValidateSet('build', 'lint', 'dump', 'check', 'test')]
     [string]$Command,
 
-    # One source file (absolute, or relative to the project directory). Omitted = every file.
+    # build / lint / dump: one source file (absolute, or relative to the project directory).
     [string]$File,
 
-    # Source directory override (default: Project Settings > Dream Narrative > Source Directory).
+    # build / lint / dump: source directory override (default: Project Settings > Dream Narrative).
     [string]$Root,
 
     # build: generate in memory without writing packages.
     [switch]$NoSave,
 
-    # test: automation test filter (default: DreamNarrative).
-    [string]$Filter = 'DreamNarrative',
+    # test: which tests.
+    [ValidateSet('Quick', 'Explore', 'Smoke', 'All')]
+    [string]$Preset = 'Quick',
 
-    # Path to the .uproject. Omitted = discovered.
+    # test: an engine RunTests filter used instead of the preset's. Terms joined with '+';
+    # StartsWith:X matches a name prefix, anything else is a substring. No commas, semicolons or quotes.
+    [string]$Filter,
+
+    # test: skip the build (the module manifest is still checked).
+    [switch]$NoBuild,
+
+    # test: skip the static checks.
+    [switch]$SkipStaticChecks,
+
+    # test: time limit of one editor run, overriding the preset's.
+    [int]$TimeoutMinutes = 0,
+
+    # test: go ahead although an editor has the project open.
+    [switch]$AllowEditorOpen,
+
+    # test: report root (default <project>\Saved\DreamNarrativeTestReports).
+    [string]$ReportDir,
+
+    # The .uproject. Omitted: see above.
     [string]$Project,
 
-    # Print the raw engine output instead of the filtered view.
+    # build / lint / dump: print the raw engine output instead of the filtered view.
     [switch]$Raw
 )
 
+Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 
-# ---------------------------------------------------------------- project and engine
+$PluginDir = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
+$HostProject = 'I:\UnrealProject_Moon\DEV_58\DreamNarrativeTestHost\DreamNarrativeTestHost.uproject'
+
+# The engine keeps at most 16384 characters of its command line and drops the rest silently.
+$MaxFilterLength = 12000
+
+$Presets = [ordered]@{
+    Quick   = @{
+        Filter   = 'StartsWith:DreamNarrative.Lang+StartsWith:DreamNarrative.Corpus+StartsWith:DreamNarrative.Ledger+StartsWith:DreamNarrative.Dialogue+StartsWith:DreamNarrative.Spec+StartsWith:DreamNarrative.Smoke.InProcess'
+        MinTests = 27
+        Timeout  = 10
+        Game     = $false
+    }
+    Explore = @{
+        Filter   = 'StartsWith:DreamNarrative.Explore'
+        MinTests = 0
+        Timeout  = 30
+        Game     = $false
+    }
+    Smoke   = @{
+        Filter   = 'StartsWith:DreamNarrative.Smoke.Game'
+        MinTests = 0
+        Timeout  = 10
+        Game     = $true
+    }
+}
+
+# ---------------------------------------------------------------- helpers
+
+function Write-Step([string]$Text) { Write-Host "==> $Text" -ForegroundColor Cyan }
+function Write-Note([string]$Text) { Write-Host "    $Text" }
+function Write-Problem([string]$Text) { Write-Host "!!  $Text" -ForegroundColor Yellow }
 
 function Find-Project([string]$Start) {
     $dir = if ($Start) { (Resolve-Path $Start).Path } else { (Get-Location).Path }
@@ -70,49 +139,81 @@ function Find-Project([string]$Start) {
     throw "No .uproject found above '$dir'. Pass -Project."
 }
 
-$uproject = if ($Project) { (Resolve-Path $Project).Path } elseif ($File) { Find-Project $File } else { Find-Project $null }
-$projectDir = Split-Path -Parent $uproject
-
-$association = (Get-Content -LiteralPath $uproject -Raw | ConvertFrom-Json).EngineAssociation
-if (-not $association) { throw "The .uproject has no EngineAssociation." }
-$engineRoot = $null
-$key = 'HKCU:\SOFTWARE\Epic Games\Unreal Engine\Builds'
-if (Test-Path $key) {
-    $value = (Get-ItemProperty -Path $key).$association
-    if ($value) { $engineRoot = $value }
-}
-if (-not $engineRoot) {
+function Resolve-EngineRoot([string]$UProject) {
+    $association = (Get-Content -LiteralPath $UProject -Raw | ConvertFrom-Json).EngineAssociation
+    if (-not $association) { throw "$UProject has no EngineAssociation." }
+    $key = 'HKCU:\SOFTWARE\Epic Games\Unreal Engine\Builds'
+    if (Test-Path $key) {
+        $value = (Get-ItemProperty -Path $key).$association
+        if ($value) { return $value }
+    }
     $launcherKey = "HKLM:\SOFTWARE\EpicGames\Unreal Engine\$association"
-    if (Test-Path $launcherKey) { $engineRoot = (Get-ItemProperty -Path $launcherKey).InstalledDirectory }
-}
-if (-not $engineRoot) { throw "EngineAssociation '$association' is not registered on this machine." }
-$editorCmd = Join-Path $engineRoot 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe'
-if (-not (Test-Path $editorCmd)) { throw "UnrealEditor-Cmd.exe not found at '$editorCmd'." }
-
-if (Get-Process -Name 'UnrealEditor' -ErrorAction SilentlyContinue) {
-    Write-Warning "An UnrealEditor process is running. If it has this project open, a build that writes assets will fight it over the packages."
+    if (Test-Path $launcherKey) { return (Get-ItemProperty -Path $launcherKey).InstalledDirectory }
+    throw "EngineAssociation '$association' is not registered on this machine."
 }
 
-# ---------------------------------------------------------------- run
+function Invoke-Native([string]$Exe, [string[]]$Arguments) {
+    # Output lines, stderr merged; the caller reads $LASTEXITCODE.
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $Exe @Arguments 2>&1 | ForEach-Object { "$_" }
+    } finally {
+        $ErrorActionPreference = $saved
+    }
+}
+
+function Read-JsonFile([string]$Path) {
+    return ([IO.File]::ReadAllText($Path) | ConvertFrom-Json -AsHashtable -Depth 64)
+}
+
+function Get-EditorsOnProject([string]$UProject) {
+    # Every UnrealEditor*.exe whose command line names this .uproject. An editor opened from the
+    # project browser without the path on its command line is the one case this cannot see.
+    $needle = $UProject.Replace('/', '\').ToLowerInvariant()
+    $procs = @(Get-CimInstance -ClassName Win32_Process -Filter "Name LIKE 'UnrealEditor%'" -ErrorAction SilentlyContinue)
+    foreach ($p in $procs) {
+        $line = [string]$p.CommandLine
+        if ($line -and $line.Replace('/', '\').ToLowerInvariant().Contains($needle)) { $p }
+    }
+}
+
+# ---------------------------------------------------------------- project and engine
+
+if ($Command -eq 'check') {
+    & (Join-Path $PSScriptRoot 'StaticChecks.ps1') -Root $PluginDir
+    exit $LASTEXITCODE
+}
+
+$uproject = if ($Project) { (Resolve-Path $Project).Path }
+elseif ($Command -eq 'test' -and (Test-Path -LiteralPath $HostProject -PathType Leaf)) { $HostProject }
+elseif ($File) { Find-Project $File }
+else { Find-Project $null }
+$uproject = [IO.Path]::GetFullPath($uproject)
+$projectDir = Split-Path -Parent $uproject
+$projectName = [IO.Path]::GetFileNameWithoutExtension($uproject)
+$engineRoot = [IO.Path]::GetFullPath((Resolve-EngineRoot $uproject)).TrimEnd('\')
+$editorCmd = Join-Path $engineRoot 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe'
+if (-not (Test-Path -LiteralPath $editorCmd)) { throw "UnrealEditor-Cmd.exe not found at '$editorCmd'." }
+
+# ---------------------------------------------------------------- build / lint / dump
 
 function Invoke-Editor([string[]]$Arguments, [string[]]$KeepPatterns) {
     $all = @($uproject) + $Arguments + @('-stdout', '-FullStdOutLogOutput', '-unattended', '-nopause', '-nosplash', '-nullrhi', '-NoLiveCoding')
     Write-Verbose ("UnrealEditor-Cmd " + ($all -join ' '))
-    $output = & $editorCmd @all 2>&1
+    $output = Invoke-Native $editorCmd $all
     $code = $LASTEXITCODE
     if ($Raw) {
-        $output | ForEach-Object { $_.ToString() }
+        $output | ForEach-Object { Write-Output $_ }
     }
     else {
         $seen = @{}
-        foreach ($line in $output) {
-            $text = $line.ToString()
+        foreach ($text in $output) {
             $keep = $false
             foreach ($pattern in $KeepPatterns) { if ($text -match $pattern) { $keep = $true; break } }
             if (-not $keep) { continue }
             # UnrealEditor-Cmd echoes narrative log lines twice (once with a LogInit: Display: prefix).
-            $clean = $text -replace '^\[[^\]]*\]\[\s*\d+\]', '' -replace '^LogInit: Display: ', ''
-            $clean = $clean.Trim()
+            $clean = ($text -replace '^\[[^\]]*\]\[\s*\d+\]', '' -replace '^LogInit: Display: ', '').Trim()
             if ($seen.ContainsKey($clean)) { continue }
             $seen[$clean] = $true
             Write-Output $clean
@@ -121,53 +222,282 @@ function Invoke-Editor([string[]]$Arguments, [string[]]$KeepPatterns) {
     return $code
 }
 
-switch ($Command) {
-    'build' {
-        $args = @('-run=DreamNarrative')
-        if ($File) { $args += "-File=$File" }
-        if ($Root) { $args += "-Root=$Root" }
-        if ($NoSave) { $args += '-NoSave' }
-        $code = Invoke-Editor $args @('LogDreamNarrative', 'DNS\d{4}', 'Fatal', 'Assertion')
-        exit $code
+if ($Command -in 'build', 'lint', 'dump') {
+    if (Get-EditorsOnProject $uproject) {
+        Write-Warning "An editor has $uproject open. A build that writes assets will fight it over the packages."
     }
-    'lint' {
-        $args = @('-run=DreamNarrative', '-Lint')
-        if ($File) { $args += "-File=$File" }
-        if ($Root) { $args += "-Root=$Root" }
-        $code = Invoke-Editor $args @('LogDreamNarrative', 'DNS\d{4}', 'Fatal', 'Assertion')
-        exit $code
-    }
-    'dump' {
-        $args = @('-run=DreamNarrative', '-Lint', '-Dump')
-        if ($File) { $args += "-File=$File" }
-        if ($Root) { $args += "-Root=$Root" }
-        $code = Invoke-Editor $args @('LogDreamNarrative', '^\d+: ', 'DNS\d{4}')
-        exit $code
-    }
-    'test' {
-        # No `Quit` in ExecCmds: it would fire the moment the tests are queued. -TestExit is what makes
-        # the process leave once the queue drains. The controller writes one Result={Success|Fail} line
-        # per test; those counts are the verdict, the process exit code only says whether it survived.
-        $report = Join-Path $projectDir 'Saved/DreamNarrative/TestReport'
-        $args = @("-ExecCmds=Automation RunTests $Filter", '-TestExit=Automation Test Queue Empty', "-ReportExportPath=$report", '-log=DnaTest.log')
-        $all = @($uproject) + $args + @('-stdout', '-FullStdOutLogOutput', '-unattended', '-nopause', '-nosplash', '-nullrhi', '-NoLiveCoding')
-        $output = & $editorCmd @all 2>&1
-        $editorExit = $LASTEXITCODE
-        $lines = @($output | ForEach-Object { "$_" })
-        if ($Raw) { $lines | Write-Output }
+    $arguments = @('-run=DreamNarrative')
+    if ($Command -ne 'build') { $arguments += '-Lint' }
+    if ($Command -eq 'dump') { $arguments += '-Dump' }
+    if ($File) { $arguments += "-File=$File" }
+    if ($Root) { $arguments += "-Root=$Root" }
+    if ($Command -eq 'build' -and $NoSave) { $arguments += '-NoSave' }
+    $keep = if ($Command -eq 'dump') { @('LogDreamNarrative', '^\d+: ', 'DNS\d{4}') } else { @('LogDreamNarrative', 'DNS\d{4}', 'Fatal', 'Assertion') }
+    exit (Invoke-Editor $arguments $keep)
+}
 
-        $passed = @($lines | Where-Object { $_.Contains('Result={Success}') }).Count
-        $failed = @($lines | Where-Object { $_.Contains('Result={Fail}') }).Count
-        foreach ($line in $lines) {
-            if ($line -match 'Result=\{Fail\}|LogAutomationController: Error|Fatal|Assertion failed') {
-                Write-Output (($line -replace '^\[[^\]]*\]\[\s*\d+\]', '').Trim())
+# ================================================================ test
+
+$script:ReportPath = $null
+
+function Stop-Run([int]$Code, [string]$Why, [string[]]$Details = @()) {
+    Write-Problem $Why
+    foreach ($d in $Details) { Write-Note $d }
+    if ($script:ReportPath) {
+        $lines = @("# DreamNarrative tests: $Preset -- stopped before a verdict", '', "- $Why") + @($Details | ForEach-Object { "  - $_" }) + @('', "Exit code: $Code")
+        Set-Content -LiteralPath (Join-Path $script:ReportPath 'summary.md') -Value ($lines -join "`n") -Encoding utf8
+        Write-Note "report: $script:ReportPath"
+    }
+    exit $Code
+}
+
+function Test-ModuleManifest {
+    # The editor loads a plugin's modules through Binaries\Win64\UnrealEditor.modules. A manifest with
+    # another BuildId, a module missing from it, or a zero-byte DLL makes the whole plugin fail to load.
+    $problems = @()
+    $uplugin = Read-JsonFile (Join-Path $PluginDir 'DreamNarrative.uplugin')
+    $expected = @($uplugin.Modules | Where-Object { $_.Type -in 'Runtime', 'UncookedOnly', 'Editor', 'Developer', 'DeveloperTool' } | ForEach-Object { $_.Name })
+    $manifestPath = Join-Path $PluginDir 'Binaries\Win64\UnrealEditor.modules'
+    if (-not (Test-Path -LiteralPath $manifestPath)) { return @("$manifestPath does not exist: the plugin has not been built for the editor.") }
+    $manifest = Read-JsonFile $manifestPath
+    $engineManifest = Join-Path $engineRoot 'Engine\Binaries\Win64\UnrealEditor.modules'
+    if (Test-Path -LiteralPath $engineManifest) {
+        $engineBuildId = (Read-JsonFile $engineManifest).BuildId
+        if ($engineBuildId -and $manifest.BuildId -ne $engineBuildId) {
+            $problems += "The plugin manifest's BuildId ($($manifest.BuildId)) is not the engine's ($engineBuildId); the module manager would skip every module. Rebuild the whole editor target."
+        }
+    }
+    foreach ($name in $expected) {
+        if (-not $manifest.Modules.ContainsKey($name)) {
+            $problems += "Module $name is not in $manifestPath. Rebuild the whole editor target (a -Module= build does not rewrite the manifest)."
+            continue
+        }
+        $dll = Join-Path (Split-Path -Parent $manifestPath) $manifest.Modules[$name]
+        if (-not (Test-Path -LiteralPath $dll)) { $problems += "$dll is listed but does not exist." }
+        elseif ((Get-Item -LiteralPath $dll).Length -eq 0) { $problems += "$dll is zero bytes (an interrupted link); delete it and rebuild." }
+    }
+    return $problems
+}
+
+function Get-DevTestLag {
+    # When the plugin under test is a worktree, the repository's main working tree is DevTest's copy.
+    # Say so when that copy's branch is behind the one under test.
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $listing = @(& git -C $PluginDir worktree list --porcelain 2>$null)
+        $head = (& git -C $PluginDir rev-parse --abbrev-ref HEAD 2>$null)
+        if ($LASTEXITCODE -ne 0 -or $listing.Count -eq 0) { return $null }
+        # The first block of the listing is the main working tree; blocks end at an empty line.
+        $mainPath = ($listing[0] -replace '^worktree ', '').Replace('/', '\')
+        if ([string]::Equals($mainPath.TrimEnd('\'), $PluginDir, [StringComparison]::OrdinalIgnoreCase)) { return $null }
+        $firstBlock = @()
+        foreach ($line in $listing) { if (-not $line) { break }; $firstBlock += $line }
+        $mainBranch = ($firstBlock | Where-Object { $_ -like 'branch *' } | Select-Object -First 1) -replace '^branch refs/heads/', ''
+        if (-not $mainBranch -or $mainBranch -eq $head) { return $null }
+        $behind = [int](& git -C $PluginDir rev-list --count "$mainBranch..HEAD" 2>$null)
+        if ($behind -gt 0) {
+            return "The copy in $mainPath ($mainBranch) is $behind commit(s) behind $head. With its editor closed: git -C `"$mainPath`" merge --ff-only $head"
+        }
+    } catch { } finally {
+        $ErrorActionPreference = $saved
+    }
+    return $null
+}
+
+function Invoke-TestRun([string]$Name, [hashtable]$Spec, [string]$RunDir) {
+    $runFilter = if ($Filter) { $Filter.Trim() } else { $Spec.Filter }
+    $floor = if ($Filter) { 1 } else { $Spec.MinTests }
+    $timeout = if ($TimeoutMinutes -gt 0) { $TimeoutMinutes } else { $Spec.Timeout }
+    New-Item -ItemType Directory -Force -Path $RunDir | Out-Null
+    Set-Content -LiteralPath (Join-Path $RunDir 'filter.txt') -Value $runFilter -Encoding utf8
+
+    $runLog = Join-Path $RunDir 'run.log'
+    $stdout = Join-Path $RunDir 'stdout.txt'
+    $stderr = Join-Path $RunDir 'stderr.txt'
+    # No value may end in a backslash: the C runtime reads \" as a quote inside the argument.
+    $parts = @(
+        "`"$uproject`"",
+        "-ExecCmds=`"Automation RunTests $runFilter`"",
+        '-TestExit="Automation Test Queue Empty"',
+        "-ReportExportPath=`"$($RunDir.TrimEnd('\'))`"",
+        "-abslog=`"$runLog`"",
+        '-unattended', '-nopause', '-nosplash', '-NoSound', '-nullrhi', '-NoLiveCoding'
+    )
+    if ($Spec.Game) { $parts += '-game' }
+    $argLine = $parts -join ' '
+    Set-Content -LiteralPath (Join-Path $RunDir 'command.txt') -Value "`"$editorCmd`" $argLine" -Encoding utf8
+
+    Write-Step "Running $Name"
+    Write-Note "filter:  $runFilter"
+    Write-Note "log:     $runLog"
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    $proc = $null
+    $timedOut = $false
+    try {
+        $proc = Start-Process -FilePath $editorCmd -ArgumentList $argLine -WorkingDirectory $projectDir -NoNewWindow -PassThru `
+            -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+        $null = $proc.Handle   # keeps ExitCode readable after the process is gone
+        if (-not $proc.WaitForExit($timeout * 60 * 1000)) {
+            $timedOut = $true
+            Write-Problem "Still running after $timeout minutes: killing the editor."
+            try { $proc.Kill($true) } catch { }
+            $null = $proc.WaitForExit(60000)
+        }
+    } finally {
+        if ($null -ne $proc -and -not $proc.HasExited) { try { $proc.Kill($true) } catch { } }
+    }
+    $watch.Stop()
+    $exitCode = if ($timedOut) { $null } else { $proc.ExitCode }
+    Write-Note ('editor finished after {0:N0} s, exit code {1}' -f $watch.Elapsed.TotalSeconds, $(if ($null -eq $exitCode) { 'none (killed)' } else { $exitCode }))
+
+    return (Get-Digest -Name $Name -RunDir $RunDir -Floor $floor -TimedOut $timedOut -ExitCode $exitCode -Seconds $watch.Elapsed.TotalSeconds)
+}
+
+function Get-Digest([string]$Name, [string]$RunDir, [int]$Floor, [bool]$TimedOut, $ExitCode, [double]$Seconds) {
+    $runLog = Join-Path $RunDir 'run.log'
+    $logLines = if (Test-Path -LiteralPath $runLog) { @(Get-Content -LiteralPath $runLog -Encoding utf8) } else { @() }
+    $infra = @()
+    $crash = @($logLines | Where-Object { $_ -match '=== Critical error: ===|Fatal error!|Unhandled Exception|Assertion failed:' } | Select-Object -First 5)
+    if ($crash.Count -gt 0) { $infra += 'The editor crashed:'; $infra += $crash }
+    if ($TimedOut) { $infra += 'The run timed out.' }
+    $ensures = @($logLines | Where-Object { $_ -match 'Ensure condition failed' } | Select-Object -Unique)
+    $loadFailures = @($logLines | Where-Object { $_ -match 'Plugin ''DreamNarrative'' failed to load|Unable to load module.*DreamNarrative' } | Select-Object -First 3)
+    if ($loadFailures.Count -gt 0) { $infra += 'The plugin did not load:'; $infra += $loadFailures }
+
+    $tests = @()
+    $indexPath = Join-Path $RunDir 'index.json'
+    if (Test-Path -LiteralPath $indexPath) {
+        $index = Read-JsonFile $indexPath
+        foreach ($t in @($index.tests)) {
+            $errors = @()
+            foreach ($entry in @($t.entries)) {
+                if ($entry.event.type -eq 'Error') { $errors += [string]$entry.event.message }
             }
+            $tests += [pscustomobject]@{ Path = [string]$t.fullTestPath; State = [string]$t.state; Duration = [double]$t.duration; Errors = $errors }
         }
-        Write-Output ("{0} passed, {1} failed (editor exit {2})" -f $passed, $failed, $editorExit)
-        if ($editorExit -ne 0 -and $failed -eq 0 -and $passed -eq 0) {
-            Write-Warning "The editor did not run the tests (exit $editorExit). Use -Raw to see its output; a negative exit code usually means it could not start."
-            exit 1
+    } elseif ($Floor -gt 0 -or $crash.Count -gt 0 -or $TimedOut) {
+        $infra += "No index.json in $RunDir; the tests did not report."
+    }
+
+    $passed = @($tests | Where-Object { $_.State -eq 'Success' })
+    $failed = @($tests | Where-Object { $_.State -eq 'Fail' })
+    $notRun = @($tests | Where-Object { $_.State -notin 'Success', 'Fail' })
+    $ran = $passed.Count + $failed.Count
+    if ($ran -lt $Floor) { $infra += "Only $ran test(s) ran; this preset runs at least $Floor. Did the plugin's test module load?" }
+
+    $code = if ($infra.Count -gt 0) { 2 } elseif ($failed.Count -gt 0 -or $ensures.Count -gt 0) { 1 } else { 0 }
+    $word = switch ($code) { 0 { 'green' } 1 { 'red' } default { 'not judged' } }
+
+    $summary = @("# DreamNarrative tests: $Name -- $word", '')
+    $summary += ('Ran {0}: {1} passed, {2} failed, {3} not run (floor {4}); {5:N0} s in the editor.' -f $ran, $passed.Count, $failed.Count, $notRun.Count, $Floor, $Seconds)
+    if ($infra.Count -gt 0) { $summary += ''; $summary += '## Not judged'; $summary += @($infra | ForEach-Object { "- $_" }) }
+    if ($failed.Count -gt 0) {
+        $summary += ''; $summary += '## Failed'
+        foreach ($t in $failed) {
+            $first = if ($t.Errors.Count -gt 0) { $t.Errors[0] } else { '(no error message)' }
+            $summary += "- $($t.Path): $first"
         }
-        exit $failed
+    }
+    if ($ensures.Count -gt 0) { $summary += ''; $summary += '## Ensures'; $summary += @($ensures | ForEach-Object { "- $($_.Trim())" }) }
+    if ($notRun.Count -gt 0) { $summary += ''; $summary += '## Not run'; $summary += @($notRun | ForEach-Object { "- $($_.Path) ($($_.State))" }) }
+    $slowest = @($tests | Sort-Object Duration -Descending | Select-Object -First 5)
+    if ($slowest.Count -gt 0) {
+        $summary += ''; $summary += '## Slowest'
+        $summary += @($slowest | ForEach-Object { '- {0:N1} ms  {1}' -f ($_.Duration * 1000.0), $_.Path })
+    }
+    Set-Content -LiteralPath (Join-Path $RunDir 'summary.md') -Value ($summary -join "`n") -Encoding utf8
+
+    Write-Step "$Name`: $word"
+    foreach ($line in $summary | Select-Object -Skip 2) { if ($line) { Write-Note $line } }
+    return $code
+}
+
+# ---------------------------------------------------------------- 1. pre-flight
+
+$runs = @(if ($Preset -eq 'All') { 'Quick', 'Explore', 'Smoke' } else { $Preset })
+if ($Filter) {
+    if ($Filter -match "[,;'`"]") { Stop-Run 2 "The filter may not hold commas, semicolons or quotes (the engine splits -ExecCmds on commas and the Automation command on semicolons): $Filter" }
+    if ($Preset -eq 'All') { Stop-Run 2 '-Filter replaces one preset''s filter; it cannot be combined with -Preset All.' }
+}
+$longestFilter = if ($Filter) { $Filter } else { ($runs | ForEach-Object { $Presets[$_].Filter } | Sort-Object Length -Descending | Select-Object -First 1) }
+if ($longestFilter.Length -gt $MaxFilterLength) { Stop-Run 2 'The filter is too long for the engine''s command line.' }
+
+$reportRoot = if ($ReportDir) { [IO.Path]::GetFullPath($ReportDir) } else { Join-Path $projectDir 'Saved\DreamNarrativeTestReports' }
+if ([IO.Path]::GetPathRoot($reportRoot).ToUpperInvariant().StartsWith('C:')) { Stop-Run 2 "The report directory $reportRoot is on drive C, which is nearly full. Pass -ReportDir." }
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$script:ReportPath = Join-Path $reportRoot "$stamp-$Preset"
+New-Item -ItemType Directory -Force -Path $script:ReportPath | Out-Null
+
+$pluginsUnderTest = @(Get-ChildItem -LiteralPath (Join-Path $projectDir 'Plugins') -Filter 'DreamNarrative.uplugin' -File -Recurse -Depth 2 -ErrorAction SilentlyContinue)
+if ($pluginsUnderTest.Count -ne 1 -or -not [string]::Equals($pluginsUnderTest[0].DirectoryName, $PluginDir, [StringComparison]::OrdinalIgnoreCase)) {
+    $found = if ($pluginsUnderTest.Count -gt 0) { ($pluginsUnderTest | ForEach-Object { $_.DirectoryName }) -join ', ' } else { 'none' }
+    Stop-Run 2 "The project's DreamNarrative plugin is not the checkout this script lives in ($PluginDir); found: $found. Run the dnc.ps1 of the copy you mean to test."
+}
+
+$branch = (& git -C $PluginDir rev-parse --abbrev-ref HEAD 2>$null)
+$commit = (& git -C $PluginDir rev-parse --short HEAD 2>$null)
+$dirty = @(& git -C $PluginDir status --porcelain 2>$null).Count -gt 0
+Write-Step "DreamNarrative tests: $Preset"
+Write-Note "project: $uproject"
+Write-Note "plugin:  $PluginDir ($branch $commit$(if ($dirty) { ', uncommitted changes' }))"
+Write-Note "engine:  $engineRoot"
+Write-Note "report:  $script:ReportPath"
+
+if (-not $AllowEditorOpen) {
+    $open = @(Get-EditorsOnProject $uproject)
+    if ($open.Count -gt 0) {
+        Stop-Run 2 "An editor has $uproject open (process $(($open | ForEach-Object { $_.ProcessId }) -join ', ')); the build would fail on the DLLs it holds." @('Close it, test in the host project, or pass -AllowEditorOpen.')
     }
 }
+
+# ---------------------------------------------------------------- 2. static checks
+
+if (-not $SkipStaticChecks) {
+    Write-Step 'Static checks'
+    $staticLog = Join-Path $script:ReportPath 'static-checks.txt'
+    $staticOutput = @(Invoke-Native 'pwsh' @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'StaticChecks.ps1'), '-Root', $PluginDir))
+    $staticCode = $LASTEXITCODE
+    $staticOutput | Set-Content -LiteralPath $staticLog -Encoding utf8
+    $staticOutput | ForEach-Object { Write-Note $_ }
+    if ($staticCode -ne 0) { Stop-Run 2 'The static checks failed; nothing was built or run.' @("Findings: $staticLog") }
+}
+
+# ---------------------------------------------------------------- 3. build and manifest
+
+if (-not $NoBuild) {
+    Write-Step "Building ${projectName}Editor (Win64 Development, the whole target)"
+    $buildLog = Join-Path $script:ReportPath 'build.log'
+    $buildBat = Join-Path $engineRoot 'Engine\Build\BatchFiles\Build.bat'
+    # -NoEngineChanges: an out-of-date engine module would otherwise be rebuilt in place, which fails
+    # while any editor on this engine is open. With it UBT stops first and lists what it would write.
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    Invoke-Native $buildBat @("${projectName}Editor", 'Win64', 'Development', "-Project=$uproject", '-WaitMutex', '-NoHotReloadFromIDE', '-NoEngineChanges') |
+        Out-File -LiteralPath $buildLog -Encoding utf8
+    $buildCode = $LASTEXITCODE
+    $watch.Stop()
+    if ($buildCode -ne 0) {
+        if (Select-String -LiteralPath $buildLog -SimpleMatch 'FailedDueToEngineChange' -Quiet) {
+            Stop-Run 2 'The build would have rebuilt engine modules; nothing was built.' @('Build the engine (or the working project) with every editor closed first.', "Log: $buildLog")
+        }
+        $errors = @(Select-String -LiteralPath $buildLog -Pattern ': error |error [A-Z]+\d+:' | Select-Object -First 10 | ForEach-Object { $_.Line.Trim() })
+        Stop-Run 2 "The build failed (exit $buildCode) after $([int]$watch.Elapsed.TotalSeconds) s." (@("Log: $buildLog") + $errors)
+    }
+    Write-Note "built in $([int]$watch.Elapsed.TotalSeconds) s"
+}
+$manifestProblems = @(Test-ModuleManifest)
+if ($manifestProblems.Count -gt 0) { Stop-Run 2 'The plugin would not load as built.' $manifestProblems }
+
+# ---------------------------------------------------------------- 4 and 5. run and digest
+
+$final = 0
+foreach ($name in $runs) {
+    $runDir = if ($runs.Count -gt 1) { Join-Path $script:ReportPath $name } else { $script:ReportPath }
+    $code = Invoke-TestRun -Name $name -Spec $Presets[$name] -RunDir $runDir
+    $final = [Math]::Max($final, [int]$code)
+}
+
+$lag = Get-DevTestLag
+if ($lag) { Write-Note "note:    $lag" }
+Write-Note "report:  $script:ReportPath"
+exit $final
