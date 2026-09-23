@@ -70,9 +70,23 @@ namespace
 
 bool UDreamNarrativeDialogueRunner::Start(UDreamNarrativeStory* InStory, UDreamNarrativeLedger* InLedger, const UDnaDialogueSection* InSection, FName InNode)
 {
+	// A runner can be started again. A dialogue still running on it ends first, as an abort would end it.
+	if (State != EDnaRunnerState::Idle && State != EDnaRunnerState::Ended)
+	{
+		Abort();
+	}
 	Story = InStory;
 	Ledger = InLedger;
 	Section = const_cast<UDnaDialogueSection*>(InSection);
+	Node = nullptr;
+	NodeName = NAME_None;
+	PC = 0;
+	State = EDnaRunnerState::Idle;
+	CurrentLine = FDnaLineView();
+	CurrentChoices.Reset();
+	CurrentGroup = INDEX_NONE;
+	CurrentOptionIndices.Reset();
+	WaitHandle = FDnaClockHandle();
 	Transcript.Reset();
 	if (!Ledger || !Section || !EnterNode(InNode))
 	{

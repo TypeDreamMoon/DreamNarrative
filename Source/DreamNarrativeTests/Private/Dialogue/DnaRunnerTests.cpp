@@ -8,6 +8,7 @@
 #include "DreamNarrativeLedger.h"
 #include "DreamNarrativeStory.h"
 #include "Fixtures/DnaTestWorld.h"
+#include "UObject/StrongObjectPtr.h"
 
 // ---------------------------------------------------------------- wait
 
@@ -114,6 +115,59 @@ bool FDnaSetsCommitAsOneBatchTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("three sets in a row commit once, the later one on its own"), FString::Join(Batches, TEXT(" | ")), FString(TEXT("一,二,三 | 一")));
 	TestEqual(TEXT("observers see the whole batch"), FString::Join(SeenAtFirstCommit, TEXT(" ")), FString(TEXT("1 2 true")));
 	World.Expect(TEXT("一 == 2 and 二 == 2 and 三"));
+	return !HasAnyErrors();
+}
+
+// ---------------------------------------------------------------- starting again
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRunnerStartsAgainTest, "DreamNarrative.Dialogue.RunnerStartsAgain", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+
+bool FDnaRunnerStartsAgainTest::RunTest(const FString& Parameters)
+{
+	using namespace UE::DreamNarrative::Tests;
+
+	FDnaTestWorld World(*this);
+	const bool bCompiled = World.CompileText(TEXT(
+		"character 甲\n"
+		"fact 次: int\n"
+		"dialogue 问 for 甲\n"
+		"  甲: 你好。\n"
+		"  - 好\n"
+		"      set 次 += 1\n"
+		"  - 不好\n"
+		"  甲: 再见。\n"));
+	if (!bCompiled)
+	{
+		return false;
+	}
+	const UDnaDialogueSection* Section = nullptr;
+	World.Story().FindNode(TEXT("问"), &Section);
+	TStrongObjectPtr<UDreamNarrativeDialogueRunner> Runner(NewObject<UDreamNarrativeDialogueRunner>(GetTransientPackage()));
+
+	// One runner, two whole dialogues: each starts clean and each counts.
+	for (int32 Round = 1; Round <= 2; ++Round)
+	{
+		TestTrue(TEXT("starts"), Runner->Start(&World.Story(), &World.Ledger(), Section, TEXT("问")));
+		TestEqual(TEXT("the transcript starts over"), Runner->GetTranscript().Num() > 0 ? Runner->GetTranscript()[0] : FString(), FString(TEXT("[enter 问]")));
+		TestEqual(TEXT("the first line"), Runner->GetCurrentLine().Text.ToString(), FString(TEXT("你好。")));
+		Runner->Advance();
+		TestEqual(TEXT("both choices"), Runner->GetChoices().Num(), 2);
+		Runner->Choose(0);
+		Runner->Advance();
+		TestEqual(TEXT("ended"), Runner->GetState(), EDnaRunnerState::Ended);
+		TestEqual(TEXT("the choice counted"), World.Ledger().GetFactAsInt(TEXT("次")), Round);
+		TestEqual(TEXT("and so did the visit"), World.Ledger().GetVisited(TEXT("问")), Round);
+	}
+
+	// Starting it with choices on screen ends that dialogue first, as an abort would.
+	Runner->Start(&World.Story(), &World.Ledger(), Section, TEXT("问"));
+	Runner->Advance();
+	TestEqual(TEXT("choices on screen"), Runner->GetState(), EDnaRunnerState::AwaitingChoice);
+	Runner->Start(&World.Story(), &World.Ledger(), Section, TEXT("问"));
+	TestEqual(TEXT("the abandoned dialogue was a visit"), World.Ledger().GetVisited(TEXT("问")), 3);
+	TestEqual(TEXT("the new one is at its first line"), Runner->GetState(), EDnaRunnerState::ShowingLine);
+	TestEqual(TEXT("with no choices left over"), Runner->GetChoices().Num(), 0);
+	Runner->Abort();
 	return !HasAnyErrors();
 }
 

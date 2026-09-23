@@ -90,7 +90,10 @@ class DREAMNARRATIVESTORY_API UDreamNarrativeDialogueRunner : public UObject
 	GENERATED_BODY()
 
 public:
-	/** Begins executing Node of Section. Returns false when the node does not exist. */
+	/**
+	 * Begins executing Node of Section. Returns false when the node does not exist. A runner can be
+	 * started again once its dialogue ends; starting it while one is still running aborts that one.
+	 */
 	bool Start(UDreamNarrativeStory* InStory, UDreamNarrativeLedger* InLedger, const UDnaDialogueSection* Section, FName Node);
 
 	/** After a line: continue. */
