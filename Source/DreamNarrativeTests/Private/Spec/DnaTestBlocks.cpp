@@ -285,7 +285,7 @@ namespace UE::DreamNarrative::Tests
 						const FDnaLineView& Line = Runner->GetCurrentLine();
 						for (const FDnaLineNode* Absent : Absents)
 						{
-							if (Matches(*Absent, Line))
+							if (!Absent->Payload.bChoice && Matches(*Absent, Line))
 							{
 								World.SetContext(Where(*Absent));
 								World.ReportError(FString::Printf(TEXT("%s showed \"%s\", which the test says must not appear"), *What, *DescribeShown(Line)));
@@ -313,6 +313,19 @@ namespace UE::DreamNarrative::Tests
 					}
 					case EDnaRunnerState::AwaitingChoice:
 					{
+						for (const FDnaLineNode* Absent : Absents)
+						{
+							if (!Absent->Payload.bChoice) { continue; }
+							for (const FDnaChoiceView& Choice : Runner->GetChoices())
+							{
+								if (MatchesChoice(*Absent, Choice))
+								{
+									World.SetContext(Where(*Absent));
+									World.ReportError(FString::Printf(TEXT("%s offered \"%s\", which the test says must not be offered"), *What, *Choice.Label.ToString()));
+									bOk = false;
+								}
+							}
+						}
 						// Whatever the test expected before this choice had to be shown by now.
 						for (; IsExpectedLine(Cursor); ++Cursor)
 						{

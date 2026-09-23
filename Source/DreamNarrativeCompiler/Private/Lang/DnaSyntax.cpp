@@ -357,7 +357,9 @@ namespace UE::DreamNarrative::Lang
 				case EDnaTestStepKind::Jump: Detail += TEXT(" ") + P.Target; break;
 				case EDnaTestStepKind::ExpectLine:
 				case EDnaTestStepKind::Absent:
+					if (P.bChoice) { Detail += TEXT(" -"); }
 					if (!P.Target.IsEmpty()) { Detail += TEXT(" #") + P.Target; }
+					else if (P.bChoice) { Detail += TEXT(" ") + TextDump(P.Text); }
 					else if (P.Name.IsEmpty()) { Detail += TEXT(" > ") + TextDump(P.Text); }
 					else
 					{

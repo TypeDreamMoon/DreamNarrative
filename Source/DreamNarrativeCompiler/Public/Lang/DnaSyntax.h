@@ -136,7 +136,8 @@ namespace UE::DreamNarrative::Lang
 		/** A line the dialogue must show: Payload.Name is the speaker (empty for narration) with
 		 *  SpeakerTags and Text, or Payload.Target is a line id. */
 		ExpectLine,
-		/** `absent` + a line the dialogue must not show, in the same fields as ExpectLine. */
+		/** `absent` + a line the dialogue must not show, in the same fields as ExpectLine; or, with
+		 *  bChoice, `absent - 文本` / `absent - #id`: a choice that must not be offered, as Pick. */
 		Absent,
 		/** `- 文本` or `- #id`: the choice to take. Payload.Text, or Payload.Target for an id. */
 		Pick,
@@ -240,6 +241,8 @@ namespace UE::DreamNarrative::Lang
 		int32 Seed = 0;
 		/** `talk` / `start ... strict`: every shown line must be expected, in order. */
 		bool bStrict = false;
+		/** An Absent step about a choice (`absent - 文本`) rather than a line. */
+		bool bChoice = false;
 	};
 
 	struct FDnaLineNode;

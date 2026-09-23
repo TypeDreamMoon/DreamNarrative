@@ -1651,6 +1651,22 @@ namespace UE::DreamNarrative::Lang
 				{
 					P.TestStep = EDnaTestStepKind::Absent;
 					Start = SkipSpaces(Content, 6);
+					if (Content.Mid(Start).StartsWith(TEXT("- ")) || Content.Mid(Start) == TEXT("-"))
+					{
+						// `absent - 文本`: a choice that must not be offered.
+						P.bChoice = true;
+						const int32 LabelStart = SkipSpaces(Content, Start + 1);
+						if (LabelStart < Content.Len() && NormalizeDnaPunctuation(Content[LabelStart]) == TEXT('#'))
+						{
+							ParseLineIdReference(Node, LabelStart + 1, LOCTEXT("AbsentChoiceId", "a choice id after '#'"));
+						}
+						else
+						{
+							ParseText(Node, LabelStart, Content.Len(), P.Text);
+						}
+						RequireNoChildren(Node);
+						return;
+					}
 				}
 
 				if (Start < Content.Len() && NormalizeDnaPunctuation(Content[Start]) == TEXT('#'))
