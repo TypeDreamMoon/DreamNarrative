@@ -101,4 +101,42 @@ namespace DreamNarrative
 		if (Text == TEXT("tag")) { OutType = EDnaFactType::Tag; return true; }
 		return false;
 	}
+
+	FName QuestStateFact(FName Quest)
+	{
+		return FName(*(TEXT("@") + Quest.ToString()));
+	}
+
+	FName QuestObjectivesFact(FName Quest)
+	{
+		return FName(*(TEXT("@") + Quest.ToString() + TEXT(".objectives")));
+	}
+
+	FName QuestStateMember(EDnaQuestState State)
+	{
+		switch (State)
+		{
+		case EDnaQuestState::Inactive: return TEXT("Inactive");
+		case EDnaQuestState::Accepted: return TEXT("Accepted");
+		case EDnaQuestState::Going: return TEXT("Going");
+		case EDnaQuestState::Completed: return TEXT("Completed");
+		case EDnaQuestState::Failed: return TEXT("Failed");
+		case EDnaQuestState::TimedOut: return TEXT("TimedOut");
+		}
+		return TEXT("Inactive");
+	}
+
+	bool TryParseQuestState(FName Member, EDnaQuestState& OutState)
+	{
+		for (const EDnaQuestState State : { EDnaQuestState::Inactive, EDnaQuestState::Accepted, EDnaQuestState::Going,
+			EDnaQuestState::Completed, EDnaQuestState::Failed, EDnaQuestState::TimedOut })
+		{
+			if (QuestStateMember(State) == Member)
+			{
+				OutState = State;
+				return true;
+			}
+		}
+		return false;
+	}
 }

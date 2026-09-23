@@ -165,8 +165,39 @@ struct DREAMNARRATIVECORE_API FDnaCharacterDecl
 	FName WasName;
 };
 
+/**
+ * Where a quest stands. The state lives in the ledger, as the tag fact QuestStateFact(quest), so a
+ * quest saves, loads and drives chapter rules the way any fact does.
+ */
+UENUM(BlueprintType)
+enum class EDnaQuestState : uint8
+{
+	Inactive,
+	/** Taken on; nothing it watches has moved yet. */
+	Accepted,
+	/** Taken on, and something it watches has moved since. */
+	Going,
+	Completed,
+	Failed,
+	/** Ran out of time. Counts as failed. */
+	TimedOut,
+};
+
 namespace DreamNarrative
 {
+	/**
+	 * The ledger facts a quest keeps its state in, declared by the compiler with every quest. `@` is
+	 * not a character a source name can hold, so they never collide with a fact the story declares.
+	 *   @猎狼             tag in (Inactive, Accepted, Going, Completed, Failed, TimedOut)
+	 *   @猎狼.objectives  int: which objectives are done, bit n for the (n+1)th
+	 * The quest's timeout runs on the ledger timer of the same name as its state fact.
+	 */
+	DREAMNARRATIVECORE_API FName QuestStateFact(FName Quest);
+	DREAMNARRATIVECORE_API FName QuestObjectivesFact(FName Quest);
+	/** The member of the state fact's set that stands for State: its enumerator's name. */
+	DREAMNARRATIVECORE_API FName QuestStateMember(EDnaQuestState State);
+	DREAMNARRATIVECORE_API bool TryParseQuestState(FName Member, EDnaQuestState& OutState);
+
 	namespace Tags
 	{
 		/** `Narrative.Fact.<name>` -- the gameplay tag a fact is exported under. */
