@@ -1,6 +1,7 @@
 // Copyright DreamMoon. All Rights Reserved.
 
 #include "Lang/DnaValidator.h"
+#include "Lang/DnaLexer.h"
 
 #define LOCTEXT_NAMESPACE "DreamNarrativeLang"
 
@@ -328,6 +329,7 @@ namespace UE::DreamNarrative::Lang
 			{
 				TArray<FDnaLineNode*> Lines;
 				Root.GetContentChildren(Lines);
+				int32 Objectives = 0;
 				for (FDnaLineNode* Line : Lines)
 				{
 					const FDnaLinePayload& P = Line->Payload;
@@ -337,20 +339,50 @@ namespace UE::DreamNarrative::Lang
 					case EDnaLineKind::FailIf:
 					case EDnaLineKind::Objective:
 						if (P.Condition.IsValid()) { CheckCondition(P.Condition); }
-						if (Line->Kind == EDnaLineKind::Objective) { CheckTexts(*Line); }
+						if (Line->Kind == EDnaLineKind::Objective)
+						{
+							CheckTexts(*Line);
+							// The done objectives are kept as the bits of one int.
+							if (++Objectives == 32)
+							{
+								Fail(TEXT("DNS2014"), Line->Raw.Span, LOCTEXT("TooManyObjectives", "A quest can have at most 31 objectives; split it into subquests"));
+							}
+						}
 						break;
 					case EDnaLineKind::Journal:
 						CheckTexts(*Line);
 						break;
 					case EDnaLineKind::On:
+					{
 						CheckCommandBlock(*Line);
+						TArray<FDnaLineNode*> Commands;
+						Line->GetContentChildren(Commands);
+						for (const FDnaLineNode* Command : Commands)
+						{
+							if (Command->Kind == EDnaLineKind::Command && Command->Payload.Command == EDnaCommandKind::Wait)
+							{
+								Fail(TEXT("DNS2013"), Command->Raw.Span, LOCTEXT("WaitInOn", "An 'on' block runs all at once; 'wait' belongs in a dialogue"));
+							}
+						}
 						break;
+					}
 					case EDnaLineKind::Subquest:
 						RequireQuest(P.Name, Line->Raw.Span);
 						break;
 					case EDnaLineKind::Property:
+					{
 						CheckText(P.Text);
+						if (P.Name == TEXT("priority") && P.Value != TEXT("main") && P.Value != TEXT("side") && P.Value != TEXT("hidden"))
+						{
+							Fail(TEXT("DNS2011"), Line->Raw.Span, FText::Format(LOCTEXT("QuestPriority", "'{0}' is not a priority; expected main, side or hidden"), FText::FromString(P.Value)));
+						}
+						double Seconds = 0.0;
+						if (P.Name == TEXT("timeout") && (!TryParseDnaDuration(P.Value, Seconds) || Seconds <= 0.0))
+						{
+							Fail(TEXT("DNS2012"), Line->Raw.Span, FText::Format(LOCTEXT("QuestTimeout", "'{0}' is not a duration; write a timeout such as 20m, 90s or 1.5h"), FText::FromString(P.Value)));
+						}
 						break;
+					}
 					default:
 						break;
 					}

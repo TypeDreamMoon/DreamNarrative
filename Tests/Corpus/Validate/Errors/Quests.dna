@@ -1,0 +1,8 @@
+quest 坏任务
+  priority: 很重要
+// EXPECT DNS2011 (2,3)
+  timeout: 很久
+// EXPECT DNS2012 (4,3)
+  on accept
+    wait 3s
+// EXPECT DNS2013 (7,5)
