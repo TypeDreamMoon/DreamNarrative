@@ -1,6 +1,7 @@
 // Copyright DreamMoon. All Rights Reserved.
 
 #include "DreamNarrativeExpression.h"
+#include "DreamNarrativeTrace.h"
 
 bool FDnaCompiledExpr::IsConstant() const
 {
@@ -54,22 +55,31 @@ namespace DreamNarrative
 			{
 				return Node.Children.IsValidIndex(Which) ? Eval(Expr, Node.Children[Which], Context, Depth + 1) : FDnaValue();
 			};
+			IDnaTrace* Trace = Context.GetTrace();
+			auto Report = [&Node, Trace](const FDnaValue* Left, const FDnaValue* Right, const FDnaValue& Result) -> FDnaValue
+			{
+				if (Trace)
+				{
+					Trace->OnExpression(Node, Left, Right, Result);
+				}
+				return Result;
+			};
 
 			switch (Node.Kind)
 			{
 			case EDnaExprNodeKind::Literal:
-				return Node.Literal;
+				return Report(nullptr, nullptr, Node.Literal);
 			case EDnaExprNodeKind::Fact:
-				return Context.GetFactValue(Node.Name);
+				return Report(nullptr, nullptr, Context.GetFactValue(Node.Name));
 			case EDnaExprNodeKind::Member:
 			case EDnaExprNodeKind::ChapterName:
-				return FDnaValue::FromTag(Node.Name);
+				return Report(nullptr, nullptr, FDnaValue::FromTag(Node.Name));
 			case EDnaExprNodeKind::Chapter:
-				return FDnaValue::FromTag(Context.GetCurrentChapter());
+				return Report(nullptr, nullptr, FDnaValue::FromTag(Context.GetCurrentChapter()));
 			case EDnaExprNodeKind::QuestState:
-				return FDnaValue::FromBool(Context.GetQuestState(Node.Name, Node.QuestQuery));
+				return Report(nullptr, nullptr, FDnaValue::FromBool(Context.GetQuestState(Node.Name, Node.QuestQuery)));
 			case EDnaExprNodeKind::Visited:
-				return FDnaValue::FromInt(Context.GetVisitCount(Node.Name));
+				return Report(nullptr, nullptr, FDnaValue::FromInt(Context.GetVisitCount(Node.Name)));
 			case EDnaExprNodeKind::Random:
 			{
 				const FDnaValue Min = Child(0);
@@ -79,58 +89,62 @@ namespace DreamNarrative
 				{
 					const int32 Lo = FMath::Min(Min.Int, Max.Int);
 					const int32 Hi = FMath::Max(Min.Int, Max.Int);
-					return FDnaValue::FromInt(FMath::Clamp(Lo + FMath::FloorToInt(Unit * (Hi - Lo + 1)), Lo, Hi));
+					return Report(&Min, &Max, FDnaValue::FromInt(FMath::Clamp(Lo + FMath::FloorToInt(Unit * (Hi - Lo + 1)), Lo, Hi)));
 				}
 				const double Lo = FMath::Min(Min.AsNumber(), Max.AsNumber());
 				const double Hi = FMath::Max(Min.AsNumber(), Max.AsNumber());
-				return FDnaValue::FromFloat(static_cast<float>(Lo + Unit * (Hi - Lo)));
+				return Report(&Min, &Max, FDnaValue::FromFloat(static_cast<float>(Lo + Unit * (Hi - Lo))));
 			}
 			case EDnaExprNodeKind::Chance:
 			{
-				const double Probability = Child(0).AsNumber();
-				return FDnaValue::FromBool(Context.NextRandomUnit() < Probability);
+				const FDnaValue Probability = Child(0);
+				return Report(&Probability, nullptr, FDnaValue::FromBool(Context.NextRandomUnit() < Probability.AsNumber()));
 			}
 			case EDnaExprNodeKind::Unary:
 			{
 				const FDnaValue Operand = Child(0);
 				if (Node.Operator == EDnaExprOperator::Not)
 				{
-					return FDnaValue::FromBool(!Operand.AsBool());
+					return Report(&Operand, nullptr, FDnaValue::FromBool(!Operand.AsBool()));
 				}
-				return Number(-Operand.AsNumber(), Operand.Type == EDnaFactType::Int);
+				return Report(&Operand, nullptr, Number(-Operand.AsNumber(), Operand.Type == EDnaFactType::Int));
 			}
 			case EDnaExprNodeKind::Binary:
 			{
-				// short-circuit logic
-				if (Node.Operator == EDnaExprOperator::And)
-				{
-					return FDnaValue::FromBool(Child(0).AsBool() && Child(1).AsBool());
-				}
-				if (Node.Operator == EDnaExprOperator::Or)
-				{
-					return FDnaValue::FromBool(Child(0).AsBool() || Child(1).AsBool());
-				}
 				const FDnaValue Left = Child(0);
+				// `and` / `or` short-circuit: the right side is not evaluated when the left decides.
+				if (Node.Operator == EDnaExprOperator::And || Node.Operator == EDnaExprOperator::Or)
+				{
+					const bool bDecided = (Node.Operator == EDnaExprOperator::And) != Left.AsBool();
+					if (bDecided)
+					{
+						return Report(&Left, nullptr, FDnaValue::FromBool(Left.AsBool()));
+					}
+					const FDnaValue Right = Child(1);
+					return Report(&Left, &Right, FDnaValue::FromBool(Right.AsBool()));
+				}
 				const FDnaValue Right = Child(1);
 				const bool bInt = Left.Type == EDnaFactType::Int && Right.Type == EDnaFactType::Int;
 				const double L = Left.AsNumber();
 				const double R = Right.AsNumber();
+				FDnaValue Result;
 				switch (Node.Operator)
 				{
-				case EDnaExprOperator::Eq: return FDnaValue::FromBool(Left.Equals(Right));
-				case EDnaExprOperator::Ne: return FDnaValue::FromBool(!Left.Equals(Right));
-				case EDnaExprOperator::Lt: return FDnaValue::FromBool(L < R);
-				case EDnaExprOperator::Le: return FDnaValue::FromBool(L <= R);
-				case EDnaExprOperator::Gt: return FDnaValue::FromBool(L > R);
-				case EDnaExprOperator::Ge: return FDnaValue::FromBool(L >= R);
-				case EDnaExprOperator::Add: return Number(L + R, bInt);
-				case EDnaExprOperator::Sub: return Number(L - R, bInt);
-				case EDnaExprOperator::Mul: return Number(L * R, bInt);
-				case EDnaExprOperator::Div: return R != 0.0 ? Number(bInt ? FMath::TruncToDouble(L / R) : L / R, bInt) : Number(0.0, bInt);
+				case EDnaExprOperator::Eq: Result = FDnaValue::FromBool(Left.Equals(Right)); break;
+				case EDnaExprOperator::Ne: Result = FDnaValue::FromBool(!Left.Equals(Right)); break;
+				case EDnaExprOperator::Lt: Result = FDnaValue::FromBool(L < R); break;
+				case EDnaExprOperator::Le: Result = FDnaValue::FromBool(L <= R); break;
+				case EDnaExprOperator::Gt: Result = FDnaValue::FromBool(L > R); break;
+				case EDnaExprOperator::Ge: Result = FDnaValue::FromBool(L >= R); break;
+				case EDnaExprOperator::Add: Result = Number(L + R, bInt); break;
+				case EDnaExprOperator::Sub: Result = Number(L - R, bInt); break;
+				case EDnaExprOperator::Mul: Result = Number(L * R, bInt); break;
+				case EDnaExprOperator::Div: Result = R != 0.0 ? Number(bInt ? FMath::TruncToDouble(L / R) : L / R, bInt) : Number(0.0, bInt); break;
 				// x % 0 is 0 by definition here; x % -1 is 0 in arithmetic, and INT_MIN % -1 traps on x86.
-				case EDnaExprOperator::Mod: return FDnaValue::FromInt(Right.Int == 0 || Right.Int == -1 ? 0 : Left.Int % Right.Int);
-				default: return FDnaValue();
+				case EDnaExprOperator::Mod: Result = FDnaValue::FromInt(Right.Int == 0 || Right.Int == -1 ? 0 : Left.Int % Right.Int); break;
+				default: break;
 				}
+				return Report(&Left, &Right, Result);
 			}
 			case EDnaExprNodeKind::In:
 			{
@@ -139,10 +153,10 @@ namespace DreamNarrative
 				{
 					if (Subject.Equals(Child(Which)))
 					{
-						return FDnaValue::FromBool(true);
+						return Report(&Subject, nullptr, FDnaValue::FromBool(true));
 					}
 				}
-				return FDnaValue::FromBool(false);
+				return Report(&Subject, nullptr, FDnaValue::FromBool(false));
 			}
 			}
 			return FDnaValue();

@@ -32,6 +32,14 @@ enum class EDnaFactOwner : uint8
 	Extern,
 };
 
+/** Who is writing: compiled narrative, or game code. Decides whether the ownership rule applies. */
+UENUM(BlueprintType)
+enum class EDnaWriteSource : uint8
+{
+	Narrative,
+	Game,
+};
+
 /** Network authority, recorded from the declaration and not yet enforced (Architecture §9). */
 UENUM(BlueprintType)
 enum class EDnaAuthority : uint8

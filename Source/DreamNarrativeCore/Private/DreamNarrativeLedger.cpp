@@ -114,9 +114,17 @@ bool UDreamNarrativeLedger::SetFact(FName Fact, const FDnaValue& InValue, EDnaWr
 {
 	const FName Name = Resolve(Fact);
 	const FDnaFactDecl* Decl = FactDecls.Find(Name);
+	auto Report = [this, Name, Decl, Source](EDnaFactWriteResult Result)
+	{
+		if (Trace)
+		{
+			Trace->OnFactWrite(Name, Decl ? Decl->Type : EDnaFactType::Bool, Decl ? Decl->Owner : EDnaFactOwner::Narrative, Source, Result);
+		}
+	};
 	if (!Decl)
 	{
 		UE_LOG(LogDreamNarrative, Error, TEXT("SetFact: no fact called '%s' is declared"), *Fact.ToString());
+		Report(EDnaFactWriteResult::RefusedUndeclared);
 		return false;
 	}
 
@@ -125,6 +133,7 @@ bool UDreamNarrativeLedger::SetFact(FName Fact, const FDnaValue& InValue, EDnaWr
 		if (UDreamNarrativeSettings::Get()->bEnforceFactOwnership)
 		{
 			UE_LOG(LogDreamNarrative, Error, TEXT("SetFact: '%s' is owned by the narrative; game code may not write it (declare it `extern` if the game feeds it)"), *Name.ToString());
+			Report(EDnaFactWriteResult::RefusedOwnership);
 			return false;
 		}
 		UE_LOG(LogDreamNarrative, Warning, TEXT("SetFact: game code is writing narrative-owned fact '%s' (ownership enforcement is off)"), *Name.ToString());
@@ -138,32 +147,47 @@ bool UDreamNarrativeLedger::SetFact(FName Fact, const FDnaValue& InValue, EDnaWr
 		Value = FDnaValue::FromBool(InValue.AsBool());
 		break;
 	case EDnaFactType::Int:
-		if (InValue.Type == EDnaFactType::Tag) { UE_LOG(LogDreamNarrative, Error, TEXT("SetFact: '%s' is an int fact; a tag value cannot be written to it"), *Name.ToString()); return false; }
+		if (InValue.Type == EDnaFactType::Tag)
+		{
+			UE_LOG(LogDreamNarrative, Error, TEXT("SetFact: '%s' is an int fact; a tag value cannot be written to it"), *Name.ToString());
+			Report(EDnaFactWriteResult::RefusedType);
+			return false;
+		}
 		Value = FDnaValue::FromInt(static_cast<int32>(InValue.AsNumber()));
 		break;
 	case EDnaFactType::Float:
-		if (InValue.Type == EDnaFactType::Tag) { UE_LOG(LogDreamNarrative, Error, TEXT("SetFact: '%s' is a float fact; a tag value cannot be written to it"), *Name.ToString()); return false; }
+		if (InValue.Type == EDnaFactType::Tag)
+		{
+			UE_LOG(LogDreamNarrative, Error, TEXT("SetFact: '%s' is a float fact; a tag value cannot be written to it"), *Name.ToString());
+			Report(EDnaFactWriteResult::RefusedType);
+			return false;
+		}
 		Value = FDnaValue::FromFloat(static_cast<float>(InValue.AsNumber()));
 		break;
 	case EDnaFactType::Tag:
 		if (InValue.Type != EDnaFactType::Tag || !Decl->Domain.Contains(InValue.Tag))
 		{
 			UE_LOG(LogDreamNarrative, Error, TEXT("SetFact: '%s' is not one of the values of '%s'"), *InValue.ToString(), *Name.ToString());
+			Report(EDnaFactWriteResult::RefusedDomain);
 			return false;
 		}
 		break;
 	}
+	bool bClamped = false;
 	if (Decl->bHasRange && Value.IsNumeric())
 	{
 		const double Clamped = FMath::Clamp(Value.AsNumber(), Decl->RangeMin, Decl->RangeMax);
+		bClamped = Clamped != Value.AsNumber();
 		Value = Decl->Type == EDnaFactType::Int ? FDnaValue::FromInt(static_cast<int32>(Clamped)) : FDnaValue::FromFloat(static_cast<float>(Clamped));
 	}
 
 	FDnaValue& Slot = Values.FindOrAdd(Name);
 	if (Slot.Equals(Value) && Slot.Type == Value.Type)
 	{
+		Report(bClamped ? EDnaFactWriteResult::Clamped : EDnaFactWriteResult::Unchanged);
 		return true;
 	}
+	Report(bClamped ? EDnaFactWriteResult::Clamped : EDnaFactWriteResult::Written);
 	const FDnaValue Old = Slot;
 	Slot = Value;
 
@@ -221,6 +245,10 @@ void UDreamNarrativeLedger::Commit()
 	bCommitting = true;
 	TArray<FName> Changed = MoveTemp(DirtyFacts);
 	DirtyFacts.Reset();
+	if (Trace)
+	{
+		Trace->OnEvent(Changed.Num() > 1 ? TEXT("ledger.batch.several") : TEXT("ledger.batch.one"));
+	}
 	OnBatchCommitted.Broadcast(Changed);
 	CheckAdvanceRules();
 	bCommitting = false;
@@ -277,11 +305,24 @@ bool UDreamNarrativeLedger::JumpToChapter(FName Chapter)
 		Cursor = Decl ? Resolve(Decl->After) : NAME_None;
 	}
 
+	if (Trace)
+	{
+		Trace->OnEvent(TEXT("chapter.jump"));
+		if (Chain.Num() > 1)
+		{
+			Trace->OnEvent(TEXT("chapter.after-chain"));
+		}
+	}
 	{
 		FBatchScope Batch(*this);
 		for (int32 Index = Chain.Num() - 1; Index >= 0; --Index)
 		{
-			ApplyImplied(ChapterDecls[Chain[Index]]);
+			const FDnaChapterDecl& Decl = ChapterDecls[Chain[Index]];
+			if (Trace && Decl.Implied.Num() > 0)
+			{
+				Trace->OnEvent(TEXT("chapter.implied"));
+			}
+			ApplyImplied(Decl);
 		}
 	}
 	return SetChapter(Target);
@@ -304,6 +345,10 @@ void UDreamNarrativeLedger::CheckAdvanceRules()
 		const FDnaCompiledExpr* Condition = ScriptPtr->Get()->GetExpression(Rule.ConditionExpr);
 		if (Rule.ConditionExpr == INDEX_NONE || (Condition && EvaluateCondition(*Condition)))
 		{
+			if (Trace)
+			{
+				Trace->OnEvent(TEXT("chapter.advance-rule"));
+			}
 			SetChapter(Rule.Target);
 			return;
 		}
@@ -352,6 +397,10 @@ FDnaLedgerSnapshot UDreamNarrativeLedger::MakeSnapshot() const
 		const FDnaFactDecl* Decl = FactDecls.Find(Pair.Key);
 		if (Decl && Decl->bSession)
 		{
+			if (Trace)
+			{
+				Trace->OnEvent(TEXT("ledger.snapshot.session-left-out"));
+			}
 			continue;
 		}
 		FDnaFactSnapshotEntry& Entry = Snapshot.Facts.AddDefaulted_GetRef();
@@ -366,6 +415,10 @@ FDnaLedgerSnapshot UDreamNarrativeLedger::MakeSnapshot() const
 
 void UDreamNarrativeLedger::ApplySnapshot(const FDnaLedgerSnapshot& Snapshot)
 {
+	if (Trace)
+	{
+		Trace->OnEvent(TEXT("ledger.snapshot.apply"));
+	}
 	{
 		FBatchScope Batch(*this);
 		ResetToDefaults();
@@ -375,7 +428,15 @@ void UDreamNarrativeLedger::ApplySnapshot(const FDnaLedgerSnapshot& Snapshot)
 			if (!FactDecls.Contains(Name))
 			{
 				UE_LOG(LogDreamNarrative, Warning, TEXT("ApplySnapshot: fact '%s' is no longer declared; its value was dropped"), *Entry.Fact.ToString());
+				if (Trace)
+				{
+					Trace->OnEvent(TEXT("ledger.snapshot.dropped"));
+				}
 				continue;
+			}
+			if (Trace && Name != Entry.Fact)
+			{
+				Trace->OnEvent(TEXT("ledger.snapshot.renamed"));
 			}
 			SetFact(Name, Entry.Value, EDnaWriteSource::Narrative);
 		}
@@ -387,6 +448,10 @@ void UDreamNarrativeLedger::ApplySnapshot(const FDnaLedgerSnapshot& Snapshot)
 	// would have before the save.
 	if (!Snapshot.Chapter.IsNone())
 	{
+		if (Trace)
+		{
+			Trace->OnEvent(TEXT("chapter.restored"));
+		}
 		SetChapter(Snapshot.Chapter);
 	}
 }

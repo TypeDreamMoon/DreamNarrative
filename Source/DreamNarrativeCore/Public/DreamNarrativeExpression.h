@@ -103,6 +103,8 @@ struct DREAMNARRATIVECORE_API FDnaCompiledExpr
 	bool IsConstant() const;
 };
 
+class IDnaTrace;
+
 /** What an expression can ask the world. The ledger implements it; tests can fake it. */
 class DREAMNARRATIVECORE_API IDnaEvalContext
 {
@@ -114,6 +116,8 @@ public:
 	virtual int32 GetVisitCount(FName Dialogue) const = 0;
 	/** Uniform in [0, 1). */
 	virtual float NextRandomUnit() = 0;
+	/** Where evaluation reports each node, or null (the default) for nobody. */
+	virtual IDnaTrace* GetTrace() const { return nullptr; }
 };
 
 namespace DreamNarrative

@@ -14,18 +14,11 @@
 #include "DreamNarrativeClock.h"
 #include "DreamNarrativeExpression.h"
 #include "DreamNarrativeScript.h"
+#include "DreamNarrativeTrace.h"
 #include "DreamNarrativeTypes.h"
 #include "Math/RandomStream.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "DreamNarrativeLedger.generated.h"
-
-/** Who is writing: compiled narrative, or game code. Decides whether the ownership rule applies. */
-UENUM(BlueprintType)
-enum class EDnaWriteSource : uint8
-{
-	Narrative,
-	Game,
-};
 
 // Every property of the snapshot is marked SaveGame, down to the values, so the snapshot survives an
 // archive that only writes SaveGame properties (ArIsSaveGame) as well as one that writes them all.
@@ -228,6 +221,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Ledger")
 	void SetRandomSeed(int32 Seed) { Random.Initialize(Seed); }
 
+	/** Where the ledger, its expressions and everything running on it report what they do; null for nobody. Not owned. */
+	void SetTrace(IDnaTrace* InTrace) { Trace = InTrace; }
+
 	// ---------------------------------------------------------------- IDnaEvalContext
 
 	virtual FDnaValue GetFactValue(FName Fact) const override { return GetFact(Fact); }
@@ -235,6 +231,7 @@ public:
 	virtual bool GetQuestState(FName Quest, EDnaQuestStateQuery Query) const override;
 	virtual int32 GetVisitCount(FName Dialogue) const override { return GetVisited(Dialogue); }
 	virtual float NextRandomUnit() override { return Random.GetFraction(); }
+	virtual IDnaTrace* GetTrace() const override { return Trace; }
 
 	bool EvaluateCondition(const FDnaCompiledExpr& Expr) { return DreamNarrative::EvaluateCondition(Expr, *this); }
 	FDnaValue Evaluate(const FDnaCompiledExpr& Expr) { return DreamNarrative::EvaluateExpr(Expr, *this); }
@@ -284,4 +281,5 @@ private:
 	IDnaQuestStateProvider* QuestStateProvider = nullptr;
 	FRandomStream Random;
 	TSharedPtr<IDnaClock> Clock;
+	IDnaTrace* Trace = nullptr;
 };
