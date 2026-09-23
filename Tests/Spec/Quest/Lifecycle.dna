@@ -1,0 +1,143 @@
+// 任务状态机的每条边:Inactive → Accepted → Going → Completed | Failed | TimedOut,失败、超时之后重接;
+// 每一种 on 块、奖励、子任务自动接、日志四态、对话里的 accept / complete / fail、游戏侧的 accept / complete / fail。
+
+character 甲
+
+fact 采到: int extern
+fact 出事: bool extern
+fact 允许: bool = true
+fact 接过几次: int
+fact 完成过: bool
+fact 失败过: bool
+fact 超时过: bool
+
+quest 采药
+  title: 采药
+  timeout: 10m
+  available if 允许
+  fail if 出事
+  journal
+    accepted: 去林子里采三株药。
+    going: 还差 {3 - 采到} 株。
+    completed: 药采齐了。
+    failed: 没采成。
+  objective 采到 >= 3
+    show: 采药 {采到}/3
+  on accept
+    set 采到 = 0
+    set 接过几次 += 1
+  on complete
+    set 完成过 = true
+    reward 金币 10
+    reward 物品 草药 x3
+  on fail
+    set 失败过 = true
+  on timeout
+    set 超时过 = true
+  subquest 送药 auto
+
+quest 送药
+  journal
+    accepted: 把药送给乙。
+  objective 完成过
+  on accept
+    emit 送药开始
+
+quest 跑腿
+  journal
+    accepted: 随便跑一趟。
+
+dialogue 派活 for 甲
+  甲: 去采三株药?
+  - 好
+      accept 采药
+  - 不去
+
+dialogue 收活
+  甲: 辛苦。
+  complete 跑腿
+
+dialogue 算了
+  fail 跑腿
+
+test 没接的任务可以接
+  expect 采药.available and not 采药.active and not 采药.completed and not 采药.failed
+  journal 采药:
+
+test 对话里接任务
+  talk 甲
+    - 好
+  expect 采药.active and not 采药.available and 接过几次 == 1
+  journal 采药: 去林子里采三株药。
+
+test 游戏侧接任务
+  accept 采药
+  expect 采药.active
+
+test 有进度就从已接变成进行中
+  accept 采药
+  set 采到 = 1
+  expect 采药.active
+  journal 采药: 还差 2 株。
+
+test 目标达成就完成并接上子任务
+  accept 采药
+  set 采到 = 3
+  expect 采药.completed and not 采药.active and 完成过
+  journal 采药: 药采齐了。
+  expect 送药.completed
+
+test 失败条件成立就失败
+  accept 采药
+  set 出事 = true
+  expect 采药.failed and 失败过 and not 超时过
+  journal 采药: 没采成。
+
+test 超时算失败
+  accept 采药
+  wait 9m
+  expect 采药.active
+  wait 1m
+  expect 采药.failed and 超时过 and not 失败过
+  journal 采药: 没采成。
+
+test 完成了就不再超时
+  accept 采药
+  set 采到 = 3
+  wait 20m
+  expect 采药.completed and not 超时过
+
+test 失败之后可以重接
+  accept 采药
+  set 采到 = 2
+  set 出事 = true
+  set 出事 = false
+  expect 采药.failed and 采药.available
+  accept 采药
+  expect 采药.active and 接过几次 == 2 and 采到 == 0
+
+test 条件不许就接不了
+  given
+    允许 = false
+  expect not 采药.available
+
+test 对话里失败与完成
+  accept 跑腿
+  start 算了
+  expect 跑腿.failed
+  accept 跑腿
+  start 收活
+  expect 跑腿.completed and not 跑腿.available
+
+test 游戏侧失败与完成
+  accept 跑腿
+  fail 跑腿
+  expect 跑腿.failed
+  accept 跑腿
+  complete 跑腿
+  expect 跑腿.completed and not 跑腿.available
+
+test 没有必做目标的任务不会自己完成
+  accept 跑腿
+  wait 1h
+  expect 跑腿.active

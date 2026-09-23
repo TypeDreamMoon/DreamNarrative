@@ -1,0 +1,116 @@
+// 任务的判定细则:同一批里失败压过完成、optional 目标不挡完成、目标一旦达成就锁住、接任务时自己的写入
+// 不算进度、任务完成推动章节、存读档带着任务与剩余时间、given 写任务状态、隐藏任务自己开始。
+
+character 甲
+
+fact 狼: int extern
+fact 羊: int extern
+fact 见过猎户: bool extern
+fact 村子被袭: bool extern
+fact 线索: bool extern
+fact 证据: bool extern
+
+chapter 一
+  advance -> 二 if 猎狼.completed
+chapter 二 after 一
+
+quest 猎狼
+  timeout: 20m
+  fail if 村子被袭
+  journal
+    accepted: 去猎狼。
+    going: 还差 {5 - 狼} 只。
+  objective 狼 >= 5
+    show: 猎狼 {狼}/5
+  objective 见过猎户 optional
+    show: 去林边找猎户
+  on accept
+    set 狼 = 0
+
+quest 两件事
+  objective 狼 >= 1
+  objective 羊 >= 1
+
+// 没人派的任务(记忆链):一可接就自己开始。
+quest 回忆
+  priority: hidden
+  available if 线索
+  fail if 狼 >= 9
+  objective 证据
+  on complete
+    set 羊 = 9
+
+// 连着的 set 是一批:狼够了、村子也被袭了,同一次提交。
+dialogue 同时
+  set 狼 = 5
+  set 村子被袭 = true
+
+test 同一批里失败压过完成
+  accept 猎狼
+  start 同时
+  expect 猎狼.failed and not 猎狼.completed
+
+test 可选目标不挡完成
+  accept 猎狼
+  set 见过猎户 = true
+  expect 猎狼.active
+  set 狼 = 5
+  expect 猎狼.completed
+
+test 目标达成就锁住
+  accept 两件事
+  set 狼 = 1
+  set 狼 = 0
+  set 羊 = 1
+  expect 两件事.completed
+
+test 接任务时自己的写入不算进度
+  set 狼 = 4
+  accept 猎狼
+  expect 狼 == 0
+  journal 猎狼: 去猎狼。
+  set 狼 = 1
+  journal 猎狼: 还差 4 只。
+
+test 任务完成推动章节
+  jump 一
+  accept 猎狼
+  set 狼 = 5
+  expect 猎狼.completed and chapter == 二
+
+test 存读档带着任务与剩余时间
+  accept 猎狼
+  set 狼 = 2
+  wait 5m
+  save
+  wait 15m
+  expect 猎狼.failed
+
+test 起点可以给任务状态
+  given
+    quest 猎狼 = going 1m
+  expect 猎狼.active
+  journal 猎狼: 还差 5 只。
+  wait 1m
+  expect 猎狼.failed
+
+test 给了已完成的任务就不能再接
+  given
+    quest 猎狼 = completed
+  expect 猎狼.completed and not 猎狼.available
+
+test 隐藏任务一可接就自己开始
+  expect not 回忆.active and not 回忆.available
+  set 线索 = true
+  expect 回忆.active
+  set 证据 = true
+  expect 回忆.completed and 羊 == 9
+
+test 隐藏任务失败了不会自己重来
+  set 线索 = true
+  set 狼 = 9
+  expect 回忆.failed
+  set 狼 = 0
+  expect 回忆.failed and 回忆.available
+  accept 回忆
+  expect 回忆.active
