@@ -102,7 +102,7 @@ $MaxFilterLength = 12000
 $Presets = [ordered]@{
     Quick   = @{
         Filter   = 'StartsWith:DreamNarrative.Lang+StartsWith:DreamNarrative.Corpus+StartsWith:DreamNarrative.Ledger+StartsWith:DreamNarrative.Dialogue+StartsWith:DreamNarrative.Spec+StartsWith:DreamNarrative.Smoke.InProcess'
-        MinTests = 27
+        MinTests = 31
         Timeout  = 10
         Game     = $false
     }
@@ -114,9 +114,11 @@ $Presets = [ordered]@{
     }
     Smoke   = @{
         Filter   = 'StartsWith:DreamNarrative.Smoke.Game'
-        MinTests = 0
+        MinTests = 1
         Timeout  = 10
         Game     = $true
+        # Built into the project's /Game/Narrative before the game starts, one commandlet run each.
+        Content  = @('Tests/Corpus/Validate/Samples/ring.dna')
     }
 }
 
@@ -305,12 +307,36 @@ function Get-DevTestLag {
     return $null
 }
 
+function Build-TestContent([string[]]$Files, [string]$RunDir) {
+    # The game tests find their scripts the way a game does, as assets on disk; build them first.
+    foreach ($relative in $Files) {
+        $source = Join-Path $PluginDir $relative
+        $log = Join-Path $RunDir ("content-{0}.log" -f [IO.Path]::GetFileNameWithoutExtension($relative))
+        Write-Note "content: $relative"
+        $output = @(Invoke-Native $editorCmd @($uproject, '-run=DreamNarrative', "-File=$source", '-unattended', '-nopause', '-nosplash', '-nullrhi', '-NoLiveCoding', "-abslog=$log"))
+        $code = $LASTEXITCODE
+        if ($code -ne 0) {
+            $diagnostics = @($output | Where-Object { $_ -match 'DNS\d{4}' } | Select-Object -First 10)
+            return @("Building the test content $relative failed (exit $code); log: $log") + $diagnostics
+        }
+    }
+    return @()
+}
+
 function Invoke-TestRun([string]$Name, [hashtable]$Spec, [string]$RunDir) {
     $runFilter = if ($Filter) { $Filter.Trim() } else { $Spec.Filter }
     $floor = if ($Filter) { 1 } else { $Spec.MinTests }
     $timeout = if ($TimeoutMinutes -gt 0) { $TimeoutMinutes } else { $Spec.Timeout }
     New-Item -ItemType Directory -Force -Path $RunDir | Out-Null
     Set-Content -LiteralPath (Join-Path $RunDir 'filter.txt') -Value $runFilter -Encoding utf8
+    if ($Spec.ContainsKey('Content')) {
+        Write-Step "Building the test content for $Name"
+        $problems = @(Build-TestContent $Spec.Content $RunDir)
+        if ($problems.Count -gt 0) {
+            foreach ($p in $problems) { Write-Problem $p }
+            return 2
+        }
+    }
 
     $runLog = Join-Path $RunDir 'run.log'
     $stdout = Join-Path $RunDir 'stdout.txt'
