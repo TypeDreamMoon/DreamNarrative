@@ -122,6 +122,11 @@ public:
 
 namespace DreamNarrative
 {
+	/** The lowest draw: `random` gives its lower bound, `chance` hits unless it is 0%. */
+	inline constexpr float LowestDraw = 0.f;
+	/** The highest draw, the largest float below 1: `random` gives its upper bound, `chance` misses unless it is 100%. */
+	inline constexpr float HighestDraw = 0.99999994f;
+
 	DREAMNARRATIVECORE_API FDnaValue EvaluateExpr(const FDnaCompiledExpr& Expr, IDnaEvalContext& Context);
 	/** Truthiness of the result: false / 0 / none are false. An invalid expression is false. */
 	DREAMNARRATIVECORE_API bool EvaluateCondition(const FDnaCompiledExpr& Expr, IDnaEvalContext& Context);

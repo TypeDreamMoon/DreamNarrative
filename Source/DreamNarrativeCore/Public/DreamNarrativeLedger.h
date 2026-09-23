@@ -57,6 +57,19 @@ struct DREAMNARRATIVECORE_API FDnaLedgerSnapshot
 	TArray<FName> ChosenOnce;
 };
 
+/**
+ * Decides what `random` and `chance` draw. The ledger draws from its own seeded stream until a tool
+ * puts a source in charge: a test forcing the next outcomes, an explorer trying each of them.
+ */
+class DREAMNARRATIVECORE_API IDnaRandomSource
+{
+public:
+	virtual ~IDnaRandomSource() = default;
+
+	/** The next draw, uniform in [0, 1). Stream is the ledger's own, for a source that decides only some draws. */
+	virtual float NextUnit(FRandomStream& Stream) = 0;
+};
+
 /** Story registers one of these so expressions can ask about quests without Core knowing quests. */
 class DREAMNARRATIVECORE_API IDnaQuestStateProvider
 {
@@ -221,6 +234,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Ledger")
 	void SetRandomSeed(int32 Seed) { Random.Initialize(Seed); }
 
+	/** Puts a source in charge of `random` and `chance`; null goes back to the seeded stream. Not owned. */
+	void SetRandomSource(IDnaRandomSource* InSource) { RandomSource = InSource; }
+	IDnaRandomSource* GetRandomSource() const { return RandomSource; }
+
 	/** Where the ledger, its expressions and everything running on it report what they do; null for nobody. Not owned. */
 	void SetTrace(IDnaTrace* InTrace) { Trace = InTrace; }
 
@@ -230,7 +247,7 @@ public:
 	virtual FName GetCurrentChapter() const override { return CurrentChapter; }
 	virtual bool GetQuestState(FName Quest, EDnaQuestStateQuery Query) const override;
 	virtual int32 GetVisitCount(FName Dialogue) const override { return GetVisited(Dialogue); }
-	virtual float NextRandomUnit() override { return Random.GetFraction(); }
+	virtual float NextRandomUnit() override { return RandomSource ? RandomSource->NextUnit(Random) : Random.GetFraction(); }
 	virtual IDnaTrace* GetTrace() const override { return Trace; }
 
 	bool EvaluateCondition(const FDnaCompiledExpr& Expr) { return DreamNarrative::EvaluateCondition(Expr, *this); }
@@ -280,6 +297,7 @@ private:
 
 	IDnaQuestStateProvider* QuestStateProvider = nullptr;
 	FRandomStream Random;
+	IDnaRandomSource* RandomSource = nullptr;
 	TSharedPtr<IDnaClock> Clock;
 	IDnaTrace* Trace = nullptr;
 };
