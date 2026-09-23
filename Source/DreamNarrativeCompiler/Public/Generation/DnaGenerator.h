@@ -41,4 +41,11 @@ namespace UE::DreamNarrative::Lang
 
 	/** The package name a source file's asset gets: `<AssetDirectory>/<base file name>`. */
 	DREAMNARRATIVECOMPILER_API FString GetDnaPackageName(const FString& SourcePath, const FString& AssetDirectory);
+
+	/**
+	 * Lowers one expression that stands outside any document into Pool's expression pool and returns
+	 * its index; INDEX_NONE when it cannot be lowered. Validate it first (ValidateDnaExpression):
+	 * names resolve the way the validator resolved them.
+	 */
+	DREAMNARRATIVECOMPILER_API int32 CompileDnaExpression(const FDnaProgram& Program, const FDnaExprPtr& Expr, UDreamNarrativeScript& Pool);
 }

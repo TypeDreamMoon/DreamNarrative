@@ -42,4 +42,11 @@ namespace UE::DreamNarrative::Lang
 
 	/** Returns false when any error was recorded. */
 	DREAMNARRATIVECOMPILER_API bool ValidateDnaProgram(const FDnaProgram& Program, FDnaDiagnosticSink& Diagnostics);
+
+	/**
+	 * Checks one expression that stands outside any document -- a test's assertion, a debugger's
+	 * watch -- against the program's names and types. As a condition it must be true/false or a
+	 * number. Returns false when any error was recorded.
+	 */
+	DREAMNARRATIVECOMPILER_API bool ValidateDnaExpression(const FDnaProgram& Program, const FDnaExprPtr& Expr, bool bAsCondition, FDnaDiagnosticSink& Diagnostics);
 }

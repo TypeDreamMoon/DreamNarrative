@@ -63,6 +63,23 @@ namespace UE::DreamNarrative::Lang
 				return bOk;
 			}
 
+			bool RunOnExpression(const FDnaExprPtr& Expr, bool bAsCondition)
+			{
+				if (!Expr.IsValid())
+				{
+					return false;
+				}
+				if (bAsCondition)
+				{
+					CheckCondition(Expr);
+				}
+				else
+				{
+					CheckExpr(*Expr);
+				}
+				return bOk;
+			}
+
 		private:
 			const FDnaProgram& Program;
 			FDnaDiagnosticSink& Diagnostics;
@@ -826,6 +843,12 @@ namespace UE::DreamNarrative::Lang
 	{
 		FValidator Validator(Program, Diagnostics);
 		return Validator.Run();
+	}
+
+	bool ValidateDnaExpression(const FDnaProgram& Program, const FDnaExprPtr& Expr, bool bAsCondition, FDnaDiagnosticSink& Diagnostics)
+	{
+		FValidator Validator(Program, Diagnostics);
+		return Validator.RunOnExpression(Expr, bAsCondition);
 	}
 }
 
