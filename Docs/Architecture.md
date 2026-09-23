@@ -41,8 +41,9 @@ DreamShader 上真实付出过的代价。而这是全新系统,没有存量资�
 - **标识符一等公民支持中文**。fact 名会是"换水状态""墨梅册",台词全是中文,叙事 DSL 不支持 Unicode
   标识符等于自废。关键词保持英文,与 Dream 系列一致。
 - 词汇同时覆盖解谜叙事向(章节、记忆链、闭环对白)与传统 RPG 向(任务日志、目标、步骤、奖励、主支线)。
-- 诊断码前缀 `DNS`,码表见 `Docs/Diagnostics`。两条轨(parser / generator)的诊断载体分别用 FText 和
-  FString,不要试图合并。
+- 诊断码前缀 `DNS`,码表见 `Docs/Diagnostics`。parser、校验器、生成器共用一个 FText 诊断汇
+  (`FDnaDiagnosticSink`)。DreamShader 分 FText / FString 两轨是为了不动 561 个存量报错点,这里是新写的代码,
+  没有这笔成本。
 - **语法路线:剧本派表面 + Yarn 式平铺节点模型**(2026-09-05)。缩进即结构,说话人冒号即台词,连续 `-` 行
   即选项组,`->` 即跳转,逻辑只出现在行首英文关键字和行尾修饰符里。一个 `dialogue` 块就是图上一个节点,
   块内嵌套超过 3 层报警告建议拆节点。理由:图编辑器投影要 1:1,写回引擎要行导向,编剧要看到剧本而不是代码。
@@ -150,3 +151,7 @@ fact key 集中声明,并标明归谁写 —— 叙事侧写的,还是游戏系�
   `dnc extract` 原样取回作救援;表达式 v1 集冻结(逻辑 / 比较 / 算术含 `%` / `visited` `random` `chance` /
   任务状态 / `chapter` / tag `in (…)`,无字符串与三元);对话演出 Generator 排在 Stage 时间轴编辑器之后;
   VSCode 扩展等对话链落地、语言定型后开仓;Ring 暂不纳入范围。
+- 2026-09-08 对话链落地:lexer / parser(CST)/ 校验器 / 生成器 / commandlet,账本最小核、表达式求值、对话
+  runner、`dn.` 控制台命令、`dnc` 命令行与 corpus 测试。实现时定下三条:`visited(x)` 在离开节点时计数(跳走、
+  结束、中止),节点内看到的是之前的访问次数(同 Yarn);诊断只用一个 FText 汇(§3 已改);账本内部 key 是 dotted
+  名字的 `FName`,导出成 GameplayTag 留到生成 tag ini 时再做。
