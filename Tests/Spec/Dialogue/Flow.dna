@@ -1,0 +1,66 @@
+// 对话里的控制流与命令:if / else if / else、set 的三种写法、emit、play(无人监听与 async)、wait、
+// advance、-> 节点、-> end,以及 visited 在离开节点时才计数。
+
+character 甲
+
+fact 开: bool = true
+fact 次: int
+fact 浮: float = 1.0
+fact 进了: int
+
+chapter 一
+chapter 二 after 一
+
+stage 小演出
+  duration 1.0s
+
+dialogue 分支
+  if 开
+    甲: 进了 if。
+  else
+    甲: 不该到这里。
+  if not 开
+    甲: 不该到这里。
+  else if 次 == 0
+    甲: 进了 else if。
+  else
+    甲: 不该到这里。
+  if 次 > 0
+    甲: 不该到这里。
+
+dialogue 命令
+  set 次 = 5
+  set 次 += 2
+  set 次 -= 1
+  set 浮 += 0.5
+  emit 命令走完
+  play 小演出
+  play 小演出 async
+  wait 2s
+  甲: 等过了。
+  advance 二
+  -> 另一个
+
+dialogue 另一个
+  set 进了 = visited(命令)
+  甲: 到了。
+  -> end
+  甲: 不该到这里。
+
+test 条件分支
+  start 分支 strict
+    甲: 进了 if。
+    甲: 进了 else if。
+
+test 命令依次生效
+  start 命令
+    甲: 等过了。
+    甲: 到了。
+    absent 甲: 不该到这里。
+  expect 次 == 6 and 浮 == 1.5
+  expect chapter == 二
+
+test 访问在离开节点时计数
+  start 命令
+  expect 进了 == 1
+  expect visited(命令) == 1 and visited(另一个) == 1

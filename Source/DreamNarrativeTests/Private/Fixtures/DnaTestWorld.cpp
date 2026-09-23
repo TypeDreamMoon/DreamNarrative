@@ -553,11 +553,13 @@ namespace UE::DreamNarrative::Tests
 
 		// A fresh ledger that knows the same scripts, as after starting the game and loading the save.
 		UDreamNarrativeLedger* Fresh = NewObject<UDreamNarrativeLedger>(GameInstance, NAME_None, RF_Transient);
+		Fresh->SetTrace(LedgerObject->GetTrace());
 		for (UDreamNarrativeScript* Script : Scripts)
 		{
 			Fresh->RegisterScript(Script);
 		}
 		Fresh->ApplySnapshot(Loaded);
+		Fresh->SetTrace(nullptr);
 
 		const TArray<FString> Differences = DiffSnapshots(Saved, Fresh->MakeSnapshot());
 		if (Differences.Num() > 0)

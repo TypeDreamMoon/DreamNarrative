@@ -1,0 +1,85 @@
+// 表达式 v1 的每个运算符 × 每种值类型:逻辑与短路、相等、比较、算术(含整数截断、除零、取模)、取负、
+// in、字面量、fact、章节、visited、random、chance。
+
+character 甲
+
+fact 真: bool = true
+fact 假: bool
+fact 整: int = 7
+fact 零: int
+fact 浮: float = 2.5
+fact 天气: tag in (晴, 雨, 雪) = 晴
+fact 骰: int
+fact 小数: float
+
+chapter 开场
+chapter 后来 after 开场
+
+dialogue 问候 for 甲
+  甲: 你好。
+
+dialogue 掷
+  set 骰 = random(1, 6)
+  set 小数 = random(0.5, 1.5)
+
+test 逻辑与短路
+  expect 真 and not 假
+  expect not (假 and 真)
+  expect 真 or 假
+  expect 假 or 真
+  expect not (假 or 假)
+
+test 相等与不等
+  expect 真 == true and 假 != true
+  expect 整 == 7 and 整 != 8
+  expect 浮 == 2.5 and 浮 != 3.5
+  expect 整 == 7.0 and 整 != 7.5
+  expect 天气 == 晴 and 天气 != 雨
+
+test 比较
+  expect 整 < 8 and 整 <= 7 and 整 > 6 and 整 >= 7
+  expect 浮 < 3.0 and 浮 <= 2.5 and 浮 > 2.0 and 浮 >= 2.5
+  expect 整 < 7.5 and 整 <= 7.0 and 整 > 6.5 and 整 >= 7.0
+  expect not (整 < 7) and not (浮 > 2.5)
+
+test 算术
+  expect 整 + 1 == 8 and 整 - 1 == 6 and 整 * 2 == 14
+  expect 浮 + 0.5 == 3.0 and 浮 - 0.5 == 2.0 and 浮 * 2.0 == 5.0
+  expect 整 + 0.5 == 7.5 and 整 - 0.5 == 6.5 and 整 * 0.5 == 3.5
+  expect 整 % 4 == 3
+
+test 除法整数截断
+  expect 整 / 2 == 3
+  expect 浮 / 2.0 == 1.25
+  expect 整 / 2.0 == 3.5
+
+test 除零与对零取模得零
+  expect 整 / 零 == 0
+  expect 整 % 零 == 0
+
+test 取负
+  expect -整 == -7
+  expect -浮 == -2.5
+  expect -整 + 整 == 0
+
+test 集合成员
+  expect 天气 in (晴, 雪)
+  expect not (天气 in (雨, 雪))
+
+test 章节作值
+  jump 开场
+  expect chapter == 开场 and chapter != 后来
+  expect chapter in (开场, 后来)
+
+test 离开节点才计访问
+  expect visited(问候) == 0
+  talk 甲
+  expect visited(问候) == 1
+
+test 随机带种子落在区间里
+  seed 3
+  start 掷
+  expect 骰 >= 1 and 骰 <= 6
+  expect 小数 >= 0.5 and 小数 <= 1.5
+  expect chance(100%)
+  expect not chance(0%)

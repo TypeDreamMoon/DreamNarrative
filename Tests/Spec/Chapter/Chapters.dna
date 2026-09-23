@@ -1,0 +1,60 @@
+// 章节:after 链上的调试传送补齐各章 implied、对话里 advance、章节规则在一批写完后自动推进、
+// 读档恢复章节。
+
+character 甲
+
+fact 钥匙: bool
+fact 进度: int
+fact 名声: int
+
+chapter 序
+  implied
+    名声 = 1
+
+chapter 一 after 序
+  implied
+    进度 = 1
+  advance -> 二 if 钥匙
+
+chapter 二 after 一
+  implied
+    进度 = 2
+
+// 传送到「甲章」时它自己的 implied 就满足推进条件:传送不推进,读档也不推进,下一次写入才推进。
+chapter 甲章
+  implied
+    钥匙 = true
+  advance -> 乙章 if 钥匙
+
+chapter 乙章 after 甲章
+
+dialogue 推进
+  advance 一
+  甲: 进了第一章。
+  set 钥匙 = true
+  甲: 拿到钥匙了。
+
+test 传送沿先后链补齐
+  jump 二
+  expect chapter == 二
+  expect 进度 == 2 and 名声 == 1
+
+test 对话推进与规则推进
+  start 推进
+    甲: 进了第一章。
+    甲: 拿到钥匙了。
+  expect chapter == 二 and 钥匙
+
+test 章节进存档
+  jump 一
+  save
+  expect chapter == 一 and 进度 == 1
+
+test 传送和读档都不触发推进
+  jump 甲章
+  expect chapter == 甲章 and 钥匙
+  save
+  expect chapter == 甲章
+  given
+    进度 = 5
+  expect chapter == 乙章

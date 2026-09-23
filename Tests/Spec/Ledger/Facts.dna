@@ -1,0 +1,56 @@
+// 账本:四种类型的写入与默认值、range 钳位、写入同值不通知、剧情写 extern、游戏写 extern、
+// 连续 set 合成一批、会话 fact 不进存档。
+
+character 甲
+
+fact 布: bool
+fact 整: int = 3 range 0..10
+fact 浮: float range 0.0..1.0
+fact 标: tag in (甲级, 乙级, 丙级)
+fact 外: int extern
+fact 温度: float extern session
+
+dialogue 写
+  set 布 = true
+  set 整 = 4
+  set 浮 = 0.5
+  set 标 = 乙级
+  甲: 写完了。
+
+dialogue 钳
+  set 整 += 20
+  set 浮 = 外 * 2.0
+  甲: 钳完了。
+
+dialogue 重置外部
+  set 外 = 0
+  甲: 重置了。
+
+test 默认值
+  expect not 布 and 整 == 3 and 浮 == 0.0
+  expect 标 == 甲级
+
+test 四种类型的写入
+  start 写
+  expect 布 and 整 == 4 and 浮 == 0.5 and 标 == 乙级
+
+test 超出范围的值被钳住
+  set 外 = 2
+  start 钳
+  expect 整 == 10 and 浮 == 1.0
+
+test 写入同样的值
+  start 写
+  start 写
+  expect 整 == 4
+
+test 剧情可以写游戏侧的事实
+  set 外 = 7
+  expect 外 == 7
+  start 重置外部
+  expect 外 == 0
+
+test 会话事实读写照常
+  set 温度 = 0.3
+  expect 温度 > 0.25 and 温度 < 0.35
+  save

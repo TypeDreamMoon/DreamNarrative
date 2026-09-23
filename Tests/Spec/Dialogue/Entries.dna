@@ -1,0 +1,57 @@
+// 入口选择:条件成立且最具体的入口胜出(优先级缺省 = and 连接的条件项数),显式 priority 盖过缺省,
+// 平局取先声明的,都不成立时落到无条件的兜底入口。
+
+character 甲
+character 乙
+
+fact 熟: bool
+fact 好感: int
+
+dialogue 甲_兜底 for 甲
+  甲: 兜底。
+
+dialogue 甲_熟人 for 甲 if 熟
+  甲: 熟人。
+
+dialogue 甲_很熟 for 甲 if 熟 and 好感 > 5
+  甲: 很熟。
+
+dialogue 甲_特别 for 甲 if 好感 > 8 priority 5
+  甲: 特别。
+
+dialogue 乙_先 for 乙 if 熟
+  乙: 先声明的。
+
+dialogue 乙_后 for 乙 if 熟
+  乙: 后声明的。
+
+test 都不成立时用兜底
+  talk 甲
+    甲: 兜底。
+
+test 条件成立的胜过兜底
+  given
+    熟 = true
+  talk 甲
+    甲: 熟人。
+
+test 条件项越多越优先
+  given
+    熟 = true
+    好感 = 6
+  talk 甲
+    甲: 很熟。
+
+test 显式优先级盖过缺省
+  given
+    熟 = true
+    好感 = 9
+  talk 甲
+    甲: 特别。
+
+test 平局取先声明的
+  given
+    熟 = true
+  talk 乙
+    乙: 先声明的。
+    absent 乙: 后声明的。
