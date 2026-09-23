@@ -127,7 +127,8 @@ namespace DreamNarrative
 				case EDnaExprOperator::Sub: return Number(L - R, bInt);
 				case EDnaExprOperator::Mul: return Number(L * R, bInt);
 				case EDnaExprOperator::Div: return R != 0.0 ? Number(bInt ? FMath::TruncToDouble(L / R) : L / R, bInt) : Number(0.0, bInt);
-				case EDnaExprOperator::Mod: return Right.Int != 0 ? FDnaValue::FromInt(Left.Int % Right.Int) : FDnaValue::FromInt(0);
+				// x % 0 is 0 by definition here; x % -1 is 0 in arithmetic, and INT_MIN % -1 traps on x86.
+				case EDnaExprOperator::Mod: return FDnaValue::FromInt(Right.Int == 0 || Right.Int == -1 ? 0 : Left.Int % Right.Int);
 				default: return FDnaValue();
 				}
 			}
