@@ -87,7 +87,18 @@ namespace UE::DreamNarrative::Lang
 			case EDnaCommandKind::Complete: Ins.Op = EDnaOpCode::Complete; break;
 			case EDnaCommandKind::Fail: Ins.Op = EDnaOpCode::Fail; break;
 			case EDnaCommandKind::Advance: Ins.Op = EDnaOpCode::Advance; break;
-			case EDnaCommandKind::Emit: Ins.Op = EDnaOpCode::Emit; break;
+			case EDnaCommandKind::Emit:
+			{
+				Ins.Op = EDnaOpCode::Emit;
+				const FDnaEventInfo* Event = Program.FindEvent(P.Name);
+				for (const FDnaEmitArg& Arg : P.EmitArgs)
+				{
+					// A bare member of a tag parameter's set means that member.
+					Ins.ArgNames.Add(FName(*Arg.Name));
+					Ins.ArgExprs.Add(Exprs.CompileValueFor(Arg.Value, Event ? Event->FindParam(Arg.Name) : nullptr));
+				}
+				break;
+			}
 			case EDnaCommandKind::Play:
 				Ins.Op = EDnaOpCode::Play;
 				Ins.bAsync = P.bAsync;
@@ -231,6 +242,11 @@ namespace UE::DreamNarrative::Lang
 				Data = &Out;
 				Out.Name = FName(*P.Name);
 				Out.ForCharacter = P.ForCharacter.IsEmpty() ? NAME_None : FName(*P.ForCharacter);
+				Out.OnEvent = P.OnEvent.IsEmpty() ? NAME_None : FName(*P.OnEvent);
+				Out.Channel = P.Channel.IsEmpty() || P.Channel == TEXT("main") ? NAME_None : FName(*P.Channel);
+				Out.bOnce = P.bOnceEntry;
+				Out.Cooldown = static_cast<float>(P.CooldownSeconds);
+				Out.bResume = P.bResume;
 				Out.Condition = Exprs.Compile(P.Condition);
 				Out.Priority = P.Priority != INDEX_NONE ? P.Priority : FDnaExprCompiler::CountConjuncts(P.Condition);
 				Out.bExplicitPriority = P.Priority != INDEX_NONE;
@@ -457,6 +473,7 @@ namespace UE::DreamNarrative::Lang
 			Script->Facts.Reset();
 			Script->Characters.Reset();
 			Script->Chapters.Reset();
+			Script->Events.Reset();
 			Script->Expressions.Reset();
 			Script->Sections.Reset();
 			Script->SourcePath = Document.Path;
@@ -515,6 +532,44 @@ namespace UE::DreamNarrative::Lang
 				else if (Info.Type == EDnaFactType::Tag && Info.Domain.Num() > 0)
 				{
 					Decl.Default = FDnaValue::FromTag(FName(*Info.Domain[0]));
+				}
+			}
+			for (const TPair<FString, FDnaEventInfo>& Pair : Program.Events)
+			{
+				const FDnaEventInfo& Info = Pair.Value;
+				if (Info.Document != &Document) { continue; }
+				FDnaEventDecl& Decl = Script->Events.AddDefaulted_GetRef();
+				Decl.Name = FName(*Info.Name);
+				for (const FDnaFactInfo& Param : Info.Params)
+				{
+					FDnaFactDecl& Out = Decl.Params.AddDefaulted_GetRef();
+					Out.Name = FName(*Param.Name);
+					Out.Type = Param.Type;
+					Out.bHasRange = Param.bHasRange;
+					Out.RangeMin = Param.RangeMin;
+					Out.RangeMax = Param.RangeMax;
+					for (const FString& Member : Param.Domain) { Out.Domain.Add(FName(*Member)); }
+					Out.Default = FDnaValue::DefaultFor(Param.Type);
+					FDnaValue Value;
+					if (Param.DefaultExpr.IsValid())
+					{
+						if (Exprs.Constant(Param.DefaultExpr, &Param, Value))
+						{
+							Out.Default = Value;
+							Out.Default.Type = Param.Type;
+							if (Param.Type == EDnaFactType::Int) { Out.Default.Int = static_cast<int32>(Value.AsNumber()); }
+							if (Param.Type == EDnaFactType::Float) { Out.Default.Float = static_cast<float>(Value.AsNumber()); }
+						}
+						else
+						{
+							bOk = Diagnostics.Error(TEXT("DNS4006"), Param.DefaultExpr->Span,
+								FText::Format(LOCTEXT("ParamDefaultNotConstant", "The default of parameter '{0}' must be a constant"), FText::FromString(Param.Name)));
+						}
+					}
+					else if (Param.Type == EDnaFactType::Tag && Param.Domain.Num() > 0)
+					{
+						Out.Default = FDnaValue::FromTag(FName(*Param.Domain[0]));
+					}
 				}
 			}
 			for (const FString& ChapterName : Program.ChapterOrder)
@@ -594,12 +649,27 @@ namespace UE::DreamNarrative::Lang
 				Script->Sections.Add(Section);
 			}
 
-			// -- dialogue
+			// -- dialogue, and the channels it runs on
 			TArray<FDnaLineNode*> DialogueRoots;
 			Document.GetRootsOfKind(EDnaLineKind::Dialogue, DialogueRoots);
-			if (DialogueRoots.Num() > 0)
+			TArray<FDnaLineNode*> ChannelRoots;
+			Document.GetRootsOfKind(EDnaLineKind::Channel, ChannelRoots);
+			if (DialogueRoots.Num() > 0 || ChannelRoots.Num() > 0)
 			{
 				UDnaDialogueSection* Section = NewObject<UDnaDialogueSection>(Script, NAME_None, Options.bTransient ? RF_Transient : RF_NoFlags);
+				for (const FDnaLineNode* Root : ChannelRoots)
+				{
+					const FDnaChannelInfo* Info = Program.FindChannel(Root->Payload.Name);
+					if (!Info || Info->Node != Root) { continue; }
+					FDnaChannelData& Channel = Section->Channels.AddDefaulted_GetRef();
+					Channel.Name = FName(*Info->Name);
+					Channel.bLockInput = Info->bLockInput;
+					Channel.bAutoAdvance = Info->bAutoAdvance;
+					Channel.Busy = Info->Busy == TEXT("interrupt") ? EDnaChannelBusy::Interrupt : Info->Busy == TEXT("drop") ? EDnaChannelBusy::Drop : EDnaChannelBusy::Queue;
+					for (const FString& Other : Info->Pauses) { Channel.Pauses.Add(FName(*Other)); }
+					for (const FString& Other : Info->Stops) { Channel.Stops.Add(FName(*Other)); }
+					Channel.SourceLine = Root->LineNumber();
+				}
 				FDialogueCompiler Compiler(Exprs, Program, Namespace);
 				for (const FDnaLineNode* Root : DialogueRoots)
 				{
@@ -643,6 +713,13 @@ namespace UE::DreamNarrative::Lang
 	{
 		FDnaExprCompiler Compiler(Program, Pool);
 		return Compiler.CompileValueFor(Expr, Program.FindFact(TargetFact));
+	}
+
+	int32 CompileDnaValueForParam(const FDnaProgram& Program, const FDnaExprPtr& Expr, const FString& Event, const FString& Param, UDreamNarrativeScript& Pool)
+	{
+		const FDnaEventInfo* Info = Program.FindEvent(Event);
+		FDnaExprCompiler Compiler(Program, Pool);
+		return Compiler.CompileValueFor(Expr, Info ? Info->FindParam(Param) : nullptr);
 	}
 
 	bool GenerateDnaProgram(const FDnaProgram& Program, const FDnaGenerateOptions& Options, FDnaGenerateResult& OutResult, FDnaDiagnosticSink& Diagnostics)

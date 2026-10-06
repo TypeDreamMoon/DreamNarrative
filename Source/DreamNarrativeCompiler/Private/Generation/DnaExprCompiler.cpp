@@ -55,6 +55,16 @@ namespace UE::DreamNarrative::Lang
 		return 1;
 	}
 
+	const FDnaFactInfo* FDnaExprCompiler::EventParamOf(const FDnaExpr& Expr) const
+	{
+		if (Expr.Kind != EDnaExprKind::Name || Expr.Path.Num() != 2)
+		{
+			return nullptr;
+		}
+		const FDnaEventInfo* Event = Program.FindEvent(Expr.Path[0]);
+		return Event ? Event->FindParam(Expr.Path[1]) : nullptr;
+	}
+
 	const FDnaFactInfo* FDnaExprCompiler::TagFactOf(const FDnaExpr& Expr) const
 	{
 		if (Expr.Kind != EDnaExprKind::Name)
@@ -62,6 +72,10 @@ namespace UE::DreamNarrative::Lang
 			return nullptr;
 		}
 		const FDnaFactInfo* Fact = Program.FindFact(Expr.Name);
+		if (!Fact)
+		{
+			Fact = EventParamOf(Expr);
+		}
 		return (Fact && Fact->Type == EDnaFactType::Tag) ? Fact : nullptr;
 	}
 
@@ -102,6 +116,13 @@ namespace UE::DreamNarrative::Lang
 			{
 				Node.Kind = EDnaExprNodeKind::Fact;
 				Node.Name = FName(*Expr.Name);
+				return Push(Node);
+			}
+			if (EventParamOf(Expr))
+			{
+				Node.Kind = EDnaExprNodeKind::EventParam;
+				Node.Event = FName(*Expr.Path[0]);
+				Node.Name = FName(*Expr.Path[1]);
 				return Push(Node);
 			}
 			if (TagContext && Expr.Path.Num() == 1 && TagContext->HasMember(Expr.Name))

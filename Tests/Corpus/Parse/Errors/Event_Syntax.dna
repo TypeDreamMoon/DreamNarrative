@@ -1,0 +1,14 @@
+event 来人
+  谁: tag in (甲, 乙) extern
+// EXPECT DNS2019 (2,3)
+
+dialogue 两头 for 甲 on 来人
+// EXPECT DNS2017 (5,1)
+  甲: 嗯。
+
+dialogue 冷却 on 来人 cooldown 很久
+// EXPECT DNS2007 (9,28)
+  emit 来人(谁 = 甲, 谁 = 乙)
+// EXPECT DNS2020 (11,18)
+  emit 来人(谁 甲)
+// EXPECT DNS2007 (13,13)

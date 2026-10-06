@@ -85,6 +85,8 @@ namespace UE::DreamNarrative::Lang
 			const FDnaProgram& Program;
 			FDnaDiagnosticSink& Diagnostics;
 			const FDnaDocument* CurrentDocument = nullptr;
+			/** The event whose parameters may be read here: that of the dialogue being checked, when it opens `on` one. */
+			const FDnaEventInfo* CurrentEvent = nullptr;
 			bool bOk = true;
 
 			/** Where a line's modifier tail starts, for diagnostics about the modifiers. */
@@ -136,6 +138,12 @@ namespace UE::DreamNarrative::Lang
 					CheckDialogue(Root);
 					break;
 				case EDnaLineKind::Stage:
+					break;
+				case EDnaLineKind::Channel:
+					CheckChannel(Root);
+					break;
+				case EDnaLineKind::Event:
+					CheckEvent(Root);
 					break;
 				case EDnaLineKind::Test:
 				case EDnaLineKind::Explore:
@@ -217,6 +225,10 @@ namespace UE::DreamNarrative::Lang
 						RequireDialogue(P.Name, Step->Raw.Span);
 						CheckTestExpectations(*Step);
 						break;
+					case EDnaTestStepKind::Emit:
+						CheckEmit(P.Name, P.EmitArgs, Step->Raw.Span);
+						CheckTestExpectations(*Step);
+						break;
 					case EDnaTestStepKind::Expect:
 						if (P.Condition.IsValid()) { CheckCondition(P.Condition); }
 						break;
@@ -267,7 +279,7 @@ namespace UE::DreamNarrative::Lang
 				return Expr.Kind == EDnaExprKind::Name && Expr.Path.Num() == 1 && Program.IsQuest(Expr.Path[0]);
 			}
 
-			/** The lines under a test's talk / start: speakers must be characters, interpolations must check. */
+			/** The lines under a test's talk / start / emit (and its channel blocks): speakers must be characters, interpolations must check. */
 			void CheckTestExpectations(FDnaLineNode& Step)
 			{
 				TArray<FDnaLineNode*> Lines;
@@ -276,6 +288,12 @@ namespace UE::DreamNarrative::Lang
 				{
 					if (Line->Kind != EDnaLineKind::TestStep) { continue; }
 					const FDnaLinePayload& P = Line->Payload;
+					if (P.TestStep == EDnaTestStepKind::ChannelLines)
+					{
+						RequireChannel(P.Name, Line->Raw.Span);
+						CheckTestExpectations(*Line);
+						continue;
+					}
 					const bool bLine = P.TestStep == EDnaTestStepKind::ExpectLine || P.TestStep == EDnaTestStepKind::Absent;
 					if (bLine && !P.Name.IsEmpty())
 					{
@@ -412,11 +430,152 @@ namespace UE::DreamNarrative::Lang
 				{
 					RequireCharacter(P.ForCharacter, Root.Raw.Span, /*bIsSpeaker=*/false);
 				}
+				if (!P.OnEvent.IsEmpty())
+				{
+					RequireEvent(P.OnEvent, Root.Raw.Span);
+				}
+				if (!P.Channel.IsEmpty())
+				{
+					RequireChannel(P.Channel, Root.Raw.Span);
+				}
+				// Only the dialogue an event opens reads the event's parameters: in its condition and its own lines.
+				TGuardValue<const FDnaEventInfo*> Scope(CurrentEvent, P.OnEvent.IsEmpty() ? nullptr : Program.FindEvent(P.OnEvent));
 				if (P.Condition.IsValid())
 				{
 					CheckCondition(P.Condition);
 				}
 				CheckDialogueBlock(Root);
+
+				const FDnaChannelInfo* Channel = Program.FindChannel(P.Channel);
+				if (Channel && Channel->bAutoAdvance)
+				{
+					if (const FDnaLineNode* Choice = FindChoice(Root))
+					{
+						Fail(TEXT("DNS2018"), Choice->Raw.Span, FText::Format(
+							LOCTEXT("ChoiceOnAutoChannel", "Channel '{0}' moves on by itself, so a dialogue on it cannot offer choices; run this one on a channel with `advance: player`"),
+							FText::FromString(Channel->Name)));
+					}
+				}
+			}
+
+			static const FDnaLineNode* FindChoice(const FDnaLineNode& Block)
+			{
+				for (const FDnaLineNodePtr& Child : Block.Children)
+				{
+					if (!Child.IsValid()) { continue; }
+					if (Child->Kind == EDnaLineKind::Choice) { return Child.Get(); }
+					if (const FDnaLineNode* Nested = FindChoice(*Child)) { return Nested; }
+				}
+				return nullptr;
+			}
+
+			// ---------------------------------------------------------------- channels and events
+
+			void CheckChannel(FDnaLineNode& Root)
+			{
+				const FString& Name = Root.Payload.Name;
+				const bool bMain = Name == TEXT("main");
+				TArray<FDnaLineNode*> Lines;
+				Root.GetContentChildren(Lines);
+				for (FDnaLineNode* Line : Lines)
+				{
+					if (Line->Kind != EDnaLineKind::Property) { continue; }
+					const FString& Key = Line->Payload.Name;
+					const FString Value = Line->Payload.Value.TrimStartAndEnd();
+					if (Key == TEXT("input") || Key == TEXT("advance") || Key == TEXT("busy"))
+					{
+						if (bMain)
+						{
+							Fail(TEXT("DNS2016"), Line->Raw.Span, LOCTEXT("MainFixed",
+								"main always locks input, waits for the player and lets a new dialogue cut in; a `channel main` block sets only pauses and stops"));
+							continue;
+						}
+						const TCHAR* Expected = Key == TEXT("input") ? TEXT("lock or free") : Key == TEXT("advance") ? TEXT("player or auto") : TEXT("queue, interrupt or drop");
+						const bool bKnown = Key == TEXT("input") ? (Value == TEXT("lock") || Value == TEXT("free"))
+							: Key == TEXT("advance") ? (Value == TEXT("player") || Value == TEXT("auto"))
+							: (Value == TEXT("queue") || Value == TEXT("interrupt") || Value == TEXT("drop"));
+						if (!bKnown)
+						{
+							Fail(TEXT("DNS2015"), Line->Raw.Span, FText::Format(LOCTEXT("ChannelValue", "'{0}' is not a value of {1}; expected {2}"),
+								FText::FromString(Value), FText::FromString(Key), FText::FromString(Expected)));
+						}
+						continue;
+					}
+					if (Key == TEXT("pauses") || Key == TEXT("stops"))
+					{
+						const TArray<FString> Names = SplitDnaNameList(Value);
+						if (Names.Num() == 0)
+						{
+							Fail(TEXT("DNS2015"), Line->Raw.Span, FText::Format(LOCTEXT("ChannelList", "{0} takes channel names separated by commas"), FText::FromString(Key)));
+						}
+						for (const FString& Other : Names)
+						{
+							if (Other == TEXT("main"))
+							{
+								Fail(TEXT("DNS2015"), Line->Raw.Span, LOCTEXT("MainHeld", "No channel pauses or stops main: the player's conversation is never cut by another channel"));
+							}
+							else if (Other == Name)
+							{
+								Fail(TEXT("DNS2015"), Line->Raw.Span, LOCTEXT("SelfHeld", "A channel cannot pause or stop itself; `busy` says what it does with what arrives while it talks"));
+							}
+							else
+							{
+								RequireChannel(Other, Line->Raw.Span);
+							}
+						}
+						continue;
+					}
+					Fail(TEXT("DNS2015"), Line->Raw.Span, FText::Format(LOCTEXT("ChannelKey", "'{0}' is not a channel property; a channel has input, advance, busy, pauses and stops"), FText::FromString(Key)));
+				}
+			}
+
+			void CheckEvent(FDnaLineNode& Root)
+			{
+				const FDnaEventInfo* Event = Program.FindEvent(Root.Payload.Name);
+				if (!Event || Event->Node != &Root)
+				{
+					return;
+				}
+				for (const FDnaFactInfo& Param : Event->Params)
+				{
+					if (Param.DefaultExpr.IsValid())
+					{
+						CheckAssignment(Param, Param.DefaultExpr, Param.Node->Raw.Span);
+					}
+					if (Param.Type == EDnaFactType::Tag && Param.Domain.Num() == 0)
+					{
+						Fail(TEXT("DNS4002"), Param.Node->Raw.Span,
+							FText::Format(LOCTEXT("TagParamNoDomain", "Tag parameter '{0}' declares no members; add `in (...)`"), FText::FromString(Param.Name)));
+					}
+				}
+			}
+
+			/** `emit 事件(参数 = 值, ...)`, in a dialogue, an `on` block or a test. */
+			void CheckEmit(const FString& Name, const TArray<FDnaEmitArg>& Args, const FDnaSpan& Span)
+			{
+				const FDnaEventInfo* Event = Program.FindEvent(Name);
+				if (!Event)
+				{
+					// An event only the game listens to needs no declaration -- until it carries values.
+					if (Args.Num() > 0)
+					{
+						Fail(TEXT("DNS3011"), Span, FText::Format(LOCTEXT("UndeclaredEventArgs",
+							"Event '{0}' is not declared; declare it with its parameters to send values with it"), FText::FromString(Name)));
+					}
+					return;
+				}
+				for (const FDnaEmitArg& Arg : Args)
+				{
+					const FDnaFactInfo* Param = Event->FindParam(Arg.Name);
+					if (!Param)
+					{
+						Fail(TEXT("DNS3013"), Arg.Span, FText::Format(LOCTEXT("UnknownParamArg", "Event '{0}' has no parameter '{1}'"),
+							FText::FromString(Name), FText::FromString(Arg.Name)));
+						if (Arg.Value.IsValid()) { CheckExpr(*Arg.Value); }
+						continue;
+					}
+					CheckAssignment(*Param, Arg.Value, Arg.Span);
+				}
 			}
 
 			void CheckDialogueBlock(FDnaLineNode& Block)
@@ -588,6 +747,9 @@ namespace UE::DreamNarrative::Lang
 				case EDnaCommandKind::Play:
 					RequireStage(P.Name, Line.Raw.Span);
 					break;
+				case EDnaCommandKind::Emit:
+					CheckEmit(P.Name, P.EmitArgs, Line.Raw.Span);
+					break;
 				default:
 					break;
 				}
@@ -656,6 +818,42 @@ namespace UE::DreamNarrative::Lang
 					Fail(TEXT("DNS3009"), Span,
 						FText::Format(LOCTEXT("UnknownChapter", "No chapter called '{0}' exists"), FText::FromString(Name)));
 				}
+			}
+
+			void RequireChannel(const FString& Name, const FDnaSpan& Span)
+			{
+				if (!Program.Channels.Contains(Name))
+				{
+					Fail(TEXT("DNS3010"), Span,
+						FText::Format(LOCTEXT("UnknownChannel", "No channel called '{0}' is declared"), FText::FromString(Name)));
+				}
+			}
+
+			void RequireEvent(const FString& Name, const FDnaSpan& Span)
+			{
+				if (!Program.FindEvent(Name))
+				{
+					Fail(TEXT("DNS3011"), Span,
+						FText::Format(LOCTEXT("UnknownEvent", "No event called '{0}' is declared"), FText::FromString(Name)));
+				}
+			}
+
+			/** The fact a name reads, or the parameter of the event in scope it names; null for anything else. */
+			const FDnaFactInfo* FindValueInfo(const FDnaExpr& Expr) const
+			{
+				if (Expr.Kind != EDnaExprKind::Name)
+				{
+					return nullptr;
+				}
+				if (const FDnaFactInfo* Fact = Program.FindFact(Expr.Name))
+				{
+					return Fact;
+				}
+				if (CurrentEvent && Expr.Path.Num() == 2 && Expr.Path[0] == CurrentEvent->Name)
+				{
+					return CurrentEvent->FindParam(Expr.Path[1]);
+				}
+				return nullptr;
 			}
 
 			// ---------------------------------------------------------------- types
@@ -824,6 +1022,27 @@ namespace UE::DreamNarrative::Lang
 
 			FDnaTypeInfo CheckName(const FDnaExpr& Expr)
 			{
+				// event parameter
+				if (Expr.Path.Num() == 2)
+				{
+					if (const FDnaEventInfo* Event = Program.FindEvent(Expr.Path[0]))
+					{
+						if (CurrentEvent != Event)
+						{
+							Fail(TEXT("DNS3012"), Expr.Span, FText::Format(LOCTEXT("ParamOutOfScope",
+								"'{0}' is a parameter of event '{1}'; only the dialogue that opens on {1} reads it"),
+								FText::FromString(Expr.Name), FText::FromString(Expr.Path[0])));
+							return FDnaTypeInfo::Of(EKind::Unknown);
+						}
+						if (const FDnaFactInfo* Param = Event->FindParam(Expr.Path[1]))
+						{
+							return FDnaTypeInfo::OfFact(*Param);
+						}
+						Fail(TEXT("DNS3013"), Expr.Span, FText::Format(LOCTEXT("UnknownParam", "Event '{0}' has no parameter '{1}'"),
+							FText::FromString(Expr.Path[0]), FText::FromString(Expr.Path[1])));
+						return FDnaTypeInfo::Of(EKind::Unknown);
+					}
+				}
 				// quest state
 				if (Expr.Path.Num() == 2 && Program.IsQuest(Expr.Path[0]))
 				{
@@ -926,8 +1145,8 @@ namespace UE::DreamNarrative::Lang
 				case EDnaExprOp::Ne:
 				{
 					// Tag and chapter comparisons resolve the other side as a member name.
-					if (IsTagFactRef(Left)) { CheckTagOperand(Right, *Program.FindFact(Left.Name)); CheckExpr(Left); return FDnaTypeInfo::Of(EKind::Bool); }
-					if (IsTagFactRef(Right)) { CheckTagOperand(Left, *Program.FindFact(Right.Name)); CheckExpr(Right); return FDnaTypeInfo::Of(EKind::Bool); }
+					if (IsTagFactRef(Left)) { CheckTagOperand(Right, *FindValueInfo(Left)); CheckExpr(Left); return FDnaTypeInfo::Of(EKind::Bool); }
+					if (IsTagFactRef(Right)) { CheckTagOperand(Left, *FindValueInfo(Right)); CheckExpr(Right); return FDnaTypeInfo::Of(EKind::Bool); }
 					if (Left.Kind == EDnaExprKind::Chapter) { CheckChapterOperand(Right); return FDnaTypeInfo::Of(EKind::Bool); }
 					if (Right.Kind == EDnaExprKind::Chapter) { CheckChapterOperand(Left); return FDnaTypeInfo::Of(EKind::Bool); }
 
@@ -998,8 +1217,7 @@ namespace UE::DreamNarrative::Lang
 
 			bool IsTagFactRef(const FDnaExpr& Expr) const
 			{
-				if (Expr.Kind != EDnaExprKind::Name) { return false; }
-				const FDnaFactInfo* Fact = Program.FindFact(Expr.Name);
+				const FDnaFactInfo* Fact = FindValueInfo(Expr);
 				return Fact && Fact->Type == EDnaFactType::Tag;
 			}
 		};

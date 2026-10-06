@@ -35,6 +35,8 @@ namespace UE::DreamNarrative::Lang
 	private:
 		int32 Lower(const FDnaExpr& Expr, FDnaCompiledExpr& Out, const FDnaFactInfo* TagContext, bool bChapterContext) const;
 		const FDnaFactInfo* TagFactOf(const FDnaExpr& Expr) const;
+		/** The parameter `事件.参数` names, or null. */
+		const FDnaFactInfo* EventParamOf(const FDnaExpr& Expr) const;
 
 		const FDnaProgram& Program;
 		UDreamNarrativeScript& Script;

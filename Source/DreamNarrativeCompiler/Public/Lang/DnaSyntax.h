@@ -31,6 +31,12 @@ namespace UE::DreamNarrative::Lang
 		Quest,
 		Dialogue,
 		Stage,
+		/** `channel 名` opening a block of properties. */
+		Channel,
+		/** `event 名` opening a block of parameters (or standing alone: an event that carries nothing). */
+		Event,
+		/** `名: type ...` inside an event: one parameter, read like a grouped fact. */
+		EventParam,
 
 		/** `key: value`. Name is the key, Value the raw text, Text the parsed text. */
 		Property,
@@ -168,6 +174,10 @@ namespace UE::DreamNarrative::Lang
 		QuestFail,
 		/** `journal 任务: 文本`: the quest's journal line reads so now. Payload.Name, Text. */
 		Journal,
+		/** `emit 事件(参数 = 值, ...) [hold]`: the game raises an event. Payload.Name, EmitArgs, bHold; children are expectations. */
+		Emit,
+		/** `channel 频道 [strict]` under a talk, start or emit: the lines that channel shows. Payload.Name, bStrict; children are expectations. */
+		ChannelLines,
 	};
 
 	/** The source keyword of a step: `seed`, `talk`, ...; `line`, `absent` and `pick` for the expectations. */
@@ -196,6 +206,14 @@ namespace UE::DreamNarrative::Lang
 		}
 	};
 
+	/** `参数 = 值` in an `emit`. */
+	struct FDnaEmitArg
+	{
+		FString Name;
+		FDnaExprPtr Value;
+		FDnaSpan Span;
+	};
+
 	/** The trailing modifiers of a speech, narration or choice line. */
 	struct FDnaModifiers
 	{
@@ -222,6 +240,16 @@ namespace UE::DreamNarrative::Lang
 
 		// dialogue header, rules, conditions
 		FString ForCharacter;
+		/** `on 事件` (dialogue header). */
+		FString OnEvent;
+		/** `channel 频道` (dialogue header). */
+		FString Channel;
+		/** `once` (dialogue header). */
+		bool bOnceEntry = false;
+		/** `cooldown 时长` (dialogue header); 0 for none. */
+		double CooldownSeconds = 0.0;
+		/** `resume` (dialogue header). */
+		bool bResume = false;
 		FDnaExprPtr Condition;
 		int32 Priority = INDEX_NONE;
 		FString Target;
@@ -249,6 +277,10 @@ namespace UE::DreamNarrative::Lang
 		FDnaExprPtr Expr;
 		double Seconds = 0.0;
 		EDnaOnKind OnKind = EDnaOnKind::Accept;
+		/** `emit 事件(参数 = 值, ...)`, as a command or a test step. */
+		TArray<FDnaEmitArg> EmitArgs;
+		/** A test's `emit ... hold`: what it opens stays on its first line. */
+		bool bHold = false;
 
 		// reward
 		FString RewardCategory;

@@ -1,0 +1,61 @@
+// 频道与事件写错的地方:频道属性的值与名字、主频道改不了的属性、自己停自己、去停主频道、指向没声明的频道或事件、
+// 自动往下说的频道上有选项、tag 参数没写成员、参数重名、在别的对话里读参数、参数名不对、
+// 给没声明的事件带值。只给游戏听、不带值的 emit 不用声明。
+
+character 甲
+fact 好感: int
+
+channel 广播
+  input: 半开
+// EXPECT DNS2015 (9,3)
+  busy: 排队
+// EXPECT DNS2015 (11,3)
+  pauses: 广播, 不存在的频道
+// EXPECT DNS2015 (13,3)
+// EXPECT DNS3010 (13,3)
+  stops: main
+// EXPECT DNS2015 (16,3)
+  音量: 3
+// EXPECT DNS2015 (18,3)
+
+channel main
+  advance: auto
+// EXPECT DNS2016 (22,3)
+  pauses: 广播
+
+event 来人
+  谁: tag
+// EXPECT DNS4002 (27,3)
+  几个: int = 2
+  几个: int
+// EXPECT DNS3004 (30,3)
+
+event 敲门
+  次: int = 1
+
+dialogue 广播_选 on 敲门 channel 广播
+  甲: 选吧。
+  - 好。
+// EXPECT DNS2018 (38,3)
+
+dialogue 去向 on 敲门 channel 不存在的频道
+// EXPECT DNS3010 (41,1)
+  甲: 嗯。
+
+dialogue 听 on 没声明的事件
+// EXPECT DNS3011 (45,1)
+  甲: 嗯。
+
+dialogue 跳 on 敲门
+  甲: 第 {敲门.次} 次,{敲门.响度}。
+// EXPECT DNS3013 (50,18)
+  -> 别处
+
+dialogue 别处
+  甲: 现在是 {敲门.次} 次。
+// EXPECT DNS3012 (55,11)
+  emit 敲门(响度 = 1)
+// EXPECT DNS3013 (57,11)
+  emit 没声明的事件(次 = 1)
+// EXPECT DNS3011 (59,3)
+  emit 只给游戏听的

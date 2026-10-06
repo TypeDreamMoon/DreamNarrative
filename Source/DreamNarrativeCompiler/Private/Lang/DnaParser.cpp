@@ -35,6 +35,12 @@ namespace UE::DreamNarrative::Lang
 			TestDialogue,
 			/** The entries of a test's `given`: facts, and the chapter, visits and once-choices of a starting state. */
 			Given,
+			/** The properties of a `channel`. */
+			Channel,
+			/** The parameters of an `event`. */
+			EventParams,
+			/** The expectations inside a test's `channel` block. */
+			TestChannel,
 		};
 
 		enum class EModifierSet : uint8
@@ -54,7 +60,7 @@ namespace UE::DreamNarrative::Lang
 		bool IsDeclarationWord(const FString& Word)
 		{
 			return Word == TEXT("character") || Word == TEXT("fact") || Word == TEXT("chapter") || Word == TEXT("quest")
-				|| Word == TEXT("dialogue") || Word == TEXT("stage");
+				|| Word == TEXT("dialogue") || Word == TEXT("stage") || Word == TEXT("channel") || Word == TEXT("event");
 		}
 
 		/** The run of identifier characters at the start of Text. Empty when Text does not start with one. */
@@ -358,8 +364,11 @@ namespace UE::DreamNarrative::Lang
 				case EContext::Character:
 				case EContext::Journal:
 				case EContext::Objective:
+				case EContext::Channel:
 					ClassifyPropertyOnly(Node);
 					break;
+				case EContext::EventParams: ClassifyEventParam(Node); break;
+				case EContext::TestChannel: ClassifyTestExpectation(Node, /*bInChannel=*/true); break;
 				case EContext::FactGroup: ClassifyFactEntry(Node); break;
 				case EContext::Chapter: ClassifyChapterLine(Node); break;
 				case EContext::Implied: ClassifyImplication(Node); break;
@@ -372,7 +381,7 @@ namespace UE::DreamNarrative::Lang
 				case EContext::Restore: ClassifyNamedEntry(Node, EDnaLineKind::RestoreEntry); break;
 				case EContext::Test: ClassifyTestStep(Node, /*bExplore=*/false); break;
 				case EContext::Explore: ClassifyTestStep(Node, /*bExplore=*/true); break;
-				case EContext::TestDialogue: ClassifyTestExpectation(Node); break;
+				case EContext::TestDialogue: ClassifyTestExpectation(Node, /*bInChannel=*/false); break;
 				case EContext::Given: ClassifyGivenEntry(Node); break;
 				}
 			}
@@ -407,6 +416,8 @@ namespace UE::DreamNarrative::Lang
 				if (Word == TEXT("quest")) { ParseQuestHeader(Node); return; }
 				if (Word == TEXT("dialogue")) { ParseDialogueHeader(Node); return; }
 				if (Word == TEXT("stage")) { ParseStageHeader(Node); return; }
+				if (Word == TEXT("channel")) { ParseNamedBlockHeader(Node, EDnaLineKind::Channel, LOCTEXT("ChannelName", "a channel name"), EContext::Channel); return; }
+				if (Word == TEXT("event")) { ParseNamedBlockHeader(Node, EDnaLineKind::Event, LOCTEXT("EventName", "an event name"), EContext::EventParams); return; }
 				if (Word == TEXT("test")) { ParseTestHeader(Node, EDnaLineKind::Test); return; }
 				if (Word == TEXT("explore")) { ParseTestHeader(Node, EDnaLineKind::Explore); return; }
 
@@ -417,7 +428,44 @@ namespace UE::DreamNarrative::Lang
 					MarkChildrenUnknown(Node);
 					return;
 				}
-				Unexpected(Node, LOCTEXT("AtTopLevel", "at the top level; expected file, character, fact, chapter, quest, dialogue, stage, test or explore"));
+				Unexpected(Node, LOCTEXT("AtTopLevel", "at the top level; expected file, character, fact, chapter, quest, dialogue, stage, channel, event, test or explore"));
+			}
+
+			/** `channel 名` / `event 名`: a name, nothing after it, and a block of Context lines (which may be empty). */
+			void ParseNamedBlockHeader(FDnaLineNode& Node, EDnaLineKind Kind, const FText& What, EContext Context)
+			{
+				Node.Kind = Kind;
+				TArray<FDnaToken> Tokens;
+				Tokenize(Node, 0, Tokens);
+				int32 Index = 1;
+				if (ExpectIdentifier(Tokens, Index, What, Node.Payload.Name))
+				{
+					ExpectEnd(Tokens, Index);
+				}
+				ClassifyChildren(Node, Context);
+			}
+
+			/** `名: type ...` inside an event: a parameter, typed like a fact; only the value clauses mean anything. */
+			void ClassifyEventParam(FDnaLineNode& Node)
+			{
+				TArray<FDnaToken> Tokens;
+				Tokenize(Node, 0, Tokens);
+				if (!Tokens[0].Is(EDnaTokenKind::Identifier) || !Tokens[1].Is(EDnaTokenKind::Colon))
+				{
+					Unexpected(Node, LOCTEXT("InEvent", "inside an event; expected '参数: type ...'"));
+					return;
+				}
+				Node.Kind = EDnaLineKind::EventParam;
+				FDnaLinePayload& P = Node.Payload;
+				P.Name = Tokens[0].Text;
+				int32 Index = 2;
+				if (ParseFactSpec(Node, Tokens, Index)
+					&& (P.bExtern || P.bSession || P.Authority != EDnaAuthority::Shared || !P.WasName.IsEmpty()))
+				{
+					Fail(TEXT("DNS2019"), Node.Raw.Span, LOCTEXT("ParamModifier",
+						"An event parameter takes a type, `in (...)`, `range` and a default; extern, session, server, client and was belong to facts"));
+				}
+				RequireNoChildren(Node);
 			}
 
 			/** `[player] [was 旧名]` and friends: the optional tail of a declaration header. */
@@ -468,8 +516,86 @@ namespace UE::DreamNarrative::Lang
 						++Index;
 						continue;
 					}
+					if (bAllowDialogueClauses && Token.IsWord(TEXT("on")))
+					{
+						++Index;
+						if (!ExpectIdentifier(Tokens, Index, LOCTEXT("OnName", "an event name after 'on'"), Node.Payload.OnEvent)) { return false; }
+						continue;
+					}
+					if (bAllowDialogueClauses && Token.IsWord(TEXT("channel")))
+					{
+						++Index;
+						if (!ExpectIdentifier(Tokens, Index, LOCTEXT("ChannelClause", "a channel name after 'channel'"), Node.Payload.Channel)) { return false; }
+						continue;
+					}
+					if (bAllowDialogueClauses && Token.IsKeyword(EDnaKeyword::Once))
+					{
+						Node.Payload.bOnceEntry = true;
+						++Index;
+						continue;
+					}
+					if (bAllowDialogueClauses && Token.IsWord(TEXT("cooldown")))
+					{
+						++Index;
+						if (!Tokens[Index].Is(EDnaTokenKind::Duration) || Tokens[Index].Real <= 0.0)
+						{
+							return Fail(TEXT("DNS2007"), Tokens[Index].Span, LOCTEXT("CooldownDuration", "Expected a duration such as 30s after 'cooldown'"));
+						}
+						Node.Payload.CooldownSeconds = Tokens[Index].Real;
+						++Index;
+						continue;
+					}
+					if (bAllowDialogueClauses && Token.IsWord(TEXT("resume")))
+					{
+						Node.Payload.bResume = true;
+						++Index;
+						continue;
+					}
 					return ExpectEnd(Tokens, Index);
 				}
+				return true;
+			}
+
+			/**
+			 * `(参数 = 值, ...)` after an emit's event name, when there is one. Index is on the token after
+			 * the name and is left after the closing parenthesis.
+			 */
+			bool ParseEmitArgs(const TArray<FDnaToken>& Tokens, int32& Index, TArray<FDnaEmitArg>& Out)
+			{
+				if (!Tokens[Index].Is(EDnaTokenKind::LeftParen))
+				{
+					return true;
+				}
+				++Index;
+				while (true)
+				{
+					FDnaEmitArg Arg;
+					Arg.Span = Tokens[Index].Span;
+					if (!ExpectIdentifier(Tokens, Index, LOCTEXT("EmitArgName", "a parameter name"), Arg.Name)) { return false; }
+					if (!Tokens[Index].Is(EDnaTokenKind::Assign))
+					{
+						return Fail(TEXT("DNS2007"), Tokens[Index].Span, LOCTEXT("EmitArgAssign", "Expected '=' after the parameter name"));
+					}
+					++Index;
+					Arg.Value = ExpectExpression(Tokens, Index);
+					if (!Arg.Value.IsValid()) { return false; }
+					if (Out.ContainsByPredicate([&Arg](const FDnaEmitArg& Other) { return Other.Name == Arg.Name; }))
+					{
+						Fail(TEXT("DNS2020"), Arg.Span, FText::Format(LOCTEXT("EmitArgTwice", "'{0}' is given twice"), FText::FromString(Arg.Name)));
+					}
+					Out.Add(MoveTemp(Arg));
+					if (Tokens[Index].Is(EDnaTokenKind::Comma))
+					{
+						++Index;
+						continue;
+					}
+					break;
+				}
+				if (!Tokens[Index].Is(EDnaTokenKind::RightParen))
+				{
+					return Fail(TEXT("DNS2007"), Tokens[Index].Span, LOCTEXT("EmitArgsClose", "Expected ',' or ')' in the arguments"));
+				}
+				++Index;
 				return true;
 			}
 
@@ -655,6 +781,10 @@ namespace UE::DreamNarrative::Lang
 				if (ExpectIdentifier(Tokens, Index, LOCTEXT("DialogueName", "a dialogue name"), Node.Payload.Name))
 				{
 					ParseHeaderTail(Node, Tokens, Index, false, false, /*bAllowDialogueClauses=*/true);
+				}
+				if (!Node.Payload.ForCharacter.IsEmpty() && !Node.Payload.OnEvent.IsEmpty())
+				{
+					Fail(TEXT("DNS2017"), Node.Raw.Span, LOCTEXT("ForAndOn", "A dialogue is an entry for a character (`for`) or for an event (`on`), not both"));
 				}
 				RequireBody(Node);
 				ClassifyChildren(Node, EContext::Dialogue);
@@ -975,8 +1105,14 @@ namespace UE::DreamNarrative::Lang
 				case EDnaCommandKind::Complete:
 				case EDnaCommandKind::Fail:
 				case EDnaCommandKind::Advance:
-				case EDnaCommandKind::Emit:
 					if (ExpectIdentifier(Tokens, Index, LOCTEXT("CommandName", "a name"), Node.Payload.Name))
+					{
+						ExpectEnd(Tokens, Index);
+					}
+					break;
+				case EDnaCommandKind::Emit:
+					if (ExpectIdentifier(Tokens, Index, LOCTEXT("EmitName", "an event name after 'emit'"), Node.Payload.Name)
+						&& ParseEmitArgs(Tokens, Index, Node.Payload.EmitArgs))
 					{
 						ExpectEnd(Tokens, Index);
 					}
@@ -1639,6 +1775,23 @@ namespace UE::DreamNarrative::Lang
 					RequireNoChildren(Node);
 					return;
 				}
+				if (Word == TEXT("emit"))
+				{
+					BeginStep(EDnaTestStepKind::Emit);
+					if (ExpectIdentifier(Tokens, Index, LOCTEXT("TestEmitName", "an event name after 'emit'"), P.Name)
+						&& ParseEmitArgs(Tokens, Index, P.EmitArgs))
+					{
+						if (Tokens[Index].IsWord(TEXT("hold")))
+						{
+							P.bHold = true;
+							++Index;
+						}
+						ExpectEnd(Tokens, Index);
+					}
+					// No body is fine: `emit 闲置` alone raises it and expects nothing of what it opens.
+					ClassifyChildren(Node, EContext::TestDialogue);
+					return;
+				}
 				if (Word == TEXT("journal"))
 				{
 					// `journal 任务: 文本` -- the text is read as text, not tokens.
@@ -1721,8 +1874,8 @@ namespace UE::DreamNarrative::Lang
 						? LOCTEXT("PickOutsideTalkExplore", "directly in an explore block; a choice to take belongs under 'talk' or 'start'")
 						: LOCTEXT("PickOutsideTalk", "directly in a test; a choice to take belongs under 'talk' or 'start'"))
 					: (bExplore
-						? LOCTEXT("InExplore", "inside an explore block; expected seed, given, talk, start, expect, set, wait, jump, save, rolls, accept, complete, fail, journal, depth, always, eventually or softlock")
-						: LOCTEXT("InTest", "inside a test; expected seed, given, talk, start, expect, set, wait, jump, save, rolls, accept, complete, fail or journal")));
+						? LOCTEXT("InExplore", "inside an explore block; expected seed, given, talk, start, emit, expect, set, wait, jump, save, rolls, accept, complete, fail, journal, depth, always, eventually or softlock")
+						: LOCTEXT("InTest", "inside a test; expected seed, given, talk, start, emit, expect, set, wait, jump, save, rolls, accept, complete, fail or journal")));
 			}
 
 			/** `low`, `high` or a number in [0, 1), separated by commas. */
@@ -1862,11 +2015,38 @@ namespace UE::DreamNarrative::Lang
 				RequireNoChildren(Node);
 			}
 
-			/** Under a test's `talk` / `start`: a choice to take, or a line that must (not) be shown. */
-			void ClassifyTestExpectation(FDnaLineNode& Node)
+			/**
+			 * Under a test's `talk` / `start` / `emit`: a choice to take, a line that must (not) be shown, or
+			 * a `channel` block for the lines another channel shows (not inside another one).
+			 */
+			void ClassifyTestExpectation(FDnaLineNode& Node, bool bInChannel)
 			{
 				const FString& Content = Node.Raw.Content;
 				FDnaLinePayload& P = Node.Payload;
+				if (WordAt(Content, 0, TEXT("channel")))
+				{
+					if (bInChannel)
+					{
+						Unexpected(Node, LOCTEXT("ChannelInChannel", "inside a channel block; channel blocks sit directly under the step"));
+						return;
+					}
+					Node.Kind = EDnaLineKind::TestStep;
+					P.TestStep = EDnaTestStepKind::ChannelLines;
+					TArray<FDnaToken> Tokens;
+					Tokenize(Node, 0, Tokens);
+					int32 Index = 1;
+					if (ExpectIdentifier(Tokens, Index, LOCTEXT("TestChannelName", "a channel name after 'channel'"), P.Name))
+					{
+						if (Tokens[Index].IsWord(TEXT("strict")))
+						{
+							P.bStrict = true;
+							++Index;
+						}
+						ExpectEnd(Tokens, Index);
+					}
+					ClassifyChildren(Node, EContext::TestChannel);
+					return;
+				}
 				Node.Kind = EDnaLineKind::TestStep;
 
 				if (Content.StartsWith(TEXT("- ")) || Content == TEXT("-"))

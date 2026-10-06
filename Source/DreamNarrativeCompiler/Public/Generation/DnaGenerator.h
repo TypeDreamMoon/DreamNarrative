@@ -51,4 +51,7 @@ namespace UE::DreamNarrative::Lang
 
 	/** Same, for a value written to TargetFact: a bare member of a tag fact's set resolves against that fact. */
 	DREAMNARRATIVECOMPILER_API int32 CompileDnaValueFor(const FDnaProgram& Program, const FDnaExprPtr& Expr, const FString& TargetFact, UDreamNarrativeScript& Pool);
+
+	/** Same, for a value given to parameter Param of Event (an emit's argument). */
+	DREAMNARRATIVECOMPILER_API int32 CompileDnaValueForParam(const FDnaProgram& Program, const FDnaExprPtr& Expr, const FString& Event, const FString& Param, UDreamNarrativeScript& Pool);
 }

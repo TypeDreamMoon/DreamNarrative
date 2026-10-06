@@ -1,0 +1,7 @@
+1: Event 来人
+2:   EventParam 谁: tag extern in (甲, 乙)
+5: Dialogue 两头 for 甲 on 来人
+7:   Speech 甲 "嗯。"
+9: Dialogue 冷却 on 来人
+11:   Command emit 来人(谁 = 甲, 谁 = 乙)
+13:   Command emit 来人

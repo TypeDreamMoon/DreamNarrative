@@ -59,8 +59,35 @@ namespace UE::DreamNarrative::Lang
 	struct FDnaDialogueInfo : FDnaDeclBase
 	{
 		FString ForCharacter;
+		/** `on 事件`; empty for none. */
+		FString OnEvent;
+		/** `channel 频道`; empty for main. */
+		FString Channel;
 		FDnaExprPtr Condition;
 		int32 Priority = INDEX_NONE;
+	};
+
+	/** A channel. `main` is always there; a `channel main` block only adjusts it (Node is null until one does). */
+	struct FDnaChannelInfo : FDnaDeclBase
+	{
+		bool bBuiltIn = false;
+		bool bLockInput = false;
+		bool bAutoAdvance = true;
+		/** queue / interrupt / drop, as written; the validator checks it. */
+		FString Busy = TEXT("queue");
+		TArray<FString> Pauses;
+		TArray<FString> Stops;
+	};
+
+	/** An event and its parameters, each typed like a fact (only the value clauses mean anything). */
+	struct FDnaEventInfo : FDnaDeclBase
+	{
+		TArray<FDnaFactInfo> Params;
+
+		const FDnaFactInfo* FindParam(const FString& Param) const
+		{
+			return Params.FindByPredicate([&Param](const FDnaFactInfo& Each) { return Each.Name == Param; });
+		}
 	};
 
 	struct FDnaStageInfo : FDnaDeclBase
@@ -92,10 +119,17 @@ namespace UE::DreamNarrative::Lang
 		TMap<FString, FDnaQuestInfo> Quests;
 		TMap<FString, FDnaDialogueInfo> Dialogues;
 		TMap<FString, FDnaStageInfo> Stages;
+		/** main, then the declared channels. */
+		TMap<FString, FDnaChannelInfo> Channels;
+		/** In declaration order across documents, main first. */
+		TArray<FString> ChannelOrder;
+		TMap<FString, FDnaEventInfo> Events;
 		TMap<FString, FDnaTestInfo> Tests;
 		TMap<FString, FDnaTestInfo> Explores;
 
 		const FDnaFactInfo* FindFact(const FString& DottedName) const { return Facts.Find(DottedName); }
+		const FDnaEventInfo* FindEvent(const FString& Name) const { return Events.Find(Name); }
+		const FDnaChannelInfo* FindChannel(const FString& Name) const { return Channels.Find(Name.IsEmpty() ? FString(TEXT("main")) : Name); }
 		bool IsQuest(const FString& Name) const { return Quests.Contains(Name); }
 		bool IsChapter(const FString& Name) const { return Chapters.Contains(Name); }
 		bool IsDialogue(const FString& Name) const { return Dialogues.Contains(Name); }
@@ -105,6 +139,9 @@ namespace UE::DreamNarrative::Lang
 		/** True when any declaration of any kind uses this name. Out parameter says which kind. */
 		bool IsDeclared(const FString& Name, FString* OutKind = nullptr) const;
 	};
+
+	/** `侦察, 闲聊` (full-width commas too) as names; empty entries are dropped. */
+	DREAMNARRATIVECOMPILER_API TArray<FString> SplitDnaNameList(const FString& Text);
 
 	/**
 	 * Collects the declarations of every document into the program.

@@ -15,6 +15,8 @@ namespace UE::DreamNarrative::Lang
 		if (Quests.Contains(Name)) { if (OutKind) { *OutKind = TEXT("quest"); } return true; }
 		if (Dialogues.Contains(Name)) { if (OutKind) { *OutKind = TEXT("dialogue"); } return true; }
 		if (Stages.Contains(Name)) { if (OutKind) { *OutKind = TEXT("stage"); } return true; }
+		if (Channels.Contains(Name)) { if (OutKind) { *OutKind = TEXT("channel"); } return true; }
+		if (Events.Contains(Name)) { if (OutKind) { *OutKind = TEXT("event"); } return true; }
 		return false;
 	}
 
@@ -78,6 +80,38 @@ namespace UE::DreamNarrative::Lang
 				Info.RangeMax = P.RangeMax;
 				Info.Domain = P.Domain;
 				Info.DefaultExpr = P.DefaultExpr;
+			}
+
+			/** A channel's properties as written; the validator says which are wrong. */
+			void FillChannel(FDnaChannelInfo& Info, FDnaLineNode& Node, FDnaDocument& Document)
+			{
+				Info.Name = Node.Payload.Name;
+				Info.Node = &Node;
+				Info.Document = &Document;
+				TArray<FDnaLineNode*> Properties;
+				Node.GetContentChildren(Properties);
+				for (const FDnaLineNode* Property : Properties)
+				{
+					if (Property->Kind != EDnaLineKind::Property) { continue; }
+					const FString& Key = Property->Payload.Name;
+					const FString Value = Property->Payload.Value.TrimStartAndEnd();
+					if (Key == TEXT("input")) { Info.bLockInput = Value == TEXT("lock"); }
+					else if (Key == TEXT("advance")) { Info.bAutoAdvance = Value != TEXT("player"); }
+					else if (Key == TEXT("busy")) { Info.Busy = Value; }
+					else if (Key == TEXT("pauses")) { Info.Pauses = SplitDnaNameList(Value); }
+					else if (Key == TEXT("stops")) { Info.Stops = SplitDnaNameList(Value); }
+				}
+			}
+
+			void AddBuiltIns()
+			{
+				FDnaChannelInfo& Main = Program.Channels.Add(TEXT("main"));
+				Main.Name = TEXT("main");
+				Main.bBuiltIn = true;
+				Main.bLockInput = true;
+				Main.bAutoAdvance = false;
+				Main.Busy = TEXT("interrupt");
+				Program.ChannelOrder.Add(TEXT("main"));
 			}
 
 			void AddDocument(const TSharedPtr<FDnaDocument>& DocumentPtr)
@@ -177,9 +211,50 @@ namespace UE::DreamNarrative::Lang
 						Info.Node = &Root;
 						Info.Document = &Document;
 						Info.ForCharacter = P.ForCharacter;
+						Info.OnEvent = P.OnEvent;
+						Info.Channel = P.Channel;
 						Info.Condition = P.Condition;
 						Info.Priority = P.Priority;
 						NoteRename(P.WasName, Root);
+						break;
+					}
+					case EDnaLineKind::Channel:
+					{
+						// main is built in: its block adjusts it, and may appear once.
+						FDnaChannelInfo* Existing = Program.Channels.Find(P.Name);
+						if (Existing && Existing->bBuiltIn && !Existing->Node)
+						{
+							FillChannel(*Existing, Root, Document);
+							break;
+						}
+						if (!Admit(P.Name, TEXT("channel"), Root)) { break; }
+						FDnaChannelInfo& Info = Program.Channels.Add(P.Name);
+						FillChannel(Info, Root, Document);
+						Program.ChannelOrder.Add(P.Name);
+						break;
+					}
+					case EDnaLineKind::Event:
+					{
+						if (!Admit(P.Name, TEXT("event"), Root)) { break; }
+						FDnaEventInfo& Info = Program.Events.Add(P.Name);
+						Info.Name = P.Name;
+						Info.Node = &Root;
+						Info.Document = &Document;
+						TArray<FDnaLineNode*> Params;
+						Root.GetContentChildren(Params);
+						for (FDnaLineNode* Param : Params)
+						{
+							if (Param->Kind != EDnaLineKind::EventParam) { continue; }
+							if (Info.FindParam(Param->Payload.Name))
+							{
+								bOk = Diagnostics.Error(TEXT("DNS3004"), Param->Raw.Span,
+									FText::Format(LOCTEXT("DuplicateParam", "Event '{0}' already has a parameter called '{1}'"),
+										FText::FromString(P.Name), FText::FromString(Param->Payload.Name)));
+								continue;
+							}
+							FDnaFactInfo& ParamInfo = Info.Params.AddDefaulted_GetRef();
+							FillFact(ParamInfo, Param->Payload.Name, *Param, Document, nullptr);
+						}
 						break;
 					}
 					case EDnaLineKind::Stage:
@@ -244,10 +319,32 @@ namespace UE::DreamNarrative::Lang
 		};
 	}
 
+	TArray<FString> SplitDnaNameList(const FString& Text)
+	{
+		FString Normalized = Text;
+		for (int32 Index = 0; Index < Normalized.Len(); ++Index)
+		{
+			Normalized[Index] = NormalizeDnaPunctuation(Normalized[Index]);
+		}
+		TArray<FString> Parts;
+		Normalized.ParseIntoArray(Parts, TEXT(","), /*InCullEmpty=*/true);
+		TArray<FString> Out;
+		for (FString& Part : Parts)
+		{
+			Part.TrimStartAndEndInline();
+			if (!Part.IsEmpty())
+			{
+				Out.Add(Part);
+			}
+		}
+		return Out;
+	}
+
 	bool BuildDnaProgram(const TArray<TSharedPtr<FDnaDocument>>& Documents, FDnaProgram& OutProgram, FDnaDiagnosticSink& Diagnostics)
 	{
 		OutProgram.Documents = Documents;
 		FBuilder Builder(OutProgram, Diagnostics);
+		Builder.AddBuiltIns();
 		for (const TSharedPtr<FDnaDocument>& Document : Documents)
 		{
 			if (Document.IsValid())
