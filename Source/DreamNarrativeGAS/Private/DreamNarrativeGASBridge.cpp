@@ -7,6 +7,7 @@
 #include "DreamNarrativeStageData.h"
 #include "DreamNarrativeStageDirector.h"
 #include "DreamNarrativeStory.h"
+#include "Subsystems/SubsystemCollection.h"
 
 void UDreamNarrativeGASBridge::Initialize(FSubsystemCollectionBase& Collection)
 {

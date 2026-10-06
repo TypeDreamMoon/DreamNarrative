@@ -8,6 +8,7 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "Subsystems/SubsystemCollection.h"
 
 void UDreamNarrativeStageSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {

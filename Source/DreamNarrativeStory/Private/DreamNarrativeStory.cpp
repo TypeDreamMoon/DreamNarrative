@@ -1,12 +1,14 @@
 // Copyright DreamMoon. All Rights Reserved.
 
 #include "DreamNarrativeStory.h"
+#include "AssetRegistry/AssetData.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "DreamNarrativeRecorder.h"
 #include "DreamNarrativeSettings.h"
 #include "DreamNarrativeStoryModule.h"
 #include "DreamNarrativeTrace.h"
 #include "Engine/GameInstance.h"
+#include "Subsystems/SubsystemCollection.h"
 
 void UDreamNarrativeStory::Initialize(FSubsystemCollectionBase& Collection)
 {

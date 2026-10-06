@@ -3,6 +3,7 @@
 #include "DreamNarrativeLedger.h"
 #include "DreamNarrativeCoreModule.h"
 #include "DreamNarrativeSettings.h"
+#include "Subsystems/SubsystemCollection.h"
 
 void UDreamNarrativeLedger::Initialize(FSubsystemCollectionBase& Collection)
 {

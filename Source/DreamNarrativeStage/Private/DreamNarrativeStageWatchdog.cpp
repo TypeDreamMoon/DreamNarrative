@@ -5,6 +5,7 @@
 #include "DreamNarrativeStageDirector.h"
 #include "DreamNarrativeStageModule.h"
 #include "Engine/World.h"
+#include "Subsystems/SubsystemCollection.h"
 
 void UDreamNarrativeStageWatchdog::Initialize(FSubsystemCollectionBase& Collection)
 {

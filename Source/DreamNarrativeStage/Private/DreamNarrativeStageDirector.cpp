@@ -3,6 +3,8 @@
 #include "DreamNarrativeStageDirector.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
+#include "AssetRegistry/ARFilter.h"
+#include "AssetRegistry/AssetData.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"

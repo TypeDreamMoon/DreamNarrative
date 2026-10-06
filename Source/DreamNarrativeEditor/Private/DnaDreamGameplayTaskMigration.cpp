@@ -1,6 +1,7 @@
 // Copyright DreamMoon. All Rights Reserved.
 
 #include "DnaDreamGameplayTaskMigration.h"
+#include "AssetRegistry/AssetData.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "DreamNarrativeEditorModule.h"
 #include "Engine/Blueprint.h"
