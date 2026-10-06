@@ -1,6 +1,7 @@
 // Copyright DreamMoon. All Rights Reserved.
 
 #include "DreamNarrativeEditorModule.h"
+#include "DnaSourceWatcher.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Docking/TabManager.h"
 #include "SDnaDebugPanel.h"
@@ -23,6 +24,10 @@ namespace
 
 void FDreamNarrativeEditorModule::StartupModule()
 {
+	// Saving a .dna rebuilds the scripts (not in commandlets and unattended runs).
+	Watcher = MakeUnique<UE::DreamNarrative::Editor::FDnaSourceWatcher>();
+	Watcher->Start();
+
 	// A commandlet has no windows to put a tab in.
 	if (!FSlateApplication::IsInitialized())
 	{
@@ -56,6 +61,7 @@ void FDreamNarrativeEditorModule::StartupModule()
 
 void FDreamNarrativeEditorModule::ShutdownModule()
 {
+	Watcher.Reset();
 	if (FSlateApplication::IsInitialized())
 	{
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(StoryTab);
