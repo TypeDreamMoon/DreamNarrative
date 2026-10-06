@@ -37,6 +37,8 @@ enum class EDnaExprNodeKind : uint8
 	Binary,
 	/** Children[0] in (Children[1..]). */
 	In,
+	/** `事件.参数`: a parameter of the event that opened the dialogue. Event is the event, Name the parameter. */
+	EventParam,
 };
 
 UENUM()
@@ -74,6 +76,10 @@ struct DREAMNARRATIVECORE_API FDnaExprNode
 
 	UPROPERTY()
 	FName Name;
+
+	/** For EventParam: the event whose parameter Name is. */
+	UPROPERTY()
+	FName Event;
 
 	UPROPERTY()
 	EDnaQuestStateQuery QuestQuery = EDnaQuestStateQuery::Completed;
@@ -118,6 +124,8 @@ public:
 	virtual float NextRandomUnit() = 0;
 	/** Where evaluation reports each node, or null (the default) for nobody. */
 	virtual IDnaTrace* GetTrace() const { return nullptr; }
+	/** A parameter of the event in scope; false (the default) outside a dialogue an event opened. */
+	virtual bool GetEventParam(FName Event, FName Param, FDnaValue& OutValue) const { return false; }
 };
 
 namespace DreamNarrative

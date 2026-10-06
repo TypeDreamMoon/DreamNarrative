@@ -12,6 +12,7 @@
 
 #include "CoreMinimal.h"
 #include "DreamNarrativeClock.h"
+#include "DreamNarrativeEvent.h"
 #include "DreamNarrativeExpression.h"
 #include "DreamNarrativeScript.h"
 #include "DreamNarrativeTrace.h"
@@ -90,6 +91,8 @@ DECLARE_MULTICAST_DELEGATE_ThreeParams(FDnaFactWrittenSignature, FName /*Fact*/,
 DECLARE_MULTICAST_DELEGATE_OneParam(FDnaJumpRequestedSignature, FName /*Chapter*/);
 DECLARE_MULTICAST_DELEGATE_OneParam(FDnaTimerFiredSignature, FName /*Timer*/);
 DECLARE_MULTICAST_DELEGATE(FDnaSnapshotAppliedSignature);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDnaEventPayloadSignature, const FDnaEventPayload&, Event);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FDnaEventRaisedSignature, const FDnaEventPayload& /*Event*/, EDnaWriteSource /*Source*/);
 
 UCLASS()
 class DREAMNARRATIVECORE_API UDreamNarrativeLedger : public UGameInstanceSubsystem, public IDnaEvalContext
@@ -112,6 +115,7 @@ public:
 	const FDnaFactDecl* FindFactDecl(FName Fact) const;
 	const FDnaChapterDecl* FindChapterDecl(FName Chapter) const;
 	const FDnaCharacterDecl* FindCharacterDecl(FName Character) const;
+	const FDnaEventDecl* FindEventDecl(FName Event) const { return EventDecls.Find(Event); }
 	void GetFactNames(TArray<FName>& Out) const { FactDecls.GetKeys(Out); }
 
 	/** The scripts registered so far. */
@@ -210,9 +214,20 @@ public:
 
 	// ---------------------------------------------------------------- events
 
-	/** `emit`: broadcasts a named event to the game. */
+	/** Raises an event that carries nothing, as the game. */
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Events")
 	void EmitEvent(FName Event);
+
+	/**
+	 * Raises an event, as the game: dialogues that open `on` it start, and the game hears it back.
+	 * A declared event gets the defaults of the parameters it leaves out; a value that does not fit
+	 * its parameter is dropped with a warning, so the default stands in.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Narrative|Events")
+	void RaiseEvent(const FDnaEventPayload& Event) { RaiseEventAs(Event, EDnaWriteSource::Game); }
+
+	/** The same, saying who raised it: the story's own `emit` raises as the narrative. */
+	void RaiseEventAs(const FDnaEventPayload& Event, EDnaWriteSource Source);
 
 	// ---------------------------------------------------------------- snapshot
 
@@ -288,8 +303,16 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Narrative|Chapter")
 	FDnaChapterChangedSignature OnChapterChanged;
 
+	/** Every event raised, by name (the game's events and the story's `emit` alike). */
 	UPROPERTY(BlueprintAssignable, Category = "Narrative|Events")
 	FDnaEventSignature OnEvent;
+
+	/** Every event raised, with what it carries. */
+	UPROPERTY(BlueprintAssignable, Category = "Narrative|Events")
+	FDnaEventPayloadSignature OnEventPayload;
+
+	/** Every event raised, with what it carries and who raised it: what the story listens to. */
+	FDnaEventRaisedSignature OnEventRaised;
 
 	/** Fires after a batch commits with the facts that changed in it. Observers subscribe here. */
 	FDnaBatchCommittedSignature OnBatchCommitted;
@@ -302,6 +325,9 @@ public:
 
 	/** Fires when a timer runs out; it is no longer running by then. */
 	FDnaTimerFiredSignature OnTimerFired;
+
+	/** Fires as a snapshot starts going in, before anything of the story it replaces is touched. */
+	FDnaSnapshotAppliedSignature OnSnapshotApplying;
 
 	/** Fires once a snapshot is in place: what observers kept about the ledger before it is stale now. */
 	FDnaSnapshotAppliedSignature OnSnapshotApplied;
@@ -324,6 +350,7 @@ private:
 	TMap<FName, FDnaChapterDecl> ChapterDecls;
 	TArray<FName> ChapterOrder;
 	TMap<FName, FDnaCharacterDecl> CharacterDecls;
+	TMap<FName, FDnaEventDecl> EventDecls;
 	/** old name -> new name, from `was`. */
 	TMap<FName, FName> Redirects;
 	/** Chapter rules need the expression pool of the script that declared them. */

@@ -55,6 +55,10 @@ void UDreamNarrativeLedger::RegisterScript(UDreamNarrativeScript* Script)
 	{
 		CharacterDecls.Add(Decl.Name, Decl);
 	}
+	for (const FDnaEventDecl& Decl : Script->Events)
+	{
+		EventDecls.Add(Decl.Name, Decl);
+	}
 	for (const FDnaChapterDecl& Decl : Script->Chapters)
 	{
 		if (!ChapterDecls.Contains(Decl.Name))
@@ -386,7 +390,91 @@ void UDreamNarrativeLedger::SetVisited(FName Dialogue, int32 Count)
 
 void UDreamNarrativeLedger::EmitEvent(FName Event)
 {
-	OnEvent.Broadcast(Event);
+	FDnaEventPayload Payload;
+	Payload.Event = Event;
+	RaiseEventAs(Payload, EDnaWriteSource::Game);
+}
+
+namespace
+{
+	/** Value as Param holds it, the way a fact write converts it; false when it does not fit at all. */
+	bool FitEventArg(const FDnaFactDecl& Param, const FDnaValue& Value, FDnaValue& Out)
+	{
+		switch (Param.Type)
+		{
+		case EDnaFactType::Bool:
+			if (Value.Type == EDnaFactType::Tag) { return false; }
+			Out = FDnaValue::FromBool(Value.AsBool());
+			return true;
+		case EDnaFactType::Int:
+		case EDnaFactType::Float:
+		{
+			if (Value.Type == EDnaFactType::Tag) { return false; }
+			double Number = Value.AsNumber();
+			if (Param.bHasRange)
+			{
+				Number = FMath::Clamp(Number, Param.RangeMin, Param.RangeMax);
+			}
+			Out = Param.Type == EDnaFactType::Int ? FDnaValue::FromInt(static_cast<int32>(Number)) : FDnaValue::FromFloat(static_cast<float>(Number));
+			return true;
+		}
+		case EDnaFactType::Tag:
+			if (Value.Type != EDnaFactType::Tag || !Param.Domain.Contains(Value.Tag)) { return false; }
+			Out = Value;
+			return true;
+		}
+		return false;
+	}
+}
+
+void UDreamNarrativeLedger::RaiseEventAs(const FDnaEventPayload& InEvent, EDnaWriteSource Source)
+{
+	FDnaEventPayload Event;
+	Event.Event = InEvent.Event;
+	if (const FDnaEventDecl* Decl = EventDecls.Find(InEvent.Event))
+	{
+		// Every parameter is there, in declaration order: the value given when it fits, the default otherwise.
+		for (const FDnaFactDecl& Param : Decl->Params)
+		{
+			FDnaValue Value = Param.Default;
+			Value.Type = Param.Type;
+			if (const FDnaValue* Given = InEvent.Find(Param.Name))
+			{
+				if (!FitEventArg(Param, *Given, Value))
+				{
+					UE_LOG(LogDreamNarrative, Warning, TEXT("RaiseEvent: '%s' does not fit parameter '%s' of event '%s'; its default stands in"),
+						*Given->ToString(), *Param.Name.ToString(), *InEvent.Event.ToString());
+					if (Trace) { Trace->OnEvent(TEXT("event.arg-refused")); }
+				}
+			}
+			else if (Trace)
+			{
+				Trace->OnEvent(TEXT("event.arg-default"));
+			}
+			Event.Args.Add({ Param.Name, Value });
+		}
+		for (const FDnaEventArg& Arg : InEvent.Args)
+		{
+			if (!Decl->FindParam(Arg.Name))
+			{
+				UE_LOG(LogDreamNarrative, Warning, TEXT("RaiseEvent: event '%s' has no parameter '%s'; the value was dropped"),
+					*InEvent.Event.ToString(), *Arg.Name.ToString());
+				if (Trace) { Trace->OnEvent(TEXT("event.arg-refused")); }
+			}
+		}
+	}
+	else
+	{
+		Event.Args = InEvent.Args;
+	}
+	if (Trace)
+	{
+		Trace->OnEvent(Source == EDnaWriteSource::Game ? TEXT("event.raise.game") : TEXT("event.raise.narrative"));
+	}
+	// The game hears it first, then the story answers it.
+	OnEvent.Broadcast(Event.Event);
+	OnEventPayload.Broadcast(Event);
+	OnEventRaised.Broadcast(Event, Source);
 }
 
 bool UDreamNarrativeLedger::GetQuestState(FName Quest, EDnaQuestStateQuery Query) const
@@ -478,6 +566,8 @@ void UDreamNarrativeLedger::ApplySnapshot(const FDnaLedgerSnapshot& Snapshot)
 		Trace->OnEvent(TEXT("ledger.snapshot.apply"));
 	}
 	TGuardValue<bool> Applying(bApplyingSnapshot, true);
+	// What runs on the story being replaced ends first; whatever it writes on the way out is overwritten below.
+	OnSnapshotApplying.Broadcast();
 	{
 		FBatchScope Batch(*this);
 		ResetToDefaults();

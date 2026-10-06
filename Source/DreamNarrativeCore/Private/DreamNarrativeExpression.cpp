@@ -15,6 +15,7 @@ bool FDnaCompiledExpr::IsConstant() const
 		case EDnaExprNodeKind::Visited:
 		case EDnaExprNodeKind::Random:
 		case EDnaExprNodeKind::Chance:
+		case EDnaExprNodeKind::EventParam:
 			return false;
 		default:
 			break;
@@ -37,6 +38,7 @@ namespace DreamNarrative
 			virtual bool GetQuestState(FName, EDnaQuestStateQuery) const override { bTouchedWorld = true; return false; }
 			virtual int32 GetVisitCount(FName) const override { bTouchedWorld = true; return 0; }
 			virtual float NextRandomUnit() override { bTouchedWorld = true; return 0.f; }
+			virtual bool GetEventParam(FName, FName, FDnaValue&) const override { bTouchedWorld = true; return false; }
 		};
 
 		FDnaValue Number(double Value, bool bInt)
@@ -80,6 +82,12 @@ namespace DreamNarrative
 				return Report(nullptr, nullptr, FDnaValue::FromBool(Context.GetQuestState(Node.Name, Node.QuestQuery)));
 			case EDnaExprNodeKind::Visited:
 				return Report(nullptr, nullptr, FDnaValue::FromInt(Context.GetVisitCount(Node.Name)));
+			case EDnaExprNodeKind::EventParam:
+			{
+				FDnaValue Value;
+				Context.GetEventParam(Node.Event, Node.Name, Value);
+				return Report(nullptr, nullptr, Value);
+			}
 			case EDnaExprNodeKind::Random:
 			{
 				const FDnaValue Min = Child(0);

@@ -11,6 +11,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "DreamNarrativeEvent.h"
 #include "DreamNarrativeExpression.h"
 #include "DreamNarrativeTypes.h"
 #include "Engine/DataAsset.h"
@@ -113,6 +114,9 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Declarations")
 	TArray<FDnaChapterDecl> Chapters;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Declarations")
+	TArray<FDnaEventDecl> Events;
 
 	/** Every expression in the file, referenced by index from sections and chapter rules. */
 	UPROPERTY(VisibleAnywhere, Category = "Compiled")
