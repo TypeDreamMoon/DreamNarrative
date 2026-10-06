@@ -68,7 +68,7 @@ private:
 	void Rebuild();
 
 	TSharedRef<ITableRow> MakeRow(FItemPtr Item, const TSharedRef<STableViewBase>& Owner);
-	void GetChildren(FItemPtr Item, TArray<FItemPtr>& OutChildren);
+	void GetItemChildren(FItemPtr Item, TArray<FItemPtr>& OutChildren);
 	void OnOpen(FItemPtr Item);
 	TSharedPtr<SWidget> MakeContextMenu();
 	void Report(const FText& Error);

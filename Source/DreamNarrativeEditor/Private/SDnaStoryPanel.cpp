@@ -150,7 +150,7 @@ void SDnaStoryPanel::Construct(const FArguments& InArgs)
 			SAssignNew(Tree, STreeView<FItemPtr>)
 			.TreeItemsSource(&Roots)
 			.OnGenerateRow(this, &SDnaStoryPanel::MakeRow)
-			.OnGetChildren(this, &SDnaStoryPanel::GetChildren)
+			.OnGetChildren(this, &SDnaStoryPanel::GetItemChildren)
 			.OnMouseButtonDoubleClick(this, &SDnaStoryPanel::OnOpen)
 			.OnContextMenuOpening(this, &SDnaStoryPanel::MakeContextMenu)
 		]
@@ -245,7 +245,7 @@ TSharedRef<ITableRow> SDnaStoryPanel::MakeRow(FItemPtr Item, const TSharedRef<ST
 	];
 }
 
-void SDnaStoryPanel::GetChildren(FItemPtr Item, TArray<FItemPtr>& OutChildren)
+void SDnaStoryPanel::GetItemChildren(FItemPtr Item, TArray<FItemPtr>& OutChildren)
 {
 	OutChildren = Item->Children;
 }
