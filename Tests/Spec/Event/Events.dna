@@ -1,0 +1,87 @@
+// 事件:游戏(或剧情自己)发出,带声明过的参数,没给的取默认。每个频道各挑一段:条件成立、没用掉、不在冷却里的候选中
+// priority 最高的,同级取先声明的。参数只在由该事件开的那段对话里读得到(头上的条件、台词插值、set 的右值)。
+// 没有对话听的事件就这么过去。
+
+character 甲
+character 乙
+
+channel 旁白
+
+channel 提示
+  busy: drop
+
+event 落雷
+  距离: float range 0..100
+  强: bool
+  方位: tag in (东边, 西边) = 东边
+
+event 点名
+  号: tag in (一号, 二号)
+  次: int = 1
+
+fact 计数: int
+fact 最近距离: float
+
+dialogue 落雷_远 on 落雷 if 落雷.距离 > 50 channel 旁白
+  > 远处一声闷雷,在{落雷.方位}。
+
+dialogue 落雷_近 on 落雷 if 落雷.距离 <= 50 channel 旁白 priority 2
+  > 雷就落在{落雷.方位}!
+  set 最近距离 = 落雷.距离
+
+dialogue 落雷_近且强 on 落雷 if 落雷.强 and 落雷.距离 <= 50 channel 旁白 priority 2
+  > 同级的候选,先声明的赢,这一句不会出现。
+
+dialogue 落雷_提示 on 落雷 channel 提示
+  甲: 小心!
+  set 计数 += 1
+
+// 主频道上由事件开的对话:锁输入,有选项。
+dialogue 落雷_躲 on 落雷 if 落雷.强
+  乙: 躲哪儿?
+  - 屋檐下。
+      乙: 好。
+  - 不躲。
+
+dialogue 点名_应答 on 点名 if 点名.号 == 二号 channel 旁白
+  乙: 到!第 {点名.次} 次。
+
+dialogue 乙_叫人 for 乙
+  乙: 我去叫人。
+  emit 点名(号 = 二号, 次 = 计数 + 2)
+
+test 每个频道各挑一段
+  emit 落雷(距离 = 80)
+    channel 旁白 strict
+      > 远处一声闷雷,在东边。
+    channel 提示
+      甲: 小心!
+  expect 计数 == 1
+
+test 同级取先声明的_参数进条件插值与set
+  emit 落雷(距离 = 10, 强 = true, 方位 = 西边)
+    乙: 躲哪儿?
+    - 屋檐下。
+    乙: 好。
+    channel 旁白 strict
+      > 雷就落在西边!
+      absent > 同级的候选,先声明的赢,这一句不会出现。
+  expect 最近距离 == 10
+
+test 剧情自己发的事件也开对话_没给的参数取默认
+  given
+    计数 = 1
+  talk 乙
+    乙: 我去叫人。
+    channel 旁白
+      乙: 到!第 3 次。
+  emit 点名(号 = 二号)
+    channel 旁白
+      乙: 到!第 1 次。
+  emit 点名(号 = 一号)
+    channel 旁白
+      absent 乙: 到!第 1 次。
+
+test 没有对话听的事件就这么过去
+  emit 收工
+  expect 计数 == 0

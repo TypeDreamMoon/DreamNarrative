@@ -61,6 +61,7 @@ namespace UE::DreamNarrative::Tests
 		case EDnaExprNodeKind::ChapterName: Hit(TEXT("expr.ChapterName")); break;
 		case EDnaExprNodeKind::QuestState: Hit(TEXT("expr.QuestState")); break;
 		case EDnaExprNodeKind::Visited: Hit(TEXT("expr.Visited")); break;
+		case EDnaExprNodeKind::EventParam: Hit(TEXT("expr.EventParam")); break;
 		case EDnaExprNodeKind::Random: Hit(FString(TEXT("expr.Random.")) + TypeName(Result.Type)); break;
 		case EDnaExprNodeKind::Chance: Hit(TEXT("expr.Chance")); break;
 		case EDnaExprNodeKind::Unary:

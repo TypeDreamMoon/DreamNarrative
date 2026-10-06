@@ -187,7 +187,8 @@ namespace UE::DreamNarrative::Tests
 
 				case EDnaTestStepKind::Talk:
 				case EDnaTestStepKind::Start:
-					return RunDialogue(Step);
+				case EDnaTestStepKind::Emit:
+					return RunInteraction(Step);
 
 				case EDnaTestStepKind::Expect:
 				{
@@ -380,13 +381,187 @@ namespace UE::DreamNarrative::Tests
 				return ExpectedText(Node, Expected) && Expected == Choice.Label.ToString();
 			}
 
-			bool RunDialogue(const FDnaLineNode& Step)
+			/** What a step expects of one channel: the lines to see and the choices to take, in order, and the lines that must not show. */
+			struct FChannelPlan
+			{
+				FString What;
+				const FDnaLineNode* Owner = nullptr;
+				TArray<const FDnaLineNode*> Items;
+				TArray<const FDnaLineNode*> Absents;
+				bool bStrict = false;
+				int32 Cursor = 0;
+
+				bool IsExpectedLine(int32 Index) const { return Items.IsValidIndex(Index) && Items[Index]->Payload.TestStep == EDnaTestStepKind::ExpectLine; }
+			};
+
+			static void CollectPlan(const FDnaLineNode& Parent, FChannelPlan& Plan)
+			{
+				TArray<FDnaLineNode*> Children;
+				Parent.GetContentChildren(Children);
+				for (const FDnaLineNode* Child : Children)
+				{
+					if (Child->Kind != EDnaLineKind::TestStep || Child->Payload.TestStep == EDnaTestStepKind::ChannelLines) { continue; }
+					(Child->Payload.TestStep == EDnaTestStepKind::Absent ? Plan.Absents : Plan.Items).Add(Child);
+				}
+			}
+
+			/** A line a channel showed during the step, against what the step expects of that channel. */
+			bool MatchLine(FChannelPlan& Plan, const FDnaLineView& Line)
+			{
+				bool bOk = true;
+				for (const FDnaLineNode* Absent : Plan.Absents)
+				{
+					if (!Absent->Payload.bChoice && Matches(*Absent, Line))
+					{
+						World.SetContext(Where(*Absent));
+						World.ReportError(FString::Printf(TEXT("%s showed \"%s\", which the test says must not appear"), *Plan.What, *DescribeShown(Line)));
+						bOk = false;
+					}
+				}
+				if (Plan.IsExpectedLine(Plan.Cursor) && Matches(*Plan.Items[Plan.Cursor], Line))
+				{
+					++Plan.Cursor;
+				}
+				else if (Plan.bStrict)
+				{
+					World.SetContext(Plan.IsExpectedLine(Plan.Cursor) ? Where(*Plan.Items[Plan.Cursor]) : Where(*Plan.Owner));
+					World.ReportError(Plan.IsExpectedLine(Plan.Cursor)
+						? FString::Printf(TEXT("%s: expected \"%s\", but the dialogue showed \"%s\""), *Plan.What, *DescribeExpected(*Plan.Items[Plan.Cursor]), *DescribeShown(Line))
+						: FString::Printf(TEXT("%s showed \"%s\", which this strict talk does not list"), *Plan.What, *DescribeShown(Line)));
+					bOk = false;
+					if (Plan.IsExpectedLine(Plan.Cursor))
+					{
+						++Plan.Cursor;
+					}
+				}
+				return bOk;
+			}
+
+			/** Choices on offer: the next pick of the channel's plan, or a failure (and the dialogue ends). */
+			bool TakeChoice(FChannelPlan& Plan, UDreamNarrativeDialogueRunner& Runner)
+			{
+				bool bOk = true;
+				for (const FDnaLineNode* Absent : Plan.Absents)
+				{
+					if (!Absent->Payload.bChoice) { continue; }
+					for (const FDnaChoiceView& Choice : Runner.GetChoices())
+					{
+						if (MatchesChoice(*Absent, Choice))
+						{
+							World.SetContext(Where(*Absent));
+							World.ReportError(FString::Printf(TEXT("%s offered \"%s\", which the test says must not be offered"), *Plan.What, *Choice.Label.ToString()));
+							bOk = false;
+						}
+					}
+				}
+				// Whatever the test expected before this choice had to be shown by now.
+				for (; Plan.IsExpectedLine(Plan.Cursor); ++Plan.Cursor)
+				{
+					World.SetContext(Where(*Plan.Items[Plan.Cursor]));
+					World.ReportError(FString::Printf(TEXT("%s: expected \"%s\" before the choice, but it was not shown"), *Plan.What, *DescribeExpected(*Plan.Items[Plan.Cursor])));
+					bOk = false;
+				}
+				if (!Plan.Items.IsValidIndex(Plan.Cursor))
+				{
+					World.SetContext(Where(*Plan.Owner));
+					World.ReportError(FString::Printf(TEXT("%s: choices are on offer but the test takes none here. On offer: %s"), *Plan.What, *DescribeOffered(Runner)));
+					Runner.Abort();
+					return false;
+				}
+				const FDnaLineNode& PickNode = *Plan.Items[Plan.Cursor++];
+				World.SetContext(Where(PickNode));
+				int32 PickIndex = INDEX_NONE;
+				for (const FDnaChoiceView& Choice : Runner.GetChoices())
+				{
+					if (MatchesChoice(PickNode, Choice))
+					{
+						PickIndex = Choice.Index;
+						break;
+					}
+				}
+				if (PickIndex == INDEX_NONE)
+				{
+					World.ReportError(FString::Printf(TEXT("%s: \"%s\" is not on offer. On offer: %s"), *Plan.What,
+						PickNode.Payload.Target.IsEmpty() ? *PickNode.Payload.Text.Raw : *(TEXT("#") + PickNode.Payload.Target), *DescribeOffered(Runner)));
+					Runner.Abort();
+					return false;
+				}
+				Runner.Choose(PickIndex);
+				return bOk;
+			}
+
+			/**
+			 * talk, start or emit: does what the step says, then lets every channel say everything it has
+			 * (with `hold`, only what is on screen right after counts), matching what each channel shows
+			 * against what the step expects of it: the lines right under the step are main's, a channel
+			 * block's are its channel's.
+			 */
+			bool RunInteraction(const FDnaLineNode& Step)
 			{
 				const FDnaLinePayload& P = Step.Payload;
+				UDreamNarrativeStory& Story = World.Story();
+				const FName Main = ::DreamNarrative::MainChannelName();
 				const bool bTalk = P.TestStep == EDnaTestStepKind::Talk;
-				const FString What = FString::Printf(TEXT("%s %s"), bTalk ? TEXT("talk") : TEXT("start"), *P.Name);
-				UDreamNarrativeDialogueRunner* Runner = bTalk ? World.Story().TalkTo(FName(*P.Name)) : World.Story().StartDialogue(FName(*P.Name));
-				if (!Runner)
+				const bool bEmit = P.TestStep == EDnaTestStepKind::Emit;
+				const FString What = FString::Printf(TEXT("%s %s"), bTalk ? TEXT("talk") : bEmit ? TEXT("emit") : TEXT("start"), *P.Name);
+
+				TMap<FName, FChannelPlan> Plans;
+				auto PlanFor = [&Plans, &What, &Step, Main](FName Channel) -> FChannelPlan&
+				{
+					FChannelPlan* Plan = Plans.Find(Channel);
+					if (!Plan)
+					{
+						Plan = &Plans.Add(Channel);
+						Plan->What = Channel == Main ? What : FString::Printf(TEXT("%s, channel %s"), *What, *Channel.ToString());
+						Plan->Owner = &Step;
+					}
+					return *Plan;
+				};
+				{
+					FChannelPlan& MainPlan = PlanFor(Main);
+					MainPlan.bStrict = P.bStrict;
+					CollectPlan(Step, MainPlan);
+					TArray<FDnaLineNode*> Children;
+					Step.GetContentChildren(Children);
+					for (const FDnaLineNode* Child : Children)
+					{
+						if (Child->Kind != EDnaLineKind::TestStep || Child->Payload.TestStep != EDnaTestStepKind::ChannelLines) { continue; }
+						FChannelPlan& Plan = PlanFor(FName(*Child->Payload.Name));
+						Plan.Owner = Child;
+						Plan.bStrict |= Child->Payload.bStrict;
+						CollectPlan(*Child, Plan);
+					}
+				}
+
+				// A line already on screen when the step begins was shown before it; shown again (after a pause), it counts.
+				TArray<FName> Channels;
+				Story.GetChannelNames(Channels);
+				TMap<const UDreamNarrativeDialogueRunner*, int32> Seen;
+				TArray<const UDreamNarrativeDialogueRunner*> Ran;
+				for (const FName& Channel : Channels)
+				{
+					if (const UDreamNarrativeDialogueRunner* Runner = Story.GetRunner(Channel))
+					{
+						Seen.Add(Runner, Runner->GetLinesShown());
+					}
+				}
+
+				if (bEmit)
+				{
+					FDnaEventPayload Event;
+					Event.Event = FName(*P.Name);
+					for (const FDnaEmitArg& Arg : P.EmitArgs)
+					{
+						FDnaValue Value;
+						if (!World.EvaluateValueForParam(Arg.Value, P.Name, Arg.Name, Value))
+						{
+							return World.FinishStep(What, false);
+						}
+						Event.Set(FName(*Arg.Name), Value);
+					}
+					World.Ledger().RaiseEvent(Event);
+				}
+				else if (!(bTalk ? Story.TalkTo(FName(*P.Name)) : Story.StartDialogue(FName(*P.Name))))
 				{
 					World.ReportError(bTalk
 						? FString::Printf(TEXT("%s: no entry of %s applies right now"), *What, *P.Name)
@@ -394,141 +569,102 @@ namespace UE::DreamNarrative::Tests
 					return World.FinishStep(What, false);
 				}
 
-				// In source order: the lines to see and the choices to take. Absent lines apply throughout.
-				TArray<const FDnaLineNode*> Items;
-				TArray<const FDnaLineNode*> Absents;
-				TArray<FDnaLineNode*> Children;
-				Step.GetContentChildren(Children);
-				for (const FDnaLineNode* Child : Children)
-				{
-					if (Child->Kind != EDnaLineKind::TestStep) { continue; }
-					(Child->Payload.TestStep == EDnaTestStepKind::Absent ? Absents : Items).Add(Child);
-				}
-
 				bool bOk = true;
-				int32 Cursor = 0;
-				auto IsExpectedLine = [&Items](int32 Index) { return Items.IsValidIndex(Index) && Items[Index]->Payload.TestStep == EDnaTestStepKind::ExpectLine; };
-				for (int32 Guard = 0; Guard < 10000 && Runner->GetState() != EDnaRunnerState::Ended; ++Guard)
+				auto Observe = [&](UDreamNarrativeDialogueRunner& Runner)
 				{
-					switch (Runner->GetState())
+					Ran.AddUnique(&Runner);
+					int32& Count = Seen.FindOrAdd(&Runner);
+					if (Runner.GetState() == EDnaRunnerState::ShowingLine && Runner.GetLinesShown() > Count)
 					{
-					case EDnaRunnerState::ShowingLine:
+						Count = Runner.GetLinesShown();
+						bOk &= MatchLine(PlanFor(Runner.GetChannel()), Runner.GetCurrentLine());
+					}
+				};
+				if (P.bHold)
+				{
+					for (const FName& Channel : Channels)
 					{
-						const FDnaLineView& Line = Runner->GetCurrentLine();
-						for (const FDnaLineNode* Absent : Absents)
+						UDreamNarrativeDialogueRunner* Runner = Story.GetRunner(Channel);
+						if (Runner && !Runner->IsPaused())
 						{
-							if (!Absent->Payload.bChoice && Matches(*Absent, Line))
+							Observe(*Runner);
+						}
+					}
+				}
+				else
+				{
+					for (int32 Guard = 0; Guard < 10000; ++Guard)
+					{
+						UDreamNarrativeDialogueRunner* Runner = NextRunnerToDrive(Story);
+						if (!Runner)
+						{
+							break;
+						}
+						Ran.AddUnique(Runner);
+						FChannelPlan& Plan = PlanFor(Runner->GetChannel());
+						switch (Runner->GetState())
+						{
+						case EDnaRunnerState::ShowingLine:
+							Observe(*Runner);
+							Runner->Advance();
+							break;
+						case EDnaRunnerState::AwaitingChoice:
+							bOk &= TakeChoice(Plan, *Runner);
+							break;
+						case EDnaRunnerState::Waiting:
+							// Nothing has a line left to show; time moves on to whatever falls due first.
+							if (!World.Clock().AdvanceToNext())
 							{
-								World.SetContext(Where(*Absent));
-								World.ReportError(FString::Printf(TEXT("%s showed \"%s\", which the test says must not appear"), *What, *DescribeShown(Line)));
+								World.SetContext(Where(*Plan.Owner));
+								World.ReportError(FString::Printf(TEXT("%s is waiting but nothing is on the clock"), *Plan.What));
+								Runner->Abort();
 								bOk = false;
 							}
-						}
-						if (IsExpectedLine(Cursor) && Matches(*Items[Cursor], Line))
-						{
-							++Cursor;
-						}
-						else if (P.bStrict)
-						{
-							World.SetContext(IsExpectedLine(Cursor) ? Where(*Items[Cursor]) : Where(Step));
-							World.ReportError(IsExpectedLine(Cursor)
-								? FString::Printf(TEXT("%s: expected \"%s\", but the dialogue showed \"%s\""), *What, *DescribeExpected(*Items[Cursor]), *DescribeShown(Line))
-								: FString::Printf(TEXT("%s showed \"%s\", which this strict talk does not list"), *What, *DescribeShown(Line)));
+							break;
+						case EDnaRunnerState::PlayingStage:
+							Runner->NotifyStageFinished();
+							break;
+						default:
+							World.SetContext(Where(*Plan.Owner));
+							World.ReportError(FString::Printf(TEXT("%s stopped in an unexpected state"), *Plan.What));
+							Runner->Abort();
 							bOk = false;
-							if (IsExpectedLine(Cursor))
-							{
-								++Cursor;
-							}
+							break;
 						}
-						Runner->Advance();
-						break;
 					}
-					case EDnaRunnerState::AwaitingChoice:
+					for (const FName& Channel : Channels)
 					{
-						for (const FDnaLineNode* Absent : Absents)
+						if (UDreamNarrativeDialogueRunner* Left = Story.GetRunner(Channel))
 						{
-							if (!Absent->Payload.bChoice) { continue; }
-							for (const FDnaChoiceView& Choice : Runner->GetChoices())
-							{
-								if (MatchesChoice(*Absent, Choice))
-								{
-									World.SetContext(Where(*Absent));
-									World.ReportError(FString::Printf(TEXT("%s offered \"%s\", which the test says must not be offered"), *What, *Choice.Label.ToString()));
-									bOk = false;
-								}
-							}
-						}
-						// Whatever the test expected before this choice had to be shown by now.
-						for (; IsExpectedLine(Cursor); ++Cursor)
-						{
-							World.SetContext(Where(*Items[Cursor]));
-							World.ReportError(FString::Printf(TEXT("%s: expected \"%s\" before the choice, but it was not shown"), *What, *DescribeExpected(*Items[Cursor])));
+							const FChannelPlan& Plan = PlanFor(Channel);
+							World.SetContext(Where(*Plan.Owner));
+							World.ReportError(FString::Printf(TEXT("%s did not end"), *Plan.What));
+							Left->Abort();
 							bOk = false;
 						}
-						if (!Items.IsValidIndex(Cursor))
-						{
-							World.SetContext(Where(Step));
-							World.ReportError(FString::Printf(TEXT("%s: choices are on offer but the test takes none here. On offer: %s"), *What, *DescribeOffered(*Runner)));
-							Runner->Abort();
-							bOk = false;
-							break;
-						}
-						const FDnaLineNode& PickNode = *Items[Cursor++];
-						World.SetContext(Where(PickNode));
-						int32 PickIndex = INDEX_NONE;
-						for (const FDnaChoiceView& Choice : Runner->GetChoices())
-						{
-							if (MatchesChoice(PickNode, Choice))
-							{
-								PickIndex = Choice.Index;
-								break;
-							}
-						}
-						if (PickIndex == INDEX_NONE)
-						{
-							World.ReportError(FString::Printf(TEXT("%s: \"%s\" is not on offer. On offer: %s"), *What,
-								PickNode.Payload.Target.IsEmpty() ? *PickNode.Payload.Text.Raw : *(TEXT("#") + PickNode.Payload.Target), *DescribeOffered(*Runner)));
-							Runner->Abort();
-							bOk = false;
-							break;
-						}
-						Runner->Choose(PickIndex);
-						break;
 					}
-					case EDnaRunnerState::Waiting:
-						if (!World.Clock().AdvanceToNext())
-						{
-							World.ReportError(FString::Printf(TEXT("%s is waiting but nothing is on the clock"), *What));
-							Runner->Abort();
-							bOk = false;
-						}
-						break;
-					case EDnaRunnerState::PlayingStage:
-						Runner->NotifyStageFinished();
-						break;
-					default:
-						World.ReportError(FString::Printf(TEXT("%s stopped in an unexpected state"), *What));
-						Runner->Abort();
+				}
+
+				for (TPair<FName, FChannelPlan>& Pair : Plans)
+				{
+					FChannelPlan& Plan = Pair.Value;
+					for (; Plan.Cursor < Plan.Items.Num(); ++Plan.Cursor)
+					{
+						World.SetContext(Where(*Plan.Items[Plan.Cursor]));
+						World.ReportError(Plan.IsExpectedLine(Plan.Cursor)
+							? FString::Printf(TEXT("%s: expected \"%s\", but it was not shown"), *Plan.What, *DescribeExpected(*Plan.Items[Plan.Cursor]))
+							: FString::Printf(TEXT("%s ended before the choice \"%s\" was offered"), *Plan.What, *DescribeExpected(*Plan.Items[Plan.Cursor])));
 						bOk = false;
-						break;
 					}
 				}
-				if (Runner->GetState() != EDnaRunnerState::Ended)
+				// A dialogue still running (held) goes into the transcript when a later step ends it.
+				for (const UDreamNarrativeDialogueRunner* Runner : Ran)
 				{
-					World.SetContext(Where(Step));
-					World.ReportError(FString::Printf(TEXT("%s did not end"), *What));
-					Runner->Abort();
-					bOk = false;
+					if (Runner->GetState() == EDnaRunnerState::Ended)
+					{
+						World.RecordDialogue(*Runner);
+					}
 				}
-				for (; Cursor < Items.Num(); ++Cursor)
-				{
-					World.SetContext(Where(*Items[Cursor]));
-					World.ReportError(IsExpectedLine(Cursor)
-						? FString::Printf(TEXT("%s: expected \"%s\", but it was not shown"), *What, *DescribeExpected(*Items[Cursor]))
-						: FString::Printf(TEXT("%s ended before the choice \"%s\" was offered"), *What, *DescribeExpected(*Items[Cursor])));
-					bOk = false;
-				}
-				World.RecordDialogue(*Runner);
 				World.SetContext(Where(Step));
 				return World.FinishStep(What, bOk);
 			}

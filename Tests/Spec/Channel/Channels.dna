@@ -1,0 +1,197 @@
+// 频道:一个频道一次说一段,频道之间各说各的。忙时来了新的:queue 排队(优先级高的排前面)、interrupt 优先级不低
+// 就打断、drop 丢掉;pauses 让别的频道停下,说完从停下的那一行接着说;stops 一开口就打断别的频道。被打断的对话写了
+// resume 的不丢:同频道被打断就排回队首,被别的频道打断就等那个频道说完,都从被打断的那一行接着说。声明的频道默认
+// 自己往下说,按行的 for 或按字数估的时长走。once 与 cooldown 也管角色入口。
+
+character 甲
+character 乙
+character 丙
+
+channel 广播
+  busy: queue
+
+channel 插话
+  busy: interrupt
+
+channel 杂音
+  busy: drop
+
+channel 对讲
+  input: lock
+  advance: player
+  pauses: 杂音
+
+channel 警报
+  stops: 杂音
+
+event 播报
+  条: int range 1..3
+
+event 长谈
+event 急报
+event 嘀
+event 嗒
+event 呼叫
+event 计时
+event 絮叨
+event 拉响
+
+fact 记: int
+
+// ---------------------------------------------------------------- 排队
+
+dialogue 广播_低 on 播报 if 播报.条 == 1 channel 广播 priority 1
+  甲: 低。
+
+dialogue 广播_中 on 播报 if 播报.条 == 2 channel 广播 priority 2
+  甲: 中。
+
+dialogue 广播_高 on 播报 if 播报.条 == 3 channel 广播 priority 3
+  甲: 高。
+
+test 排队时优先级高的排前面
+  emit 播报(条 = 1) hold
+    channel 广播
+      甲: 低。
+  emit 播报(条 = 2) hold
+  emit 播报(条 = 3)
+    channel 广播 strict
+      甲: 高。
+      甲: 中。
+
+// ---------------------------------------------------------------- 打断
+
+dialogue 插话_长 on 长谈 channel 插话 resume
+  丙: 第一句。
+  丙: 第二句。
+
+dialogue 插话_急 on 急报 channel 插话 priority 5
+  丙: 急!
+
+test 被打断的resume对话等打断它的说完从那一行接着说
+  emit 长谈 hold
+    channel 插话
+      丙: 第一句。
+  emit 急报
+    channel 插话 strict
+      丙: 急!
+      丙: 第一句。
+      丙: 第二句。
+
+test 对话还在说时同一事件不再开它
+  emit 长谈 hold
+  emit 长谈
+    channel 插话 strict
+      丙: 第二句。
+
+// ---------------------------------------------------------------- 丢弃
+
+dialogue 杂音_嘀 on 嘀 channel 杂音
+  乙: 嘀。
+
+dialogue 杂音_嗒 on 嗒 channel 杂音
+  乙: 嗒。
+
+test 正在说时新来的丢掉
+  emit 嘀 hold
+    channel 杂音
+      乙: 嘀。
+  emit 嗒
+    channel 杂音
+      absent 乙: 嗒。
+  emit 嗒
+    channel 杂音
+      乙: 嗒。
+
+// ---------------------------------------------------------------- 别的频道开口时停下
+
+dialogue 杂音_絮叨 on 絮叨 channel 杂音 resume
+  乙: 一来二去。
+  乙: 说到哪儿了。
+
+dialogue 警报_响 on 拉响 channel 警报
+  甲: 警报!
+
+test 警报一响杂音就停
+  emit 嘀 hold
+    channel 杂音
+      乙: 嘀。
+  emit 拉响
+    channel 警报 strict
+      甲: 警报!
+    channel 杂音
+      absent 乙: 嘀。
+
+test 警报一响杂音就停_resume的等它说完从那一行接着说
+  emit 絮叨 hold
+    channel 杂音
+      乙: 一来二去。
+  emit 拉响
+    channel 警报 strict
+      甲: 警报!
+    channel 杂音 strict
+      乙: 一来二去。
+      乙: 说到哪儿了。
+
+// ---------------------------------------------------------------- 玩家推进的频道:选项写在它的块里;说话时让杂音停下
+
+dialogue 对讲_呼叫 on 呼叫 channel 对讲
+  甲: 收到吗?
+  - 收到。
+      甲: 好。
+  - 听不清。
+      甲: 我再说一遍。
+
+test 对讲频道上的选项写在它的块里
+  emit 呼叫
+    channel 对讲 strict
+      甲: 收到吗?
+      - 听不清。
+      甲: 我再说一遍。
+
+test 对讲时杂音停下说完从那一行接着说
+  emit 嘀 hold
+    channel 杂音
+      乙: 嘀。
+  emit 呼叫
+    channel 对讲
+      - 收到。
+    channel 杂音 strict
+      乙: 嘀。
+
+// ---------------------------------------------------------------- 自己往下说
+
+dialogue 广播_计时 on 计时 channel 广播
+  甲: 三秒。 for 3s
+  set 记 = 9
+
+test 自己往下说的频道按行的for走
+  emit 计时 hold
+    channel 广播
+      甲: 三秒。
+  wait 2s
+  expect 记 == 0
+  wait 2s
+  expect 记 == 9
+
+// ---------------------------------------------------------------- 角色入口的 once 与 cooldown
+
+dialogue 甲_初见 for 甲 once priority 1
+  甲: 初次见面。
+
+dialogue 甲_寒暄 for 甲 cooldown 10s
+  甲: 又见面了。
+
+dialogue 甲_兜底 for 甲
+  甲: ……
+
+test 只开一次与冷却也管角色入口
+  talk 甲
+    甲: 初次见面。
+  talk 甲
+    甲: 又见面了。
+  talk 甲
+    甲: ……
+  wait 10s
+  talk 甲
+    甲: 又见面了。

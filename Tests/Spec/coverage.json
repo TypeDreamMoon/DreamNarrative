@@ -166,7 +166,28 @@
     "quest.handler": "跑一个 on 块",
     "quest.reward": "on 块带出奖励",
     "ledger.timer.start": "账本计时器开始(任务超时)",
-    "ledger.timer.fired": "账本计时器到点"
+    "ledger.timer.fired": "账本计时器到点",
+    "dialogue.abort": "对话被中止(同频道打断、别的频道 stops、读档)",
+    "expr.EventParam": "读事件参数(事件.参数)",
+    "event.raise.game": "游戏发出事件(test 的 emit)",
+    "event.raise.narrative": "剧情自己发出事件(对话里的 emit)",
+    "event.arg-default": "没给的参数取默认值",
+    "event.trigger": "事件开了一段对话",
+    "event.unheard": "事件没有对话听",
+    "dialogue.emit.args": "对话里的 emit 带实参",
+    "dialogue.entry.running": "事件再来时它开的对话还在说或在排队:不再开",
+    "dialogue.entry.once-spent": "once 的入口已经开过",
+    "dialogue.entry.cooldown": "cooldown 的入口还在冷却",
+    "channel.start": "对话在它的频道上开始",
+    "channel.queue": "频道忙:排队(queue,或优先级不够打断)",
+    "channel.drop": "频道忙:丢掉新来的(drop)",
+    "channel.interrupt": "频道忙:新来的打断正在说的(interrupt)",
+    "channel.hold": "被同频道打断的 resume 对话排回队首",
+    "channel.park": "被别的频道 stops 的 resume 对话等那个频道说完",
+    "channel.pause": "说话的频道让别的频道停下(pauses)",
+    "channel.resume": "停下或被打断的对话接着说",
+    "channel.stop": "开口的频道打断别的频道(stops)",
+    "channel.auto-advance": "自己往下说的频道按行的时长往下走"
   },
   "pending": {
     "dialogue.play.blocking": "要有演出监听者;Stage 运行时之后由它接上"
@@ -175,7 +196,6 @@
     "dialogue.wait.manual": "bManualWait 由游戏代码设置",
     "dialogue.choice.all-hidden": "DNS5008 要求每组有兜底选项,合法源码到不了;运行时的防御分支",
     "dialogue.entry.none": "test 块里没有入口会让 talk 失败;由 C++ 与冒烟层覆盖",
-    "dialogue.abort": "由游戏代码或失败的测试中止",
     "dialogue.runaway": "无出口的死循环;由探索器检查",
     "ledger.write.RefusedUndeclared": "编译期 DNS3001 拦下;只有 C++ 能写未声明的 fact",
     "ledger.write.RefusedOwnership": "编译期 DNS9101 拦下;游戏代码写剧情 fact(C++ 测试覆盖)",
@@ -184,6 +204,7 @@
     "ledger.snapshot.renamed": "要用旧名字写的存档;was 改名迁移由 C++ 覆盖",
     "ledger.snapshot.dropped": "要带已删除 fact 的存档;由 C++ 覆盖",
     "quest.accept-refused": "接不了的任务被要求接:对话里是 Warning,test 的 accept 步骤直接判红;由 DreamNarrative.Quest.Refusals 覆盖",
-    "quest.finish-refused": "没在进行的任务被要求完成或失败;由 DreamNarrative.Quest.Refusals 覆盖"
+    "quest.finish-refused": "没在进行的任务被要求完成或失败;由 DreamNarrative.Quest.Refusals 覆盖",
+    "event.arg-refused": "实参不合参数(类型、集合外的 tag、没有这个参数):编译期 DNS4001 / DNS3013 拦下;由 DreamNarrative.Ledger.EventArgsFitTheirParameters 覆盖"
   }
 }

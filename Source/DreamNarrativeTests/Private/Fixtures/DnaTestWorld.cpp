@@ -152,11 +152,32 @@ namespace UE::DreamNarrative::Tests
 		ExpressionPool = NewObject<UDreamNarrativeScript>(GetTransientPackage(), NAME_None, RF_Transient);
 	}
 
+	UDreamNarrativeDialogueRunner* NextRunnerToDrive(const UDreamNarrativeStory& Story)
+	{
+		TArray<FName> Channels;
+		Story.GetChannelNames(Channels);
+		UDreamNarrativeDialogueRunner* Waiting = nullptr;
+		for (const FName& Channel : Channels)
+		{
+			UDreamNarrativeDialogueRunner* Runner = Story.GetRunner(Channel);
+			if (!Runner || Runner->IsPaused())
+			{
+				continue;
+			}
+			if (Runner->GetState() != EDnaRunnerState::Waiting)
+			{
+				return Runner;
+			}
+			Waiting = Waiting ? Waiting : Runner;
+		}
+		return Waiting;
+	}
+
 	FDnaTestWorld::~FDnaTestWorld()
 	{
-		if (UDreamNarrativeDialogueRunner* Runner = StoryObject ? StoryObject->GetActiveRunner() : nullptr)
+		if (StoryObject)
 		{
-			Runner->Abort();
+			StoryObject->StopAllDialogue();
 		}
 		if (LedgerObject && LedgerObject->GetRandomSource() == &Rolls)
 		{
@@ -279,25 +300,32 @@ namespace UE::DreamNarrative::Tests
 	{
 		bool bOk = true;
 		int32 NextChoice = 0;
-		for (int32 Guard = 0; Guard < 10000 && Runner->GetState() != EDnaRunnerState::Ended; ++Guard)
+		for (int32 Guard = 0; Guard < 10000; ++Guard)
 		{
-			switch (Runner->GetState())
+			UDreamNarrativeDialogueRunner* Next = NextRunnerToDrive(*StoryObject);
+			if (!Next)
+			{
+				break;
+			}
+			const FString Who = Next == Runner || Next->GetChannel() == ::DreamNarrative::MainChannelName()
+				? What : FString::Printf(TEXT("%s, channel %s"), *What, *Next->GetChannel().ToString());
+			switch (Next->GetState())
 			{
 			case EDnaRunnerState::ShowingLine:
-				Runner->Advance();
+				Next->Advance();
 				break;
 			case EDnaRunnerState::AwaitingChoice:
 			{
-				if (!Choices.IsValidIndex(NextChoice))
+				if (Next != Runner || !Choices.IsValidIndex(NextChoice))
 				{
-					ReportError(FString::Printf(TEXT("%s: choices are on offer but the test has no pick left. On offer: %s"), *What, *DescribeChoices(*Runner)));
-					Runner->Abort();
+					ReportError(FString::Printf(TEXT("%s: choices are on offer but the test has no pick left. On offer: %s"), *Who, *DescribeChoices(*Next)));
+					Next->Abort();
 					bOk = false;
 					break;
 				}
 				const FString& Wanted = Choices[NextChoice++];
 				int32 Pick = INDEX_NONE;
-				for (const FDnaChoiceView& Choice : Runner->GetChoices())
+				for (const FDnaChoiceView& Choice : Next->GetChoices())
 				{
 					const bool bById = Wanted.StartsWith(TEXT("#")) && Choice.Id == FName(*Wanted.Mid(1));
 					if (bById || Choice.Label.ToString() == Wanted)
@@ -308,38 +336,43 @@ namespace UE::DreamNarrative::Tests
 				}
 				if (Pick == INDEX_NONE)
 				{
-					ReportError(FString::Printf(TEXT("%s: \"%s\" is not on offer. On offer: %s"), *What, *Wanted, *DescribeChoices(*Runner)));
-					Runner->Abort();
+					ReportError(FString::Printf(TEXT("%s: \"%s\" is not on offer. On offer: %s"), *Who, *Wanted, *DescribeChoices(*Next)));
+					Next->Abort();
 					bOk = false;
 					break;
 				}
-				Runner->Choose(Pick);
+				Next->Choose(Pick);
 				break;
 			}
 			case EDnaRunnerState::Waiting:
-				// The wait sits on the manual clock; whatever else falls due first fires first.
+				// Nothing else has a line left to show; whatever falls due first fires first.
 				if (!ManualClock->AdvanceToNext())
 				{
-					ReportError(FString::Printf(TEXT("%s: the dialogue is waiting but nothing is on the clock"), *What));
-					Runner->Abort();
+					ReportError(FString::Printf(TEXT("%s: the dialogue is waiting but nothing is on the clock"), *Who));
+					Next->Abort();
 					bOk = false;
 				}
 				break;
 			case EDnaRunnerState::PlayingStage:
-				Runner->NotifyStageFinished();
+				Next->NotifyStageFinished();
 				break;
 			default:
-				ReportError(FString::Printf(TEXT("%s: the dialogue stopped in an unexpected state"), *What));
-				Runner->Abort();
+				ReportError(FString::Printf(TEXT("%s: the dialogue stopped in an unexpected state"), *Who));
+				Next->Abort();
 				bOk = false;
 				break;
 			}
 		}
-		if (Runner->GetState() != EDnaRunnerState::Ended)
+		TArray<FName> Channels;
+		StoryObject->GetChannelNames(Channels);
+		for (const FName& Channel : Channels)
 		{
-			ReportError(FString::Printf(TEXT("%s: the dialogue did not end"), *What));
-			Runner->Abort();
-			bOk = false;
+			if (UDreamNarrativeDialogueRunner* Left = StoryObject->GetRunner(Channel))
+			{
+				ReportError(FString::Printf(TEXT("%s: the dialogue on channel %s did not end"), *What, *Channel.ToString()));
+				Left->Abort();
+				bOk = false;
+			}
 		}
 		if (bOk && NextChoice < Choices.Num())
 		{
@@ -348,8 +381,20 @@ namespace UE::DreamNarrative::Tests
 			ReportError(FString::Printf(TEXT("%s: the dialogue ended before these picks were offered: %s"), *What, *FString::Join(Unused, TEXT(", "))));
 			bOk = false;
 		}
-		RecordDialogue(*Runner);
+		if (Runner)
+		{
+			RecordDialogue(*Runner);
+		}
 		return bOk;
+	}
+
+	bool FDnaTestWorld::Emit(const FDnaEventPayload& Event)
+	{
+		const FString What = FString::Printf(TEXT("emit %s"), *Event.ToString());
+		Transcript.Add(FString::Printf(TEXT("[%s]"), *What));
+		LedgerObject->RaiseEvent(Event);
+		const bool bOk = Drive(nullptr, {}, What);
+		return FinishStep(What, bOk);
 	}
 
 	void FDnaTestWorld::RecordDialogue(const UDreamNarrativeDialogueRunner& Runner)
@@ -520,6 +565,19 @@ namespace UE::DreamNarrative::Tests
 	bool FDnaTestWorld::EvaluateValueFor(const FDnaExprPtr& Expr, const FString& Fact, FDnaValue& OutValue)
 	{
 		const int32 Index = Expr.IsValid() ? CompileDnaValueFor(ProgramModel, Expr, Fact, *ExpressionPool) : INDEX_NONE;
+		const FDnaCompiledExpr* Compiled = ExpressionPool->GetExpression(Index);
+		if (!Compiled)
+		{
+			ReportError(FString::Printf(TEXT("`%s` could not be compiled"), Expr.IsValid() ? *Expr->ToString() : TEXT("<null>")));
+			return false;
+		}
+		OutValue = LedgerObject->Evaluate(*Compiled);
+		return true;
+	}
+
+	bool FDnaTestWorld::EvaluateValueForParam(const FDnaExprPtr& Expr, const FString& Event, const FString& Param, FDnaValue& OutValue)
+	{
+		const int32 Index = Expr.IsValid() ? CompileDnaValueForParam(ProgramModel, Expr, Event, Param, *ExpressionPool) : INDEX_NONE;
 		const FDnaCompiledExpr* Compiled = ExpressionPool->GetExpression(Index);
 		if (!Compiled)
 		{

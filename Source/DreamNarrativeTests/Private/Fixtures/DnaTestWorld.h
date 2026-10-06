@@ -39,6 +39,13 @@ namespace UE::DreamNarrative::Tests
 	/** Differences between two snapshots, one readable line each; empty when they agree. */
 	TArray<FString> DiffSnapshots(const FDnaLedgerSnapshot& Expected, const FDnaLedgerSnapshot& Actual);
 
+	/**
+	 * The dialogue a driver moves on next: the first channel's (in channel order) that runs, is not
+	 * paused and has something to show; failing that, the first one waiting on the clock. Null when
+	 * every channel is quiet or held still.
+	 */
+	UDreamNarrativeDialogueRunner* NextRunnerToDrive(const UDreamNarrativeStory& Story);
+
 	/** Reads files given relative to the plugin directory. A file that cannot be read fails the test. */
 	bool ReadPluginSources(FAutomationTestBase& Test, const TArray<FString>& RelativePaths, TArray<FDnaTestSource>& OutSources);
 
@@ -90,6 +97,12 @@ namespace UE::DreamNarrative::Tests
 
 		/** Starts a dialogue node by name and drives it the same way. */
 		bool Start(FName Node, const TArray<FString>& Choices = {});
+
+		/**
+		 * Raises an event the way game code does, then lets every channel say everything it has (lines
+		 * move on at once). A choice on any channel fails the test: this step has no picks.
+		 */
+		bool Emit(const FDnaEventPayload& Event);
 
 		/** Writes a fact the way game code does: through the ownership rule. */
 		bool SetExtern(FName Fact, const FDnaValue& Value);
@@ -166,6 +179,9 @@ namespace UE::DreamNarrative::Tests
 		/** Same, for a value written to Fact: a bare member of a tag fact's set means that member. */
 		bool EvaluateValueFor(const Lang::FDnaExprPtr& Expr, const FString& Fact, FDnaValue& OutValue);
 
+		/** Same, for a value given to parameter Param of Event (an emit's argument). */
+		bool EvaluateValueForParam(const Lang::FDnaExprPtr& Expr, const FString& Event, const FString& Param, FDnaValue& OutValue);
+
 		/** "Now: fact = value, ..." for the facts (and the chapter) an expression reads. */
 		FString DescribeFactsOf(const Lang::FDnaExpr& Expr) const;
 
@@ -197,6 +213,11 @@ namespace UE::DreamNarrative::Tests
 			}
 		};
 
+		/**
+		 * Lets every channel say everything it has: lines move on at once, waits run on the clock once
+		 * nothing else is left to show, stages finish at once. Choices on Runner take the picks in order;
+		 * choices anywhere else fail the test.
+		 */
 		bool Drive(UDreamNarrativeDialogueRunner* Runner, const TArray<FString>& Choices, const FString& What);
 
 		FAutomationTestBase& Test;
