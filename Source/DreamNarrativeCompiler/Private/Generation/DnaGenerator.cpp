@@ -205,6 +205,10 @@ namespace UE::DreamNarrative::Lang
 						double Seconds = 0.0;
 						Out.Timeout = TryParseDnaDuration(L.Value, Seconds) ? static_cast<float>(Seconds) : 0.f;
 					}
+					else if (L.Name == TEXT("gameplay"))
+					{
+						Out.GameplayTag = FName(*L.Value.TrimStartAndEnd());
+					}
 					break;
 				case EDnaLineKind::Flag:
 					Out.bTrack |= L.Name == TEXT("track");

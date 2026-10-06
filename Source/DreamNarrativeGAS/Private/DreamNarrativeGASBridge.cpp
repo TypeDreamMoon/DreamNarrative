@@ -4,19 +4,28 @@
 #include "AbilitySystemComponent.h"
 #include "DreamNarrativeGASModule.h"
 #include "DreamNarrativeLedger.h"
+#include "DreamNarrativeStageData.h"
+#include "DreamNarrativeStageDirector.h"
+#include "DreamNarrativeStory.h"
 
 void UDreamNarrativeGASBridge::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-	InitializeStandalone(Collection.InitializeDependency<UDreamNarrativeLedger>());
+	UDreamNarrativeLedger* WithLedger = Collection.InitializeDependency<UDreamNarrativeLedger>();
+	InitializeStandalone(WithLedger, Collection.InitializeDependency<UDreamNarrativeStory>());
 }
 
-void UDreamNarrativeGASBridge::InitializeStandalone(UDreamNarrativeLedger* InLedger)
+void UDreamNarrativeGASBridge::InitializeStandalone(UDreamNarrativeLedger* InLedger, UDreamNarrativeStory* InStory)
 {
 	Ledger = InLedger;
+	Story = InStory;
 	if (Ledger)
 	{
 		ScriptHandle = Ledger->OnScriptRegistered.AddUObject(this, &UDreamNarrativeGASBridge::HandleScriptRegistered);
+	}
+	if (Story)
+	{
+		Story->OnQuestStateChanged.AddDynamic(this, &UDreamNarrativeGASBridge::HandleQuestStateChanged);
 	}
 }
 
@@ -30,6 +39,10 @@ void UDreamNarrativeGASBridge::Deinitialize()
 	if (Ledger)
 	{
 		Ledger->OnScriptRegistered.Remove(ScriptHandle);
+	}
+	if (Story)
+	{
+		Story->OnQuestStateChanged.RemoveDynamic(this, &UDreamNarrativeGASBridge::HandleQuestStateChanged);
 	}
 	ScriptHandle.Reset();
 	Super::Deinitialize();
@@ -91,6 +104,23 @@ void UDreamNarrativeGASBridge::Bind(FWatch& Watch)
 		const FDelegateHandle Handle = System->AddGameplayEventTagContainerDelegate(Listens,
 			FGameplayEventTagMulticastDelegate::FDelegate::CreateUObject(this, &UDreamNarrativeGASBridge::HandleGameplayEvent, Event));
 		Watch.Events.Emplace(Listens, Handle);
+	}
+	// Stages an ability system's gameplay events play.
+	for (const UDreamNarrativeScript* Script : Ledger->GetScripts())
+	{
+		const UDnaStageSection* Section = Script ? Script->FindSection<UDnaStageSection>() : nullptr;
+		for (const FDnaStageData& Stage : Section ? Section->Stages : TArray<FDnaStageData>())
+		{
+			const FGameplayTag Tag = ResolveTag(Stage.GameplayTag);
+			if (!Tag.IsValid())
+			{
+				continue;
+			}
+			const FGameplayTagContainer Listens(Tag);
+			const FDelegateHandle Handle = System->AddGameplayEventTagContainerDelegate(Listens,
+				FGameplayEventTagMulticastDelegate::FDelegate::CreateUObject(this, &UDreamNarrativeGASBridge::HandleStageEvent, Stage.Name, TWeakObjectPtr<UAbilitySystemComponent>(System)));
+			Watch.Events.Emplace(Listens, Handle);
+		}
 	}
 	if (!Watch.bMirrorTags)
 	{
@@ -164,6 +194,67 @@ void UDreamNarrativeGASBridge::HandleGameplayEvent(FGameplayTag MatchingTag, con
 	if (Decl)
 	{
 		Ledger->RaiseEvent(MakeEvent(*Decl, Payload ? *Payload : FGameplayEventData()));
+	}
+}
+
+void UDreamNarrativeGASBridge::HandleStageEvent(FGameplayTag MatchingTag, const FGameplayEventData* Payload, FName Stage, TWeakObjectPtr<UAbilitySystemComponent> System)
+{
+	PlayStageFor(System.Get(), Stage, Payload);
+}
+
+const FDnaStageData* UDreamNarrativeGASBridge::FindStage(FName Stage) const
+{
+	if (!Ledger)
+	{
+		return nullptr;
+	}
+	for (const UDreamNarrativeScript* Script : Ledger->GetScripts())
+	{
+		const UDnaStageSection* Section = Script ? Script->FindSection<UDnaStageSection>() : nullptr;
+		if (const FDnaStageData* Found = Section ? Section->FindStage(Stage) : nullptr)
+		{
+			return Found;
+		}
+	}
+	return nullptr;
+}
+
+bool UDreamNarrativeGASBridge::PlayStageFor(UAbilitySystemComponent* AbilitySystem, FName Stage, const FGameplayEventData* Payload)
+{
+	const FDnaStageData* Data = FindStage(Stage);
+	AActor* Avatar = AbilitySystem ? AbilitySystem->GetAvatarActor() : nullptr;
+	UDreamNarrativeStageDirector* Director = UDreamNarrativeStageDirector::FindOrAddDirector(Avatar);
+	if (!Data || !Director)
+	{
+		UE_LOG(LogDreamNarrativeGAS, Warning, TEXT("Stage %s cannot play for %s: %s"), *Stage.ToString(), *GetNameSafe(Avatar),
+			Data ? TEXT("there is no avatar to play it on") : TEXT("no registered script declares it"));
+		return false;
+	}
+	Director->BindActor(TEXT("target"), Payload ? const_cast<AActor*>(Payload->Target.Get()) : nullptr);
+	Director->BindActor(TEXT("instigator"), Payload ? const_cast<AActor*>(Payload->Instigator.Get()) : nullptr);
+	return Director->Play(*Data) != 0;
+}
+
+void UDreamNarrativeGASBridge::HandleQuestStateChanged(FName Quest, EDnaQuestState OldState, EDnaQuestState NewState)
+{
+	if (NewState != EDnaQuestState::Completed || !Story)
+	{
+		return;
+	}
+	const FDnaQuestData* Data = Story->FindQuest(Quest);
+	const FGameplayTag Tag = Data ? ResolveTag(Data->GameplayTag) : FGameplayTag();
+	if (!Tag.IsValid())
+	{
+		return;
+	}
+	for (const FWatch& Watch : TArray<FWatch>(Watches))
+	{
+		if (UAbilitySystemComponent* System = Watch.System.Get())
+		{
+			FGameplayEventData Payload;
+			Payload.EventTag = Tag;
+			System->HandleGameplayEvent(Tag, &Payload);
+		}
 	}
 }
 

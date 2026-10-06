@@ -124,6 +124,10 @@ struct DREAMNARRATIVESTORY_API FDnaQuestData
 	UPROPERTY(VisibleAnywhere, Category = "Narrative")
 	float Timeout = 0.f;
 
+	/** `gameplay: 标签`: the gameplay event the GAS bridge sends the ability systems it watches when the quest is completed. */
+	UPROPERTY(VisibleAnywhere, Category = "Narrative")
+	FName GameplayTag;
+
 	/** `available if`: may it be taken on (besides not being active or completed). INDEX_NONE: always. */
 	UPROPERTY(VisibleAnywhere, Category = "Narrative")
 	int32 Available = INDEX_NONE;

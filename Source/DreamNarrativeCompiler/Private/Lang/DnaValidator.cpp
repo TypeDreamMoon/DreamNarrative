@@ -448,6 +448,11 @@ namespace UE::DreamNarrative::Lang
 						{
 							Fail(TEXT("DNS2012"), Line->Raw.Span, FText::Format(LOCTEXT("QuestTimeout", "'{0}' is not a duration; write a timeout such as 20m, 90s or 1.5h"), FText::FromString(P.Value)));
 						}
+						const FString Tag = P.Value.TrimStartAndEnd();
+						if (P.Name == TEXT("gameplay") && (Tag.IsEmpty() || Tag.Contains(TEXT(" "))))
+						{
+							Fail(TEXT("DNS2011"), Line->Raw.Span, LOCTEXT("QuestTag", "`gameplay:` takes one gameplay tag, such as Quest.Hunt.Done"));
+						}
 						break;
 					}
 					default:
