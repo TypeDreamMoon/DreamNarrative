@@ -239,3 +239,7 @@ fact key 集中声明,并标明归谁写 —— 叙事侧写的,还是游戏系�
   单位重写(秒保留到百分之一、至少一位小数;比例到千分之一),行的其余部分原样,动词有地方就留在原来的列。时间基可以
   切换(秒 ↔ 跟着台词,按给定的台词长度换算,`duration` 与 `base: line` 跟着增删)。播放头处显示的 pose 就是导演在那一刻
   套用的 `SampleDnaStage`;可选让关卡视口沿演出的机位飞,机位的求值与导演共用一个函数(角色按 actor 标签找)。
+- 2026-10-07 GAS 桥的另一半。任务写 `gameplay: 标签`,完成时桥把这个 GameplayEvent 发给它盯着的每个能力系统;演出写
+  `gameplay: 标签`,盯着的能力系统收到这个事件就在它的化身上演,事件的 Target / Instigator 绑成演出里的 `target` /
+  `instigator` 角色。能力里直接演用 `UAbilityTask_PlayNarrativeStage`:演完 OnFinished,被打断 OnInterrupted,能力先结束
+  则演出随之停下、世界放回。只在完成时发事件(失败、超时不发);要别的时机用任务 `on` 块里的 `emit`。
