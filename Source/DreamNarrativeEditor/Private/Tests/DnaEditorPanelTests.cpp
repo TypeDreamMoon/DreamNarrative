@@ -14,6 +14,7 @@
 #include "Interfaces/IPluginManager.h"
 #include "Lang/DnaProject.h"
 #include "SDnaDebugPanel.h"
+#include "SDnaStageTimeline.h"
 #include "SDnaStoryPanel.h"
 #include "UObject/StrongObjectPtr.h"
 
@@ -59,6 +60,47 @@ bool FDnaEditorPanelsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("undo"), Story->Undo());
 	TestTrue(TEXT("undo again"), Story->Undo());
 	TestFalse(TEXT("back as it is on disk"), Story->HasUnsavedEdits());
+
+	// -- the stage timeline: a drag rewrites one line, the playhead shows what the game would
+	TSharedRef<SDnaStageTimeline> Timeline = SNew(SDnaStageTimeline).Files({ Sample });
+	TestTrue(TEXT("the sample's stages"), Timeline->GetStageNames().Contains(TEXT("处决_巨型机械")) && Timeline->GetStageNames().Contains(TEXT("骇入闪回")));
+	TestTrue(TEXT("pick the finisher"), Timeline->SelectStage(TEXT("处决_巨型机械")));
+	const FDnaStageData* Finisher = Timeline->GetStage();
+	if (TestNotNull(TEXT("it compiles"), Finisher))
+	{
+		TestEqual(TEXT("and checks"), Timeline->GetDiagnostics().Num(), 0);
+		const FDnaStageEntry* Spawn = Finisher->Entries.FindByPredicate([](const FDnaStageEntry& Entry) { return Entry.Verb == EDnaStageVerb::Spawn; });
+		const FString Before = Timeline->GetText();
+		if (TestNotNull(TEXT("the effect"), Spawn))
+		{
+			const int32 Line = Spawn->SourceLine;
+			TestTrue(TEXT("drag it"), Timeline->MoveEntry(Line, 2.5f, 2.5f, Error));
+			TArray<FString> Old, New;
+			Before.ParseIntoArrayLines(Old, false);
+			Timeline->GetText().ParseIntoArrayLines(New, false);
+			int32 Different = 0;
+			for (int32 Index = 0; Index < FMath::Min(Old.Num(), New.Num()); ++Index)
+			{
+				Different += Old[Index] != New[Index] ? 1 : 0;
+			}
+			TestEqual(TEXT("as many lines"), New.Num(), Old.Num());
+			TestEqual(TEXT("one of them changed"), Different, 1);
+			TestTrue(TEXT("that one"), New.IsValidIndex(Line - 1) && New[Line - 1].Contains(TEXT("2.5s     spawn")));
+			TestTrue(TEXT("the timeline sees it"), Timeline->GetStage() && Timeline->GetStage()->Entries.ContainsByPredicate([](const FDnaStageEntry& Entry)
+			{
+				return Entry.Verb == EDnaStageVerb::Spawn && FMath::IsNearlyEqual(Entry.Start, 2.5f);
+			}));
+			TestTrue(TEXT("unsaved"), Timeline->HasUnsavedEdits());
+			TestTrue(TEXT("undo"), Timeline->Undo());
+			TestEqual(TEXT("back as it was"), Timeline->GetText(), Before);
+		}
+		// Scrubbing to a moment shows the pose the director plays at it.
+		for (const float At : { 0.f, 1.05f, 2.45f, 4.2f })
+		{
+			Timeline->Scrub(At);
+			TestTrue(*FString::Printf(TEXT("the pose at %.2f s"), At), Timeline->GetPreviewPose().NearlyEquals(DreamNarrative::SampleDnaStage(*Timeline->GetStage(), At)));
+		}
+	}
 
 	// -- the debugger: a story compiled here, its facts and the writes made to them
 	TStrongObjectPtr<UGameInstance> GameInstance(NewObject<UGameInstance>(GetTransientPackage()));

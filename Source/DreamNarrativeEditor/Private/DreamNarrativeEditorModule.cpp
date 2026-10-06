@@ -4,6 +4,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Docking/TabManager.h"
 #include "SDnaDebugPanel.h"
+#include "SDnaStageTimeline.h"
 #include "SDnaStoryPanel.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "WorkspaceMenuStructure.h"
@@ -17,6 +18,7 @@ namespace
 {
 	const FName StoryTab(TEXT("DreamNarrativeStory"));
 	const FName DebugTab(TEXT("DreamNarrativeDebug"));
+	const FName TimelineTab(TEXT("DreamNarrativeStageTimeline"));
 }
 
 void FDreamNarrativeEditorModule::StartupModule()
@@ -42,6 +44,14 @@ void FDreamNarrativeEditorModule::StartupModule()
 	.SetDisplayName(LOCTEXT("DebugTab", "Narrative Debugger"))
 	.SetTooltipText(LOCTEXT("DebugTabTip", "Facts, chapter, checkpoints and channels of the story running in Play In Editor"))
 	.SetGroup(Tools);
+
+	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(TimelineTab, FOnSpawnTab::CreateLambda([](const FSpawnTabArgs&)
+	{
+		return SNew(SDockTab).TabRole(ETabRole::NomadTab)[SNew(SDnaStageTimeline)];
+	}))
+	.SetDisplayName(LOCTEXT("TimelineTab", "Narrative Stage Timeline"))
+	.SetTooltipText(LOCTEXT("TimelineTabTip", "A stage's tracks and entries; dragging an entry rewrites its line in the .dna source"))
+	.SetGroup(Tools);
 }
 
 void FDreamNarrativeEditorModule::ShutdownModule()
@@ -50,6 +60,7 @@ void FDreamNarrativeEditorModule::ShutdownModule()
 	{
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(StoryTab);
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(DebugTab);
+		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TimelineTab);
 	}
 }
 
