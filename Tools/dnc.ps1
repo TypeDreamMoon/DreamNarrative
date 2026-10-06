@@ -30,7 +30,7 @@
          from the log, the slowest tests, and summary.md beside the rest.
 
     Presets
-      Quick    language, corpus, ledger, dialogue, quest, GAS bridge, spec, replay, the project's own and in-process smoke tests (the daily one)
+      Quick    language, corpus, ledger, dialogue, quest, GAS bridge, editor panels, spec, replay, the project's own and in-process smoke tests (the daily one)
       Explore  the explorer: every explore block, and the explorer's own fixtures
       Smoke    the standalone-game smoke tests, in an editor binary running -game
       All      the three above, one editor each
@@ -101,8 +101,8 @@ $MaxFilterLength = 12000
 
 $Presets = [ordered]@{
     Quick   = @{
-        Filter   = 'StartsWith:DreamNarrative.Lang+StartsWith:DreamNarrative.Corpus+StartsWith:DreamNarrative.Ledger+StartsWith:DreamNarrative.Dialogue+StartsWith:DreamNarrative.Quest+StartsWith:DreamNarrative.GAS+StartsWith:DreamNarrative.Spec+StartsWith:DreamNarrative.Replay+StartsWith:DreamNarrative.Project+StartsWith:DreamNarrative.Smoke.InProcess'
-        MinTests = 183
+        Filter   = 'StartsWith:DreamNarrative.Lang+StartsWith:DreamNarrative.Corpus+StartsWith:DreamNarrative.Ledger+StartsWith:DreamNarrative.Dialogue+StartsWith:DreamNarrative.Quest+StartsWith:DreamNarrative.GAS+StartsWith:DreamNarrative.Editor+StartsWith:DreamNarrative.Spec+StartsWith:DreamNarrative.Replay+StartsWith:DreamNarrative.Project+StartsWith:DreamNarrative.Smoke.InProcess'
+        MinTests = 188
         Timeout  = 10
         Game     = $false
     }
