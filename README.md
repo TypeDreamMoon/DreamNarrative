@@ -18,27 +18,40 @@ path can reach, a localization key used twice: all compile-time errors.
 
 ## Status
 
-Version 0.1.0 — skeleton. Modules and boundaries are in place; the language, the runtime and the editors
-are being built on top. Nothing here is usable in a project yet.
+Version 0.1.0, beta. In place and covered by the automated suite (`Tools/dnc.ps1 test`):
+
+- **The language** — facts, characters, dialogue with choices and conditions, channels that talk side by side,
+  events with parameters, quests, chapters with checkpoints and new playthroughs, archives, stages, and `test` /
+  `explore` blocks — with a validator whose every diagnostic is documented in `Docs/Diagnostics.md`.
+- **The runtime** — the ledger with its save scopes, dialogue runners, quests, chapters; the stage director with
+  transactional restore, a watchdog, and camera, light, mask, effect, HUD, animation, game-time and level
+  sequence tracks; the Gameplay Ability System bridge both ways and an ability task that plays a stage.
+- **The editor** — the story view (edits write back to the source), the stage timeline, the runtime debugger,
+  a dialogue staging generator, level sequence import, DreamGameplayTask migration, and rebuild on save.
+- **Tooling** — `dnc` build / lint / test, an exploring model checker, recording and replay, and a VS Code
+  extension (`dreamnarrative-language-support`).
+
+Start with `Docs/Guide.md` (Chinese) and the example in `Examples/Lighthouse`.
 
 ## Modules
 
 | Module | Type | What lives in it |
 |---|---|---|
-| `DreamNarrativeCore` | Runtime | The fact ledger, the expression language, the event bus |
-| `DreamNarrativeStory` | Runtime | Dialogue, quests, chapters |
-| `DreamNarrativeStage` | Runtime | Multi-track performance evaluator, transactional restore |
+| `DreamNarrativeCore` | Runtime | The fact ledger, the expression language, the event bus, the stage host interface |
+| `DreamNarrativeStory` | Runtime | Dialogue, channels, quests, chapters, archives |
+| `DreamNarrativeStage` | Runtime | The stage director, its transactional restore and watchdog |
 | `DreamNarrativeGAS` | Runtime | Optional bridge to the Gameplay Ability System |
-| `DreamNarrativeCompiler` | UncookedOnly | Lexer, parser, validator, generator, source printer, commandlet |
-| `DreamNarrativeEditor` | Editor | Story graph view, stage timeline, runtime debug panel |
+| `DreamNarrativeCompiler` | UncookedOnly | Lexer, parser, validator, generator, source printer, edit session, commandlet |
+| `DreamNarrativeEditor` | Editor | Story view, stage timeline, runtime debugger, importers, source watcher |
+| `DreamNarrativeTests` | UncookedOnly | The automated tests and their fixtures |
 
-Story and Stage meet in exactly one place: a performance attaches to a narrative line by its id. Either
+Story and Stage meet in exactly one place: the story asks the ledger's stage host for a stage by name. Either
 can be enabled without the other.
 
 ## Engine
 
-Unreal Engine 5.8. Required engine plugins: GameplayTags, EnhancedInput, Niagara, LevelSequence — all
-stock. GameplayAbilities is optional and only the `DreamNarrativeGAS` module touches it.
+Unreal Engine 5.8 (builds against the launcher's stock 5.8). Required engine plugins: GameplayTags,
+EnhancedInput, Niagara — all stock. GameplayAbilities is optional and only the `DreamNarrativeGAS` module touches it.
 
 ## Contact
 
