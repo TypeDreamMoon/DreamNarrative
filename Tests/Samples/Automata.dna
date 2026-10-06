@@ -1,0 +1,134 @@
+// 动作游戏黄金样例(照 NieR:Automata 序章写)的测试:边打边讲——频道并行、事件开的对话、打断、排队、暂停与接着说、
+// 按行时长自己往下说、Boss 换阶段、字母结局;探索全路径,鲭鱼结局从哪儿都到得了。
+
+file
+  with: ../Corpus/Validate/Samples/automata.dna
+
+test 会合
+  talk 九S
+    九S: 2B?你也被派到这里了。
+    九S(笑): 我是 9S,负责侦察。之后请多关照。
+    - 少说两句,跟上。
+    九S(尴尬): ……好,好的。
+  expect 已会合
+  talk 九S
+    九S: 有什么发现吗?
+
+test 到达工厂外围时司令部只报告一次
+  emit 进入区域(区域 = 工厂外围)
+    channel 通讯 strict
+      操作员: 2B,信号确认,你已到达工厂外围。
+      操作员: 内部有大量机械生命体反应,请小心行动。
+  expect 工厂简报听过
+  emit 进入区域(区域 = 工厂外围)
+    channel 通讯
+      absent 操作员: 2B,信号确认,你已到达工厂外围。
+
+test 大型敌人的报告优先
+  emit 发现敌人(类型 = 大型, 数量 = 2)
+    channel 侦察 strict
+      波德: 报告:检测到大型敌性单位 2 台。建议:攻击关节。
+
+test 冷却之内同一报告不再出现
+  emit 发现敌人(类型 = 小型)
+    channel 侦察
+      波德: 报告:前方有 1 个敌性反应。
+      波德: 建议:保持移动。
+  emit 发现敌人(类型 = 中型, 数量 = 2)
+    channel 侦察
+      absent 波德: 报告:前方有 2 个敌性反应。
+  wait 20s
+  emit 发现敌人(类型 = 中型, 数量 = 2)
+    channel 侦察
+      波德: 报告:前方有 2 个敌性反应。
+
+test 告急打断普通报告
+  emit 发现敌人(类型 = 小型) hold
+    channel 侦察
+      波德: 报告:前方有 1 个敌性反应。
+  emit 生命告急(剩余 = 0.2)
+    channel 侦察 strict
+      波德: 警告:机体损伤严重。建议:使用回复药。
+
+test 低优先级的报告排在告急后面
+  emit 生命告急(剩余 = 0.1) hold
+    channel 侦察
+      波德: 警告:机体损伤严重。建议:使用回复药。
+  emit 发现敌人(类型 = 小型)
+    channel 侦察 strict
+      波德: 报告:前方有 1 个敌性反应。
+      波德: 建议:保持移动。
+
+test 主对话期间Pod停下说完从那一行接着说
+  emit 发现敌人(类型 = 小型) hold
+    channel 侦察
+      波德: 报告:前方有 1 个敌性反应。
+  talk 九S
+    九S: 2B?你也被派到这里了。
+    - 你来得正好。
+    channel 侦察 strict
+      波德: 报告:前方有 1 个敌性反应。
+      波德: 建议:保持移动。
+
+test 通讯一开口9S就闭嘴说完他接着说
+  given
+    已会合 = true
+  emit 闲置 hold
+    channel 闲聊
+      九S: 2B,你觉得机械生命体会做梦吗?
+  emit 进入区域(区域 = 工厂内部)
+    channel 通讯 strict
+      司令官: 目标就在工厂深处。确认之后立刻报告。
+    channel 闲聊 strict
+      九S: 2B,你觉得机械生命体会做梦吗?
+      九S: ……啊,当我没问。
+
+test 会合之前没有9S的闲聊
+  emit 闲置
+    channel 闲聊
+      absent 九S: 2B,你觉得机械生命体会做梦吗?
+
+test 通讯按行时长自己往下说
+  emit 进入区域(区域 = 工厂外围) hold
+    channel 通讯
+      操作员: 2B,信号确认,你已到达工厂外围。
+  wait 3s
+  expect not 工厂简报听过
+  wait 3s
+  expect 工厂简报听过
+
+test 巨型机械战_换阶段_自爆_击破
+  emit Boss变阶段(阶段 = 2)
+    channel 侦察 strict
+      波德: 目标装甲脱落,核心暴露。
+  emit Boss变阶段(阶段 = 2)
+    channel 侦察
+      absent 波德: 目标装甲脱落,核心暴露。
+  emit Boss变阶段(阶段 = 3)
+    channel 侦察 strict
+      波德: 目标温度急剧上升。推测:自爆准备。
+      操作员: 2B,快撤到安全距离!
+  emit Boss击破
+    九S: 结束了吗……?
+    - 别大意。
+    九S: 嗯,知道了。
+    操作员: 2B,确认目标沉默。辛苦了。
+  expect 巨型机械已击破
+
+test 吃下鲭鱼进Q结局
+  given
+    chapter = 序章
+  emit 使用物品(物品 = 回复药)
+    channel 侦察
+      absent 波德: 检测到异常摄入:鲭鱼。
+  expect not 鲭鱼结局.completed
+  emit 使用物品(物品 = 鲭鱼)
+    channel 侦察 strict
+      波德: 检测到异常摄入:鲭鱼。
+  expect 吃了鲭鱼 and 鲭鱼结局.completed
+  expect chapter == 结局_Q
+
+explore 序章全路径
+  jump 序章
+  eventually chapter == 结局_Q
+  softlock 鲭鱼结局.completed

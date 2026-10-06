@@ -1,0 +1,97 @@
+12: Character 二B player
+13:   Property display = "2B"
+15: Character 九S
+16:   Property display = "9S"
+18: Character 波德
+19:   Property display = "Pod 042"
+21: Character 操作员
+22:   Property display = "6O"
+24: Character 司令官
+29: Channel main
+30:   Property pauses = "侦察, 闲聊"
+33: Channel 通讯
+34:   Property input = "free"
+35:   Property advance = "auto"
+36:   Property busy = "queue"
+37:   Property stops = "闲聊"
+40: Channel 侦察
+41:   Property input = "free"
+42:   Property advance = "auto"
+43:   Property busy = "interrupt"
+44:   Property pauses = "闲聊"
+47: Channel 闲聊
+48:   Property input = "free"
+49:   Property advance = "auto"
+50:   Property busy = "drop"
+54: Event 进入区域
+55:   EventParam 区域: tag in (海岸, 工厂外围, 工厂内部, 屋顶)
+57: Event 发现敌人
+58:   EventParam 类型: tag in (小型, 中型, 大型, 飞行)
+59:   EventParam 数量: int = 1
+61: Event Boss变阶段
+62:   EventParam 阶段: int range 1..3
+64: Event Boss击破
+66: Event 生命告急
+67:   EventParam 剩余: float range 0..1
+69: Event 使用物品
+70:   EventParam 物品: tag in (回复药, 鲭鱼)
+72: Event 闲置
+75: Event 作战目标
+76:   EventParam 目标: tag in (工厂入口, 巨型机械, 撤离点)
+80: Fact 已会合: bool
+81: Fact 工厂简报听过: bool
+82: Fact 吃了鲭鱼: bool
+83: Fact 巨型机械已击破: bool extern
+87: Chapter 序章
+88:   Advance -> 结局_Q if 鲭鱼结局.completed
+90: Chapter 结局_Q after 序章
+91:   Property title = "Q"
+94: Quest 鲭鱼结局
+95:   Property priority = "hidden"
+96:   Objective 吃了鲭鱼
+97:   On complete
+98:     Command play 结局字幕_Q
+100: Stage 结局字幕_Q
+101:   Duration 6s
+105: Dialogue 九S_会合 for 九S if (not 已会合)
+106:   Speech 九S "2B?你也被派到这里了。"
+107:   Speech 九S(笑) "我是 9S,负责侦察。之后请多关照。"
+108:   Choice "少说两句,跟上。"
+109:     Speech 九S(尴尬) "……好,好的。"
+110:   Choice "你来得正好。"
+111:   Command set 已会合 = true
+112:   Command emit 作战目标(目标 = 巨型机械)
+114: Dialogue 九S_日常 for 九S
+115:   Speech 九S "有什么发现吗?"
+119: Dialogue 通讯_工厂外围 on 进入区域 if (进入区域.区域 == 工厂外围) channel 通讯 once
+120:   Speech 操作员 "2B,信号确认,你已到达工厂外围。"
+121:   Speech 操作员 "内部有大量机械生命体反应,请小心行动。"
+122:   Command set 工厂简报听过 = true
+124: Dialogue 通讯_工厂内部 on 进入区域 if (进入区域.区域 == 工厂内部) channel 通讯 once
+125:   Speech 司令官 "目标就在工厂深处。确认之后立刻报告。"
+129: Dialogue 侦察_大型 on 发现敌人 if (发现敌人.类型 == 大型) priority 3 channel 侦察 cooldown 20s
+130:   Speech 波德 "报告:检测到大型敌性单位 {发现敌人.数量} 台。建议:攻击关节。" parts=['报告:检测到大型敌性单位 ' {发现敌人.数量} ' 台。建议:攻击关节。']
+132: Dialogue 侦察_普通 on 发现敌人 channel 侦察 cooldown 20s
+133:   Speech 波德 "报告:前方有 {发现敌人.数量} 个敌性反应。" parts=['报告:前方有 ' {发现敌人.数量} ' 个敌性反应。']
+134:   Speech 波德 "建议:保持移动。"
+136: Dialogue 侦察_二阶段 on Boss变阶段 if (Boss变阶段.阶段 == 2) priority 5 channel 侦察 once
+137:   Speech 波德 "目标装甲脱落,核心暴露。"
+139: Dialogue 侦察_三阶段 on Boss变阶段 if (Boss变阶段.阶段 == 3) priority 5 channel 侦察 once
+140:   Speech 波德 "目标温度急剧上升。推测:自爆准备。"
+141:   Speech 操作员 "2B,快撤到安全距离!"
+143: Dialogue 侦察_告急 on 生命告急 if (生命告急.剩余 < 0.3) priority 9 channel 侦察 cooldown 60s
+144:   Speech 波德 "警告:机体损伤严重。建议:使用回复药。"
+147: Dialogue 侦察_鲭鱼 on 使用物品 if (使用物品.物品 == 鲭鱼) priority 9 channel 侦察
+148:   Speech 波德 "检测到异常摄入:鲭鱼。"
+149:   Command set 吃了鲭鱼 = true
+153: Dialogue 闲聊_发呆 on 闲置 if 已会合 channel 闲聊 cooldown 45s resume
+154:   Speech 九S "2B,你觉得机械生命体会做梦吗?"
+155:   Speech 九S "……啊,当我没问。"
+159: Dialogue 击破之后 on Boss击破
+160:   Speech 九S "结束了吗……?"
+161:   Choice "别大意。"
+162:     Speech 九S "嗯,知道了。"
+163:   Choice "回去吧。"
+164:   Speech 操作员 "2B,确认目标沉默。辛苦了。"
+165:   Command set 巨型机械已击破 = true
+166:   Command emit 作战目标(目标 = 撤离点)
