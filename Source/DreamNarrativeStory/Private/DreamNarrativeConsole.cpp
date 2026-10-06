@@ -86,6 +86,60 @@ namespace
 		}
 	}
 
+	/** What each channel that is not quiet is doing. */
+	void PrintChannels(const UDreamNarrativeStory& Story)
+	{
+		TArray<FName> Channels;
+		Story.GetChannelNames(Channels);
+		bool bAny = false;
+		for (const FName& Channel : Channels)
+		{
+			const UDreamNarrativeDialogueRunner* Runner = Story.GetRunner(Channel);
+			const int32 Waiting = Story.GetQueueLength(Channel);
+			if (!Runner && Waiting == 0)
+			{
+				continue;
+			}
+			bAny = true;
+			FString Doing = TEXT("quiet");
+			if (Runner)
+			{
+				Doing = Runner->GetNodeName().ToString();
+				if (Runner->IsPaused())
+				{
+					Doing += TEXT(", paused");
+				}
+				else if (Runner->GetState() == EDnaRunnerState::ShowingLine)
+				{
+					const FDnaLineView& Line = Runner->GetCurrentLine();
+					Doing += TEXT(": ") + (Line.bNarration ? Line.Text.ToString() : FString::Printf(TEXT("%s: %s"), *Line.SpeakerDisplay.ToString(), *Line.Text.ToString()));
+				}
+				else if (Runner->GetState() == EDnaRunnerState::AwaitingChoice)
+				{
+					Doing += TEXT(", choosing");
+				}
+			}
+			Say(FString::Printf(TEXT("[%s] %s%s"), *Channel.ToString(), *Doing, Waiting > 0 ? *FString::Printf(TEXT(" (+%d waiting)"), Waiting) : TEXT("")), FColor::Cyan);
+		}
+		if (!bAny)
+		{
+			Say(TEXT("Every channel is quiet"));
+		}
+	}
+
+	/** A value typed at the console, as a fact or parameter of this type. */
+	FDnaValue ParseValue(EDnaFactType Type, const FString& Text)
+	{
+		switch (Type)
+		{
+		case EDnaFactType::Bool: return FDnaValue::FromBool(Text == TEXT("true") || Text == TEXT("1"));
+		case EDnaFactType::Int: return FDnaValue::FromInt(FCString::Atoi(*Text));
+		case EDnaFactType::Float: return FDnaValue::FromFloat(FCString::Atof(*Text));
+		case EDnaFactType::Tag: return FDnaValue::FromTag(FName(*Text));
+		}
+		return FDnaValue();
+	}
+
 	FAutoConsoleCommandWithWorldAndArgs GTalk(
 		TEXT("dn.talk"), TEXT("dn.talk <character> -- start the entry dialogue of a character"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
@@ -109,11 +163,11 @@ namespace
 		}));
 
 	FAutoConsoleCommandWithWorldAndArgs GNext(
-		TEXT("dn.next"), TEXT("dn.next -- advance past the current line"),
-		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>&, UWorld* World)
+		TEXT("dn.next"), TEXT("dn.next [channel] -- advance past the current line (of main, or of the channel)"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
 		{
 			UDreamNarrativeStory* Story = StoryOf(World);
-			UDreamNarrativeDialogueRunner* Runner = Story ? Story->GetActiveRunner() : nullptr;
+			UDreamNarrativeDialogueRunner* Runner = Story ? Story->GetRunner(Args.Num() > 0 ? FName(*Args[0]) : NAME_None) : nullptr;
 			if (!Runner) { Say(TEXT("No dialogue is running")); return; }
 			if (Runner->GetState() == EDnaRunnerState::PlayingStage) { Runner->NotifyStageFinished(); }
 			else { Runner->Advance(); }
@@ -121,12 +175,12 @@ namespace
 		}));
 
 	FAutoConsoleCommandWithWorldAndArgs GChoose(
-		TEXT("dn.choose"), TEXT("dn.choose <n> -- pick a choice"),
+		TEXT("dn.choose"), TEXT("dn.choose <n> [channel] -- pick a choice (on main, or on the channel)"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
 		{
 			UDreamNarrativeStory* Story = StoryOf(World);
-			UDreamNarrativeDialogueRunner* Runner = Story ? Story->GetActiveRunner() : nullptr;
-			if (!Runner || Args.Num() < 1) { Say(TEXT("dn.choose <n>")); return; }
+			UDreamNarrativeDialogueRunner* Runner = Story ? Story->GetRunner(Args.Num() > 1 ? FName(*Args[1]) : NAME_None) : nullptr;
+			if (!Runner || Args.Num() < 1) { Say(TEXT("dn.choose <n> [channel]")); return; }
 			if (!Runner->Choose(FCString::Atoi(*Args[0]))) { Say(TEXT("Not a valid choice right now"), FColor::Red); }
 			PrintRunner(Runner);
 		}));
@@ -143,15 +197,7 @@ namespace
 			if (!Decl) { Say(FString::Printf(TEXT("No fact '%s'"), *Args[0]), FColor::Red); return; }
 			if (Args.Num() >= 2)
 			{
-				FDnaValue Value;
-				switch (Decl->Type)
-				{
-				case EDnaFactType::Bool: Value = FDnaValue::FromBool(Args[1] == TEXT("true") || Args[1] == TEXT("1")); break;
-				case EDnaFactType::Int: Value = FDnaValue::FromInt(FCString::Atoi(*Args[1])); break;
-				case EDnaFactType::Float: Value = FDnaValue::FromFloat(FCString::Atof(*Args[1])); break;
-				case EDnaFactType::Tag: Value = FDnaValue::FromTag(FName(*Args[1])); break;
-				}
-				Ledger->SetFact(Name, Value, EDnaWriteSource::Game);
+				Ledger->SetFact(Name, ParseValue(Decl->Type, Args[1]), EDnaWriteSource::Game);
 			}
 			Say(FString::Printf(TEXT("%s = %s"), *Args[0], *Ledger->GetFact(Name).ToString()), FColor::Green);
 		}));
@@ -170,6 +216,40 @@ namespace
 			for (const FName& Name : Names)
 			{
 				Say(FString::Printf(TEXT("%s = %s"), *Name.ToString(), *Ledger->GetFact(Name).ToString()), FColor::Green);
+			}
+		}));
+
+	FAutoConsoleCommandWithWorldAndArgs GEmit(
+		TEXT("dn.emit"), TEXT("dn.emit <event> [param=value ...] -- raise an event (as the game), then show what each channel says"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			UDreamNarrativeStory* Story = StoryOf(World);
+			UDreamNarrativeLedger* Ledger = Story ? Story->GetLedger() : nullptr;
+			if (!Ledger || Args.Num() < 1) { Say(TEXT("dn.emit <event> [param=value ...]")); return; }
+			if (Ledger->GetScripts().Num() == 0) { Story->LoadAllScripts(); }
+			FDnaEventPayload Event;
+			Event.Event = FName(*Args[0]);
+			const FDnaEventDecl* Decl = Ledger->FindEventDecl(Event.Event);
+			for (int32 Index = 1; Index < Args.Num(); ++Index)
+			{
+				FString Param;
+				FString Text;
+				const FDnaFactDecl* ParamDecl = Decl && Args[Index].Split(TEXT("="), &Param, &Text) ? Decl->FindParam(FName(*Param.TrimStartAndEnd())) : nullptr;
+				if (!ParamDecl) { Say(FString::Printf(TEXT("'%s' is not a parameter of %s; write param=value"), *Args[Index], *Args[0]), FColor::Red); return; }
+				Event.Set(ParamDecl->Name, ParseValue(ParamDecl->Type, Text.TrimStartAndEnd()));
+			}
+			Ledger->RaiseEvent(Event);
+			Say(FString::Printf(TEXT("Raised %s"), *Event.ToString()), FColor::Green);
+			PrintChannels(*Story);
+		}));
+
+	FAutoConsoleCommandWithWorldAndArgs GChannels(
+		TEXT("dn.channels"), TEXT("dn.channels -- what each channel is saying, and how many dialogues wait their turn"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>&, UWorld* World)
+		{
+			if (const UDreamNarrativeStory* Story = StoryOf(World))
+			{
+				PrintChannels(*Story);
 			}
 		}));
 
