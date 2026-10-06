@@ -90,6 +90,8 @@ namespace UE::DreamNarrative::Tests::Spec
 	{
 		FindFilesUnder(TEXT("Spec"), OutRelative);
 		FindFilesUnder(TEXT("Samples"), OutRelative);
+		// The examples that ship with the plugin keep their own tests.
+		FindFilesUnder(TEXT("../Examples"), OutRelative);
 	}
 
 	void FindFilesUnder(const FString& Directory, TArray<FString>& OutRelative)
@@ -141,6 +143,7 @@ namespace UE::DreamNarrative::Tests::Spec
 	{
 		FString Display = FPaths::ChangeExtension(Relative, TEXT(""));
 		Display.RemoveFromStart(TEXT("Spec/"));
+		Display.RemoveFromStart(TEXT("../"));
 		Display.ReplaceInline(TEXT("."), TEXT("_"));
 		Display.ReplaceInline(TEXT("/"), TEXT("."));
 		return Display;

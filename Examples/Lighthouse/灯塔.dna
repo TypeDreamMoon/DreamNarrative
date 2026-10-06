@@ -1,0 +1,171 @@
+// 示例:灯塔守夜人。一座小岛、一座坏了的灯塔、一场要来的风暴。
+// 用到:角色与 fact、对话与选项、条件与 once、任务(目标、日志、奖励、子任务)、章节与推进、
+// 边打边讲的频道(电台自己往下说)、带参数的事件、跟着台词的演出、绝对时间的演出、跨存档的资料库,以及 test 块。
+
+character 守夜人 player
+character 老周
+  display: 老周
+character 小雾
+  display: 小雾
+character 无线电
+
+// ---------------------------------------------------------------- 状态
+
+fact 见过老周: bool
+fact 灯修好了: bool
+fact 找到的零件: int extern range 0..3     // 游戏捡到零件时写
+fact 小雾的信任: int range 0..3
+
+// ---------------------------------------------------------------- 章节
+
+chapter 上岛
+  title: 第一夜
+
+chapter 风暴 after 上岛
+  title: 风暴
+  implied
+    见过老周 = true
+  advance -> 天亮 if 灯修好了
+
+chapter 天亮 after 风暴
+  title: 天亮以后
+
+// ---------------------------------------------------------------- 频道与事件
+
+channel 电台
+  input: free
+  advance: auto
+  busy: queue
+  stage: pause
+
+event 风暴逼近
+  等级: int range 1..5 = 1
+
+dialogue 无线电_风暴 on 风暴逼近 channel 电台 cooldown 30s
+  无线电: 沿海广播,风暴等级 {风暴逼近.等级}。
+  无线电: 所有船只请尽快回港。
+
+// ---------------------------------------------------------------- 主线对话
+
+dialogue 老周_初见 for 老周 if not 见过老周
+  老周: 你就是新来的守夜人?
+  老周: 灯坏了三天了,今晚风暴就要到。
+  - 我去修。
+      老周: 灯室里缺三个零件,岛上应该还能找到。
+      accept 修灯
+  - 先歇一会儿。
+      老周(皱眉): 那可等不了太久。
+  set 见过老周 = true
+  advance 风暴
+
+dialogue 老周_平常 for 老周
+  老周: 零件找得怎么样了?
+  - 还差几个。 if 找到的零件 < 3
+      老周: 码头那边看看。
+  - 都齐了。 if 找到的零件 >= 3 once
+      老周: 那就上去吧。 @近景_老周
+  - 再说吧。
+
+dialogue 小雾_搭话 for 小雾 if 小雾的信任 < 3 priority 1
+  小雾: 你也是来看灯的吗?
+  - 我是来修灯的。
+      set 小雾的信任 += 1
+      小雾: 那我等它亮。
+  - 这里危险,回去吧。
+      小雾(低头): ……嗯。
+
+dialogue 小雾_平常 for 小雾
+  小雾: 灯会亮的,对吧?
+
+// ---------------------------------------------------------------- 任务
+
+quest 修灯
+  title: 修好灯塔
+  priority: main
+  journal
+    accepted: 灯室缺三个零件,风暴前修好它。
+    going: 还差 {3 - 找到的零件} 个零件。
+    completed: 灯亮了。
+  objective 找到的零件 >= 3
+    show: 零件 {找到的零件}/3
+  on complete
+    set 灯修好了 = true
+    play 灯亮
+    reward 物品 守夜人的钥匙
+  subquest 送小雾回家 auto
+
+quest 送小雾回家
+  title: 送小雾回家
+  journal
+    accepted: 风暴里别让她一个人走。
+  objective 小雾的信任 >= 2
+
+// ---------------------------------------------------------------- 演出
+
+// 灯亮起来:镜头离开守夜人,升到灯室,白光一闪,切到海面上看灯塔。
+stage 灯亮
+  duration 5.0s
+  shots
+    灯室       local (0, 0, 900) of 灯塔 look 灯塔 fov 50
+    海面       local (2500, 0, 300) of 灯塔 look 灯塔 fov 40
+  camera
+    0.0s     blend from game 0.5s
+    0.5s     blend -> 灯室 1.5s
+    2.5s     cut -> 海面                      // 2.4..2.6 的白闪在 2.5 全白
+    5.0s     blend back 0.6s
+  mask
+    2.4s..2.6s   fade white 0.1s
+  light
+    0.0s     ramp dark 0.5s to 0.3
+    2.5s     restore 0.3s
+  ui
+    0.0s..5.0s   hide hud
+  game
+    0.0s..5.0s   input lock
+
+// 跟着台词:说话时镜头慢慢推近老周。
+stage 近景_老周
+  base: line
+  shots
+    近景     local (120, 0, 70) of 老周 look 老周 fov 35
+  camera
+    0%       cut -> 近景 hard
+    0%       push 6cm over 100%
+  restore
+    camera   blend back 0%
+
+// ---------------------------------------------------------------- 资料库
+
+archive 守夜日志 profile
+  title: 守夜日志
+  entry
+    第一夜:灯坏了,老周说风暴要来。
+  entry if 灯修好了
+    灯亮了。海上有一条船跟着光回了港。
+
+// ---------------------------------------------------------------- 测试
+
+test 初见老周接下修灯
+  talk 老周
+    老周: 你就是新来的守夜人?
+    老周: 灯坏了三天了,今晚风暴就要到。
+    - 我去修。
+    老周: 灯室里缺三个零件,岛上应该还能找到。
+  expect chapter == 风暴
+  expect 修灯.active
+
+test 零件齐了灯就亮
+  given
+    chapter = 风暴
+    见过老周 = true
+  accept 修灯
+  set 找到的零件 = 3
+  expect 灯修好了
+  expect chapter == 天亮
+  archive 守夜日志 = 2
+
+test 风暴广播
+  emit 风暴逼近(等级 = 4)
+    channel 电台 strict
+      无线电: 沿海广播,风暴等级 4。
+      无线电: 所有船只请尽快回港。

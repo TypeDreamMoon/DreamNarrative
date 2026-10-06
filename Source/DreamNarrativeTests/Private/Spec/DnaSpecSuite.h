@@ -1,6 +1,6 @@
 // Copyright DreamMoon. All Rights Reserved.
 //
-// The spec suite: every `test` block under the plugin's Tests/Spec and Tests/Samples. A test file is
+// The spec suite: every `test` block under the plugin's Tests/Spec, Tests/Samples and Examples. A test file is
 // compiled on its own, together with the files its `file` block lists under `with:` (paths relative
 // to the test file), so a test can drive a sample story without copying it.
 
