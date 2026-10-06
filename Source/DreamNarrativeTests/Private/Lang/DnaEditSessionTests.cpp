@@ -6,6 +6,7 @@
 
 #include "Fixtures/DnaTestWorld.h"
 #include "Lang/DnaEditSession.h"
+#include "Lang/DnaStageCompiler.h"
 #include "Misc/FileHelper.h"
 #include "Replay/DnaReplay.h"
 
@@ -15,6 +16,35 @@ namespace UE::DreamNarrative::Tests::EditSessionTests
 	TArray<FString> Changed(const FString& Before, const FString& After)
 	{
 		return Replay::DiffLines(Before, After).FilterByPredicate([](const FString& Line) { return Line.StartsWith(TEXT("- ")) || Line.StartsWith(TEXT("+ ")); });
+	}
+
+	/** The 1-based number of the first line of Text containing Needle; 0 when none does. */
+	int32 LineWith(const FString& Text, const FString& Needle)
+	{
+		TArray<FString> Lines;
+		Text.ParseIntoArrayLines(Lines, /*bCullEmpty=*/false);
+		for (int32 Index = 0; Index < Lines.Num(); ++Index)
+		{
+			if (Lines[Index].Contains(Needle)) { return Index + 1; }
+		}
+		return 0;
+	}
+
+	/** A stage of the session's text, compiled; false when it is not there. */
+	bool CompileStage(const UE::DreamNarrative::Lang::FDnaEditSession& Session, const FString& Name, FDnaStageData& Out, int32& OutErrors)
+	{
+		using namespace UE::DreamNarrative::Lang;
+		for (const FDnaLineNodePtr& Root : Session.GetDocument().Roots)
+		{
+			if (Root.IsValid() && Root->Kind == EDnaLineKind::Stage && Root->Payload.Name == Name)
+			{
+				FDnaDiagnosticSink Sink;
+				CompileDnaStage(*Root, Out, Sink);
+				OutErrors = Sink.NumErrors();
+				return true;
+			}
+		}
+		return false;
 	}
 }
 
@@ -90,6 +120,103 @@ bool FDnaEditSessionTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and forward again"), Session.GetText(), Edited);
 
 	// -- what came out still compiles (the removed dialogue was not needed by anything)
+	FDnaTestWorld World(*this);
+	TestTrue(TEXT("the edited sample compiles"), World.CompileText(Session.GetText(), Relative));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaStageEditTest, "DreamNarrative.Lang.StageEdit", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+
+bool FDnaStageEditTest::RunTest(const FString& Parameters)
+{
+	using namespace UE::DreamNarrative::Tests;
+	using namespace UE::DreamNarrative::Tests::EditSessionTests;
+	using namespace UE::DreamNarrative::Lang;
+
+	const FString Relative = TEXT("Tests/Corpus/Validate/Samples/automata.dna");
+	FString Original;
+	if (!FFileHelper::LoadFileToString(Original, *(GetPluginDir() / Relative)))
+	{
+		AddError(TEXT("cannot read the sample"));
+		return false;
+	}
+	FDnaEditSession Session;
+	Session.Open(Relative, Original);
+	FText Error;
+	auto One = [this](const TArray<FString>& Lines, const TCHAR* Added)
+	{
+		TestEqual(TEXT("one line out, one in"), Lines.Num(), 2);
+		TestTrue(*FString::Printf(TEXT("and it reads `%s`"), Added), Lines.Num() == 2 && Lines[1].Contains(Added));
+	};
+
+	// -- an entry dragged: its line, and only its time on it
+	FString Before = Session.GetText();
+	TestTrue(TEXT("move the effect"), Session.SetStageEntryTime(LineWith(Before, TEXT("spawn /Game/FX")), 2.5, 2.5, Error));
+	One(Changed(Before, Session.GetText()), TEXT("    2.5s     spawn /Game/FX/NS_处决_斩击 at 巨型机械"));
+
+	// a longer time keeps the verb's column, the comment at the end of the line stays
+	Before = Session.GetText();
+	TestTrue(TEXT("move a cut"), Session.SetStageEntryTime(LineWith(Before, TEXT("cut -> 侧面")), 10.0, 10.0, Error));
+	One(Changed(Before, Session.GetText()), TEXT("    10.0s    cut -> 侧面                     // 0.9..1.1"));
+	Session.Undo();
+
+	// the end of a range
+	Before = Session.GetText();
+	TestTrue(TEXT("shorten a range"), Session.SetStageEntryTime(LineWith(Before, TEXT("damage window")), 0.0, 2.35, Error));
+	One(Changed(Before, Session.GetText()), TEXT("    0.0s..2.35s  damage window"));
+
+	// -- a span: the blend, the push
+	Before = Session.GetText();
+	TestTrue(TEXT("a longer blend"), Session.SetStageEntrySpan(LineWith(Before, TEXT("blend from game")), 0.4, Error));
+	One(Changed(Before, Session.GetText()), TEXT("blend from game 0.4s"));
+	Before = Session.GetText();
+	TestTrue(TEXT("a longer push"), Session.SetStageEntrySpan(LineWith(Before, TEXT("push 60cm")), 1.5, Error));
+	One(Changed(Before, Session.GetText()), TEXT("push 60cm over 1.5s"));
+
+	// -- an entry added in its track, lined up with the others, and removed again
+	Before = Session.GetText();
+	TestTrue(TEXT("add an entry"), Session.AddStageEntry(TEXT("处决_巨型机械"), TEXT("game"), 3.0, 3.0, false, TEXT("damage window"), Error));
+	TArray<FString> Lines = Changed(Before, Session.GetText());
+	TestEqual(TEXT("one line in"), Lines.Num(), 1);
+	TestTrue(TEXT("under the game track, its verb in the track's column"), Lines.Num() == 1 && Lines[0].Contains(TEXT("    3.0s         damage window")));
+	TestTrue(TEXT("remove it"), Session.RemoveStageEntry(LineWith(Session.GetText(), TEXT("3.0s         damage window")), Error));
+	TestEqual(TEXT("as it was"), Session.GetText(), Before);
+
+	// -- a track's last entry takes the track with it
+	Before = Session.GetText();
+	TestTrue(TEXT("remove the only text"), Session.RemoveStageEntry(LineWith(Before, TEXT("text 「这里也有")), Error));
+	TestEqual(TEXT("two lines out"), Changed(Before, Session.GetText()).Num(), 2);
+	Session.Undo();
+
+	// -- the time base switched: seconds against a three-second line, and back
+	Before = Session.GetText();
+	FDnaStageData Flash;
+	FDnaStageData FlashBefore;
+	int32 Errors = 0;
+	CompileStage(Session, TEXT("骇入闪回"), FlashBefore, Errors);
+	TestTrue(TEXT("to seconds"), Session.SetStageTimeBase(TEXT("骇入闪回"), false, 3.0, Error));
+	if (TestTrue(TEXT("the stage is still there"), CompileStage(Session, TEXT("骇入闪回"), Flash, Errors)))
+	{
+		TestEqual(TEXT("and checks"), Errors, 0);
+		TestFalse(TEXT("in seconds"), Flash.bLineRelative);
+		TestEqual(TEXT("three of them"), Flash.Duration, 3.f);
+		TestEqual(TEXT("10% of the line is 0.3 s"), Flash.Entries.Num() > 0 ? Flash.Entries[0].Start : -1.f, 0.3f, 1e-4f);
+	}
+	TestTrue(TEXT("and back"), Session.SetStageTimeBase(TEXT("骇入闪回"), true, 3.0, Error));
+	TestEqual(TEXT("as many lines as it had"), Changed(Before, Session.GetText()).Num() % 2, 0);
+	if (TestTrue(TEXT("compiles again"), CompileStage(Session, TEXT("骇入闪回"), Flash, Errors)))
+	{
+		TestTrue(TEXT("following its line again"), Flash.bLineRelative);
+		bool bSame = Flash.Entries.Num() == FlashBefore.Entries.Num();
+		for (int32 Index = 0; bSame && Index < Flash.Entries.Num(); ++Index)
+		{
+			bSame = FMath::IsNearlyEqual(Flash.Entries[Index].Start, FlashBefore.Entries[Index].Start, 1e-4f)
+				&& FMath::IsNearlyEqual(Flash.Entries[Index].End, FlashBefore.Entries[Index].End, 1e-4f);
+		}
+		TestTrue(TEXT("with the times it had"), bSame);
+	}
+
+	// -- what came out still compiles
 	FDnaTestWorld World(*this);
 	TestTrue(TEXT("the edited sample compiles"), World.CompileText(Session.GetText(), Relative));
 	return !HasAnyErrors();

@@ -3,8 +3,9 @@
 // An editing session over one source file: what the story view does to the text. Each operation is
 // a few line edits through the printer, so the file changes only where the operation says -- adding
 // a dialogue adds its lines, changing a condition rewrites one header line, connecting two dialogues
-// adds one `->` line -- and everything else stays byte for byte. After each operation the text is
-// parsed again; an operation that would leave a parse error the text did not have is refused.
+// adds one `->` line, dragging a stage's entry rewrites the time on its one line -- and everything else
+// stays byte for byte. After each operation the text is parsed again; an operation that would leave a
+// parse error the text did not have is refused.
 //
 // Undo and redo are the session's own: a stack of texts, not editor transactions.
 
@@ -50,6 +51,36 @@ namespace UE::DreamNarrative::Lang
 
 		/** Replaces the content of one line of the current text. */
 		bool SetLine(int32 Line, const FString& Content, FText& OutError);
+
+		// -------------------------------------------------------------- stages
+
+		/**
+		 * Rewrites when the stage entry on Line happens: Start, and End for a range (End is ignored for a
+		 * point). Times are in the stage's unit (seconds, or a fraction of the line) and are written the
+		 * way the stage writes them; the rest of the line stays, the verb in its column when there is room.
+		 */
+		bool SetStageEntryTime(int32 Line, double Start, double End, FText& OutError);
+
+		/** Rewrites how long the entry on Line takes to blend, fade, ramp or push, in the stage's unit. */
+		bool SetStageEntrySpan(int32 Line, double Over, FText& OutError);
+
+		/** Adds `时间 VerbAndArgs` as the last entry of a stage's track, adding the track when it has none. */
+		bool AddStageEntry(const FString& Stage, const FString& Track, double Start, double End, bool bRange, const FString& VerbAndArgs, FText& OutError);
+
+		/** Removes the entry on Line, and its track's line when it was the track's last entry. */
+		bool RemoveStageEntry(int32 Line, FText& OutError);
+
+		/**
+		 * Switches a stage between counting in seconds and following its line. LineSeconds is the length
+		 * of line the times are converted against; the switch to seconds writes it as the duration.
+		 */
+		bool SetStageTimeBase(const FString& Stage, bool bLine, double LineSeconds, FText& OutError);
+
+		/** The node on a line of the current text; null when the line is blank, a comment or past the end. */
+		const FDnaLineNode* FindLine(int32 Line) const;
+
+		/** The stage declaration a line belongs to; null when it is not inside one. */
+		const FDnaLineNode* FindStageOf(int32 Line) const;
 
 		bool CanUndo() const { return Undos.Num() > 0; }
 		bool CanRedo() const { return Redos.Num() > 0; }

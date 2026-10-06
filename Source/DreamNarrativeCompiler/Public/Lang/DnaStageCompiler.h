@@ -27,5 +27,5 @@ namespace UE::DreamNarrative::Lang
 	 *   DNS7008  a shot the stage does not declare
 	 *   DNS7009  an absolute stage without a duration
 	 */
-	bool CompileDnaStage(const FDnaLineNode& Root, FDnaStageData& Out, FDnaDiagnosticSink& Diagnostics);
+	DREAMNARRATIVECOMPILER_API bool CompileDnaStage(const FDnaLineNode& Root, FDnaStageData& Out, FDnaDiagnosticSink& Diagnostics);
 }

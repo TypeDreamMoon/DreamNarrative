@@ -21,12 +21,13 @@ public class DreamNarrativeCompiler : ModuleRules
 			"Engine",
 			"GameplayTags",
 			"DreamNarrativeCore",
+			// Its stage compiler hands out the Stage module's data.
+			"DreamNarrativeStage",
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
 			"DreamNarrativeStory",
-			"DreamNarrativeStage",
 			"AssetRegistry",
 			"Json",
 			"JsonUtilities",
