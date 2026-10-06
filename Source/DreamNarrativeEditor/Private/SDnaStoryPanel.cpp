@@ -6,6 +6,7 @@
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Lang/DnaEditSession.h"
 #include "Lang/DnaProject.h"
+#include "Lang/DnaStaging.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Widgets/Input/SButton.h"
@@ -293,6 +294,12 @@ TSharedPtr<SWidget> SDnaStoryPanel::MakeContextMenu()
 				if (!Connect(Name, Values[0], Error)) { Report(Error); }
 			}
 		})));
+		Menu.AddMenuEntry(LOCTEXT("Stage", "Generate staging"), LOCTEXT("StageTip", "Camera shots for each speaker, attached to their lines; again to roll other shots"),
+			FSlateIcon(), FUIAction(FExecuteAction::CreateLambda([this, Name]()
+		{
+			FText Error;
+			if (!StageDialogue(Name, Error)) { Report(Error); }
+		})));
 		Menu.AddMenuEntry(LOCTEXT("Remove", "Remove"), FText::GetEmpty(), FSlateIcon(), FUIAction(FExecuteAction::CreateLambda([this, Name]()
 		{
 			FText Error;
@@ -391,6 +398,19 @@ bool SDnaStoryPanel::RemoveDialogue(const FString& Dialogue, FText& OutError)
 		return false;
 	}
 	return Edited(File, SessionFor(File).RemoveDeclaration(EDnaLineKind::Dialogue, Dialogue, OutError));
+}
+
+bool SDnaStoryPanel::StageDialogue(const FString& Dialogue, FText& OutError)
+{
+	const FString File = FileOf(Dialogue);
+	if (File.IsEmpty())
+	{
+		OutError = FText::Format(LOCTEXT("NoSuchDialogue3", "There is no dialogue called {0}"), FText::FromString(Dialogue));
+		return false;
+	}
+	// Each run rolls again: the seed counts the runs for this dialogue.
+	int32& Seed = StagingRolls.FindOrAdd(Dialogue);
+	return Edited(File, StageDnaDialogue(SessionFor(File), Dialogue, ++Seed, OutError));
 }
 
 bool SDnaStoryPanel::Undo()

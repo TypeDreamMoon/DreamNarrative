@@ -42,6 +42,8 @@ public:
 	bool Connect(const FString& From, const FString& To, FText& OutError);
 	bool AddDialogue(const FString& File, const FString& Name, const FString& Clauses, const FString& FirstLine, FText& OutError);
 	bool RemoveDialogue(const FString& Dialogue, FText& OutError);
+	/** Generates a staging for a dialogue (each run a new roll of the shots, replacing the last). */
+	bool StageDialogue(const FString& Dialogue, FText& OutError);
 	bool Undo();
 	bool Redo();
 	/** Writes every file with unsaved edits. False with the reasons when one could not be written. */
@@ -76,6 +78,8 @@ private:
 	TArray<FString> Files;
 	bool bProjectFiles = true;
 	TMap<FString, TSharedPtr<UE::DreamNarrative::Lang::FDnaEditSession>> Sessions;
+	/** How many times each dialogue has been staged: the next roll's seed. */
+	TMap<FString, int32> StagingRolls;
 	/** Which file each undo (and redo) step belongs to, latest last. */
 	TArray<FString> UndoFiles;
 	TArray<FString> RedoFiles;
