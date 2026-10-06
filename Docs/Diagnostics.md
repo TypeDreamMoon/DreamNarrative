@@ -171,6 +171,18 @@ Tab 和空格混用作缩进。
 
 **中文散文**:`emit 发现敌人(数量 = 1, 数量 = 2)` 说不清到底发出去的是哪个值。每个参数最多写一次;没写的取声明里的默认值。
 
+### DNS2021
+
+由 gameplay 标签喂的 fact 必须是 `extern`。
+
+**中文散文**:`fact 名: bool extern gameplay 标签` 的意思是「玩家能力系统上这个标签在不在,就是这个 fact」——值由 GAS 桥以游戏的身份写进来,剧情自己不该改它。写了 `gameplay` 却没写 `extern`,归属就自相矛盾了。加上 `extern`;如果这个值其实该由剧情决定,就去掉 `gameplay`。
+
+### DNS2022
+
+参数写了 `from`,它的事件却没写 `gameplay`。
+
+**中文散文**:`from magnitude`、`from target tags 标签` 说的是「从 GameplayEvent 的载荷里取值」,只有在事件头上写了 `gameplay 标签`、由 GAS 桥从 GameplayEvent 发出的事件才有载荷可取。给事件头补上它对应的 gameplay 标签;如果这个事件只由游戏代码或剧情自己发,删掉参数上的 `from`。
+
 ### DNS3001
 
 引用了一个没有声明的 fact。
@@ -284,6 +296,12 @@ tag 值不在 fact 声明的集合里。
 这里必须是常量。
 
 **中文散文**:fact 与事件参数的默认值、章节 `implied` 里的值要在编译期算出来存进资产,不能引用其他 fact、章节或随机数。换成字面量或集合成员。
+
+### DNS4007
+
+gameplay 来源和类型对不上。
+
+**中文散文**:标签喂 fact 时,bool 表示「有没有这个标签」,int 表示「有几层」,别的类型没有对应的意思。参数的 `from magnitude` 是一个数,只能给 int 或 float 参数;`from instigator tags` / `from target tags` 只能给 bool 参数(有没有这个标签)或 tag 参数(取这个标签下面那一层的末段,比如 `敌人.体型.大型` 取 `大型`,要在参数的集合里)。改参数类型,或者换一种来源。
 
 ### DNS5008
 

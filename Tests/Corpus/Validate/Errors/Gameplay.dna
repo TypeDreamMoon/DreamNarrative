@@ -1,0 +1,18 @@
+// 接 GAS 写错的地方:标签喂的 fact 不是 extern、类型不是 bool 或 int;参数 from 了 gameplay 事件,事件头却没写
+// gameplay;magnitude 喂了 tag 参数,tags 喂了数字参数。
+
+fact 潜行中: bool gameplay State.Stealth
+// EXPECT DNS2021 (4,1)
+fact 名字: tag in (甲, 乙) extern gameplay State.Name
+// EXPECT DNS4007 (6,1)
+
+event 闲置
+  久: float from magnitude
+// EXPECT DNS2022 (10,3)
+
+event 发现敌人 gameplay Event.Enemy.Spotted
+  类型: tag in (小型, 大型) from magnitude
+// EXPECT DNS4007 (14,3)
+  数量: int from target tags Enemy.Count
+// EXPECT DNS4007 (16,3)
+  着火: bool from instigator tags State.Burning

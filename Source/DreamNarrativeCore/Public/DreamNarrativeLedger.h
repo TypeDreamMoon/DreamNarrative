@@ -93,6 +93,7 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FDnaTimerFiredSignature, FName /*Timer*/);
 DECLARE_MULTICAST_DELEGATE(FDnaSnapshotAppliedSignature);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDnaEventPayloadSignature, const FDnaEventPayload&, Event);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FDnaEventRaisedSignature, const FDnaEventPayload& /*Event*/, EDnaWriteSource /*Source*/);
+DECLARE_MULTICAST_DELEGATE_OneParam(FDnaScriptRegisteredSignature, UDreamNarrativeScript* /*Script*/);
 
 UCLASS()
 class DREAMNARRATIVECORE_API UDreamNarrativeLedger : public UGameInstanceSubsystem, public IDnaEvalContext
@@ -116,6 +117,7 @@ public:
 	const FDnaChapterDecl* FindChapterDecl(FName Chapter) const;
 	const FDnaCharacterDecl* FindCharacterDecl(FName Character) const;
 	const FDnaEventDecl* FindEventDecl(FName Event) const { return EventDecls.Find(Event); }
+	void GetEventNames(TArray<FName>& Out) const { EventDecls.GetKeys(Out); }
 	void GetFactNames(TArray<FName>& Out) const { FactDecls.GetKeys(Out); }
 
 	/** The scripts registered so far. */
@@ -316,6 +318,9 @@ public:
 
 	/** Fires after a batch commits with the facts that changed in it. Observers subscribe here. */
 	FDnaBatchCommittedSignature OnBatchCommitted;
+
+	/** A script's declarations are in: what reads them (the GAS bridge) looks again. */
+	FDnaScriptRegisteredSignature OnScriptRegistered;
 
 	/** Fires for every write that changes a fact, saying who wrote it: what a recorder keeps of the game's writes. */
 	FDnaFactWrittenSignature OnFactWritten;

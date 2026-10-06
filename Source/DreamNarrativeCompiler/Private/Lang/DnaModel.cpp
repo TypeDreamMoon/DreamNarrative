@@ -80,6 +80,9 @@ namespace UE::DreamNarrative::Lang
 				Info.RangeMax = P.RangeMax;
 				Info.Domain = P.Domain;
 				Info.DefaultExpr = P.DefaultExpr;
+				Info.GameplayTag = P.GameplayTag;
+				Info.Source = P.GameplaySource;
+				Info.SourceTag = P.GameplaySourceTag;
 			}
 
 			/** A channel's properties as written; the validator says which are wrong. */
@@ -238,6 +241,7 @@ namespace UE::DreamNarrative::Lang
 						if (!Admit(P.Name, TEXT("event"), Root)) { break; }
 						FDnaEventInfo& Info = Program.Events.Add(P.Name);
 						Info.Name = P.Name;
+						Info.GameplayTag = P.GameplayTag;
 						Info.Node = &Root;
 						Info.Document = &Document;
 						TArray<FDnaLineNode*> Params;

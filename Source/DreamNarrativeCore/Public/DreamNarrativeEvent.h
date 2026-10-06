@@ -47,6 +47,33 @@ struct DREAMNARRATIVECORE_API FDnaEventPayload
 	FString ToString() const;
 };
 
+/** Where a parameter of an event raised from a gameplay event takes its value (`from ...`). */
+UENUM(BlueprintType)
+enum class EDnaGameplaySource : uint8
+{
+	None,
+	/** `from magnitude`: the gameplay event's magnitude. */
+	Magnitude,
+	/** `from instigator tags 标签`: a bool is whether the instigator's tags have the tag; a tag is the member named like the child of the tag they have. */
+	InstigatorTags,
+	/** `from target tags 标签`: the same, of the target's tags. */
+	TargetTags,
+};
+
+/** One parameter's `from ...`. */
+USTRUCT(BlueprintType)
+struct DREAMNARRATIVECORE_API FDnaEventParamSource
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Narrative")
+	EDnaGameplaySource Source = EDnaGameplaySource::None;
+
+	/** For the tag sources: the tag looked for, or the parent of the tags looked for. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Narrative")
+	FName Tag;
+};
+
 /** An event as declared in source: its name and its parameters. */
 USTRUCT(BlueprintType)
 struct DREAMNARRATIVECORE_API FDnaEventDecl
@@ -59,6 +86,14 @@ struct DREAMNARRATIVECORE_API FDnaEventDecl
 	/** Each parameter in declaration order: its name, type, set, range and default mean what they mean for a fact; nothing else does. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Narrative")
 	TArray<FDnaFactDecl> Params;
+
+	/** `gameplay 标签`: the gameplay event (that tag or one under it) that raises this event. None for none. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Narrative")
+	FName GameplayTag;
+
+	/** Where each parameter comes from when a gameplay event raises it, in the order of Params. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Narrative")
+	TArray<FDnaEventParamSource> ParamSources;
 
 	const FDnaFactDecl* FindParam(FName Param) const;
 };

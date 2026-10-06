@@ -263,6 +263,14 @@ namespace UE::DreamNarrative::Lang
 			if (P.Domain.Num() > 0) { Result += TEXT(" in (") + FString::Join(P.Domain, TEXT(", ")) + TEXT(")"); }
 			if (P.DefaultExpr.IsValid()) { Result += TEXT(" = ") + P.DefaultExpr->ToString(); }
 			if (!P.WasName.IsEmpty()) { Result += TEXT(" was ") + P.WasName; }
+			if (!P.GameplayTag.IsEmpty()) { Result += TEXT(" gameplay ") + P.GameplayTag; }
+			switch (P.GameplaySource)
+			{
+			case EDnaGameplaySource::Magnitude: Result += TEXT(" from magnitude"); break;
+			case EDnaGameplaySource::InstigatorTags: Result += TEXT(" from instigator tags ") + P.GameplaySourceTag; break;
+			case EDnaGameplaySource::TargetTags: Result += TEXT(" from target tags ") + P.GameplaySourceTag; break;
+			default: break;
+			}
 			return Result;
 		}
 
@@ -285,8 +293,10 @@ namespace UE::DreamNarrative::Lang
 				Detail = FactDump(P);
 				break;
 			case EDnaLineKind::Channel:
-			case EDnaLineKind::Event:
 				Detail = P.Name;
+				break;
+			case EDnaLineKind::Event:
+				Detail = P.Name + (P.GameplayTag.IsEmpty() ? TEXT("") : TEXT(" gameplay ") + P.GameplayTag);
 				break;
 			case EDnaLineKind::FactGroup:
 				Detail = P.Name + (P.bExtern ? TEXT(" extern") : TEXT("")) + (P.bSession ? TEXT(" session") : TEXT(""));

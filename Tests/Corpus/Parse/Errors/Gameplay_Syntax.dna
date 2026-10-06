@@ -1,0 +1,8 @@
+event 发现敌人 gameplay
+// EXPECT DNS2007 (1,20)
+  类型: tag in (小型, 大型) from target 敌人.体型
+// EXPECT DNS2007 (3,28)
+  数量: int from 魔法
+// EXPECT DNS2007 (5,16)
+  着火: bool gameplay State.Burning
+// EXPECT DNS2019 (7,3)

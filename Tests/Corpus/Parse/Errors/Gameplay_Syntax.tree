@@ -1,0 +1,4 @@
+1: Event 发现敌人
+3:   EventParam 类型: tag in (小型, 大型)
+5:   EventParam 数量: int
+7:   EventParam 着火: bool gameplay State.Burning

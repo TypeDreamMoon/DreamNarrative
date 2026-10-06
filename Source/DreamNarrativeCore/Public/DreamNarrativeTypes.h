@@ -136,6 +136,13 @@ struct DREAMNARRATIVECORE_API FDnaFactDecl
 	/** The previous name when the declaration carries `was`, so a snapshot written under it migrates. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Narrative")
 	FName WasName;
+
+	/**
+	 * `gameplay 标签` on an extern fact: the gameplay tag whose count on a watched ability system
+	 * feeds it (a bool holds while the count is above zero, an int is the count). None for none.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Narrative")
+	FName GameplayTag;
 };
 
 /** A speaker as declared with `character`. */

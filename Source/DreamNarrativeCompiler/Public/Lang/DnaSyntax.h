@@ -9,6 +9,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "DreamNarrativeEvent.h"
 #include "DreamNarrativeTypes.h"
 #include "Lang/DnaExpr.h"
 #include "Lang/DnaLexer.h"
@@ -270,6 +271,11 @@ namespace UE::DreamNarrative::Lang
 		double RangeMax = 0.0;
 		TArray<FString> Domain;
 		FDnaExprPtr DefaultExpr;
+		/** `gameplay 标签` on a fact or an event header. */
+		FString GameplayTag;
+		/** `from ...` on an event parameter, and its tag for the tag sources. */
+		EDnaGameplaySource GameplaySource = EDnaGameplaySource::None;
+		FString GameplaySourceTag;
 
 		// command
 		EDnaCommandKind Command = EDnaCommandKind::None;

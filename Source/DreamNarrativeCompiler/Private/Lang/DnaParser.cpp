@@ -416,8 +416,8 @@ namespace UE::DreamNarrative::Lang
 				if (Word == TEXT("quest")) { ParseQuestHeader(Node); return; }
 				if (Word == TEXT("dialogue")) { ParseDialogueHeader(Node); return; }
 				if (Word == TEXT("stage")) { ParseStageHeader(Node); return; }
-				if (Word == TEXT("channel")) { ParseNamedBlockHeader(Node, EDnaLineKind::Channel, LOCTEXT("ChannelName", "a channel name"), EContext::Channel); return; }
-				if (Word == TEXT("event")) { ParseNamedBlockHeader(Node, EDnaLineKind::Event, LOCTEXT("EventName", "an event name"), EContext::EventParams); return; }
+				if (Word == TEXT("channel")) { ParseNamedBlockHeader(Node, EDnaLineKind::Channel, LOCTEXT("ChannelName", "a channel name"), EContext::Channel, /*bAllowGameplay=*/false); return; }
+				if (Word == TEXT("event")) { ParseNamedBlockHeader(Node, EDnaLineKind::Event, LOCTEXT("EventName", "an event name"), EContext::EventParams, /*bAllowGameplay=*/true); return; }
 				if (Word == TEXT("test")) { ParseTestHeader(Node, EDnaLineKind::Test); return; }
 				if (Word == TEXT("explore")) { ParseTestHeader(Node, EDnaLineKind::Explore); return; }
 
@@ -431,8 +431,11 @@ namespace UE::DreamNarrative::Lang
 				Unexpected(Node, LOCTEXT("AtTopLevel", "at the top level; expected file, character, fact, chapter, quest, dialogue, stage, channel, event, test or explore"));
 			}
 
-			/** `channel 名` / `event 名`: a name, nothing after it, and a block of Context lines (which may be empty). */
-			void ParseNamedBlockHeader(FDnaLineNode& Node, EDnaLineKind Kind, const FText& What, EContext Context)
+			/**
+			 * `channel 名` / `event 名 [gameplay 标签]`: a name, for an event the gameplay event that raises
+			 * it, and a block of Context lines (which may be empty).
+			 */
+			void ParseNamedBlockHeader(FDnaLineNode& Node, EDnaLineKind Kind, const FText& What, EContext Context, bool bAllowGameplay)
 			{
 				Node.Kind = Kind;
 				TArray<FDnaToken> Tokens;
@@ -440,7 +443,12 @@ namespace UE::DreamNarrative::Lang
 				int32 Index = 1;
 				if (ExpectIdentifier(Tokens, Index, What, Node.Payload.Name))
 				{
-					ExpectEnd(Tokens, Index);
+					const bool bTagOk = !(bAllowGameplay && Tokens[Index].IsWord(TEXT("gameplay")))
+						|| ExpectDottedName(Tokens, ++Index, LOCTEXT("EventGameplayTag", "a gameplay tag after 'gameplay'"), Node.Payload.GameplayTag);
+					if (bTagOk)
+					{
+						ExpectEnd(Tokens, Index);
+					}
 				}
 				ClassifyChildren(Node, Context);
 			}
@@ -459,11 +467,11 @@ namespace UE::DreamNarrative::Lang
 				FDnaLinePayload& P = Node.Payload;
 				P.Name = Tokens[0].Text;
 				int32 Index = 2;
-				if (ParseFactSpec(Node, Tokens, Index)
-					&& (P.bExtern || P.bSession || P.Authority != EDnaAuthority::Shared || !P.WasName.IsEmpty()))
+				if (ParseFactSpec(Node, Tokens, Index, /*bAllowSource=*/true)
+					&& (P.bExtern || P.bSession || P.Authority != EDnaAuthority::Shared || !P.WasName.IsEmpty() || !P.GameplayTag.IsEmpty()))
 				{
 					Fail(TEXT("DNS2019"), Node.Raw.Span, LOCTEXT("ParamModifier",
-						"An event parameter takes a type, `in (...)`, `range` and a default; extern, session, server, client and was belong to facts"));
+						"An event parameter takes a type, `in (...)`, `range`, a default and `from`; extern, session, server, client, was and gameplay belong to facts"));
 				}
 				RequireNoChildren(Node);
 			}
@@ -613,7 +621,7 @@ namespace UE::DreamNarrative::Lang
 			}
 
 			/** Type and modifiers of a fact, after the colon. Shared by top-level and grouped facts. */
-			bool ParseFactSpec(FDnaLineNode& Node, const TArray<FDnaToken>& Tokens, int32& Index)
+			bool ParseFactSpec(FDnaLineNode& Node, const TArray<FDnaToken>& Tokens, int32& Index, bool bAllowSource = false)
 			{
 				const FDnaToken& TypeToken = Tokens[FMath::Min(Index, Tokens.Num() - 1)];
 				if (!TypeToken.Is(EDnaTokenKind::Identifier) || !::DreamNarrative::TryParseFactType(TypeToken.Text, Node.Payload.FactType))
@@ -623,16 +631,41 @@ namespace UE::DreamNarrative::Lang
 							FText::FromString(TypeToken.Is(EDnaTokenKind::EndOfInput) ? TEXT("end of line") : TypeToken.Text)));
 				}
 				++Index;
-				return ParseFactModifiers(Node, Tokens, Index, /*bAllowValueClauses=*/true);
+				return ParseFactModifiers(Node, Tokens, Index, /*bAllowValueClauses=*/true, bAllowSource);
 			}
 
-			bool ParseFactModifiers(FDnaLineNode& Node, const TArray<FDnaToken>& Tokens, int32& Index, bool bAllowValueClauses)
+			bool ParseFactModifiers(FDnaLineNode& Node, const TArray<FDnaToken>& Tokens, int32& Index, bool bAllowValueClauses, bool bAllowSource = false)
 			{
 				FDnaLinePayload& P = Node.Payload;
 				while (!Tokens[Index].Is(EDnaTokenKind::EndOfInput))
 				{
 					const FDnaToken& Token = Tokens[Index];
 					if (Token.IsWord(TEXT("extern"))) { P.bExtern = true; ++Index; continue; }
+					if (Token.IsWord(TEXT("gameplay")))
+					{
+						++Index;
+						if (!ExpectDottedName(Tokens, Index, LOCTEXT("FactGameplayTag", "a gameplay tag after 'gameplay'"), P.GameplayTag)) { return false; }
+						continue;
+					}
+					if (bAllowSource && Token.IsWord(TEXT("from")))
+					{
+						++Index;
+						if (Tokens[Index].IsWord(TEXT("magnitude")))
+						{
+							P.GameplaySource = EDnaGameplaySource::Magnitude;
+							++Index;
+							continue;
+						}
+						const bool bInstigator = Tokens[Index].IsWord(TEXT("instigator"));
+						if ((bInstigator || Tokens[Index].IsWord(TEXT("target"))) && Index + 1 < Tokens.Num() && Tokens[Index + 1].IsWord(TEXT("tags")))
+						{
+							Index += 2;
+							P.GameplaySource = bInstigator ? EDnaGameplaySource::InstigatorTags : EDnaGameplaySource::TargetTags;
+							if (!ExpectDottedName(Tokens, Index, LOCTEXT("SourceTag", "a gameplay tag after 'tags'"), P.GameplaySourceTag)) { return false; }
+							continue;
+						}
+						return Fail(TEXT("DNS2007"), Tokens[Index].Span, LOCTEXT("GameplaySource", "Expected magnitude, instigator tags or target tags after 'from'"));
+					}
 					if (Token.IsWord(TEXT("session"))) { P.bSession = true; ++Index; continue; }
 					if (Token.IsWord(TEXT("server"))) { P.Authority = EDnaAuthority::Server; ++Index; continue; }
 					if (Token.IsWord(TEXT("client"))) { P.Authority = EDnaAuthority::Client; ++Index; continue; }

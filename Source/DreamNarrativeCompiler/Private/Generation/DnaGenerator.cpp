@@ -512,6 +512,7 @@ namespace UE::DreamNarrative::Lang
 				Decl.RangeMax = Info.RangeMax;
 				for (const FString& Member : Info.Domain) { Decl.Domain.Add(FName(*Member)); }
 				Decl.WasName = Info.WasName.IsEmpty() ? NAME_None : FName(*Info.WasName);
+				Decl.GameplayTag = Info.GameplayTag.IsEmpty() ? NAME_None : FName(*Info.GameplayTag);
 				Decl.Default = FDnaValue::DefaultFor(Info.Type);
 				if (Info.DefaultExpr.IsValid())
 				{
@@ -540,8 +541,12 @@ namespace UE::DreamNarrative::Lang
 				if (Info.Document != &Document) { continue; }
 				FDnaEventDecl& Decl = Script->Events.AddDefaulted_GetRef();
 				Decl.Name = FName(*Info.Name);
+				Decl.GameplayTag = Info.GameplayTag.IsEmpty() ? NAME_None : FName(*Info.GameplayTag);
 				for (const FDnaFactInfo& Param : Info.Params)
 				{
+					FDnaEventParamSource& Source = Decl.ParamSources.AddDefaulted_GetRef();
+					Source.Source = Param.Source;
+					Source.Tag = Param.SourceTag.IsEmpty() ? NAME_None : FName(*Param.SourceTag);
 					FDnaFactDecl& Out = Decl.Params.AddDefaulted_GetRef();
 					Out.Name = FName(*Param.Name);
 					Out.Type = Param.Type;

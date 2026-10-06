@@ -34,6 +34,11 @@ namespace UE::DreamNarrative::Lang
 		double RangeMax = 0.0;
 		TArray<FString> Domain;
 		FDnaExprPtr DefaultExpr;
+		/** `gameplay 标签` (a fact); empty for none. */
+		FString GameplayTag;
+		/** `from ...` (an event parameter). */
+		EDnaGameplaySource Source = EDnaGameplaySource::None;
+		FString SourceTag;
 
 		bool HasMember(const FString& Member) const { return Domain.Contains(Member); }
 	};
@@ -83,6 +88,8 @@ namespace UE::DreamNarrative::Lang
 	struct FDnaEventInfo : FDnaDeclBase
 	{
 		TArray<FDnaFactInfo> Params;
+		/** `gameplay 标签`; empty for none. */
+		FString GameplayTag;
 
 		const FDnaFactInfo* FindParam(const FString& Param) const
 		{

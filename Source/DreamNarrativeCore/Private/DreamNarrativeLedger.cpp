@@ -72,6 +72,7 @@ void UDreamNarrativeLedger::RegisterScript(UDreamNarrativeScript* Script)
 			Redirects.Add(Decl.WasName, Decl.Name);
 		}
 	}
+	OnScriptRegistered.Broadcast(Script);
 }
 
 const FDnaFactDecl* UDreamNarrativeLedger::FindFactDecl(FName Fact) const

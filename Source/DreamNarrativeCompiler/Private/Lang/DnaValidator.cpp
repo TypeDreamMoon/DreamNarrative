@@ -313,6 +313,20 @@ namespace UE::DreamNarrative::Lang
 			void CheckFactDefault(const FDnaLineNode& Node, const FString& FullName)
 			{
 				const FDnaFactInfo* Fact = Program.FindFact(FullName);
+				if (Fact && !Fact->GameplayTag.IsEmpty())
+				{
+					// The ability system writes it, as the game.
+					if (!Fact->bExtern)
+					{
+						Fail(TEXT("DNS2021"), Node.Raw.Span, FText::Format(LOCTEXT("GameplayFactExtern",
+							"'{0}' is fed from a gameplay tag, so the game writes it; declare it extern"), FText::FromString(FullName)));
+					}
+					if (Fact->Type != EDnaFactType::Bool && Fact->Type != EDnaFactType::Int)
+					{
+						Fail(TEXT("DNS4007"), Node.Raw.Span, FText::Format(LOCTEXT("GameplayFactType",
+							"A gameplay tag feeds a bool (whether it is there) or an int (how many there are), not a {0}"), FText::FromString(::DreamNarrative::LexToString(Fact->Type))));
+					}
+				}
 				if (!Fact || !Fact->DefaultExpr.IsValid())
 				{
 					return;
@@ -541,6 +555,25 @@ namespace UE::DreamNarrative::Lang
 					if (Param.DefaultExpr.IsValid())
 					{
 						CheckAssignment(Param, Param.DefaultExpr, Param.Node->Raw.Span);
+					}
+					if (Param.Source != EDnaGameplaySource::None)
+					{
+						if (Event->GameplayTag.IsEmpty())
+						{
+							Fail(TEXT("DNS2022"), Param.Node->Raw.Span, FText::Format(LOCTEXT("SourceWithoutGameplay",
+								"'{0}' takes its value from a gameplay event, but event '{1}' names none; add `gameplay 标签` to its header"),
+								FText::FromString(Param.Name), FText::FromString(Event->Name)));
+						}
+						const bool bFits = Param.Source == EDnaGameplaySource::Magnitude
+							? (Param.Type == EDnaFactType::Int || Param.Type == EDnaFactType::Float)
+							: (Param.Type == EDnaFactType::Bool || Param.Type == EDnaFactType::Tag);
+						if (!bFits)
+						{
+							Fail(TEXT("DNS4007"), Param.Node->Raw.Span, FText::Format(LOCTEXT("SourceType",
+								"A {0} parameter cannot take its value from {1}: magnitude feeds an int or a float, tags feed a bool or a tag"),
+								FText::FromString(::DreamNarrative::LexToString(Param.Type)),
+								FText::FromString(Param.Source == EDnaGameplaySource::Magnitude ? TEXT("magnitude") : TEXT("tags"))));
+						}
 					}
 					if (Param.Type == EDnaFactType::Tag && Param.Domain.Num() == 0)
 					{
