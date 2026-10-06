@@ -9,6 +9,7 @@
 #include "Lang/DnaDump.h"
 #include "Lang/DnaModel.h"
 #include "Lang/DnaParser.h"
+#include "Lang/DnaProject.h"
 #include "Lang/DnaValidator.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -74,47 +75,17 @@ int32 UDreamNarrativeCommandlet::Main(const FString& Params)
 	}
 	UE_LOG(LogDreamNarrativeCompiler, Display, TEXT("%d source(s)"), Files.Num());
 
-	// -- pass 1: names across the project, for the text-tail `if` rule
-	TSet<FString> ProjectNames;
-	TMap<FString, FString> Texts;
-	for (const FString& File : Files)
-	{
-		FString Text;
-		if (FFileHelper::LoadFileToString(Text, *File))
-		{
-			CollectDnaDeclaredNames(FDnaSourceText(File, Text), ProjectNames);
-			Texts.Add(File, MoveTemp(Text));
-		}
-	}
-
-	// -- pass 2: parse
+	// -- read, parse, model and check
 	FDnaDiagnosticSink Diagnostics;
-	TArray<TSharedPtr<FDnaDocument>> Documents;
-	for (const FString& File : Files)
-	{
-		const FString* Text = Texts.Find(File);
-		if (!Text)
-		{
-			Diagnostics.SetFilePath(File);
-			Diagnostics.Error(TEXT("DNS9002"), FDnaSpan(), FText::FromString(TEXT("Cannot read the file")));
-			continue;
-		}
-		FDnaParseOptions Options;
-		Options.ExternalNames = &ProjectNames;
-		TSharedPtr<FDnaDocument> Document = MakeShared<FDnaDocument>();
-		Diagnostics.SetFilePath(File);
-		ParseDnaDocument(FDnaSourceText(File, *Text), Options, *Document, Diagnostics);
-		if (bDump)
-		{
-			UE_LOG(LogDreamNarrativeCompiler, Display, TEXT("--- %s\n%s"), *File, *DumpDnaTree(*Document));
-		}
-		Documents.Add(Document);
-	}
-
-	// -- model and checks
 	FDnaProgram Program;
-	BuildDnaProgram(Documents, Program, Diagnostics);
-	ValidateDnaProgram(Program, Diagnostics);
+	LoadDnaProgram(Files, Program, Diagnostics);
+	if (bDump)
+	{
+		for (const TSharedPtr<FDnaDocument>& Document : Program.Documents)
+		{
+			UE_LOG(LogDreamNarrativeCompiler, Display, TEXT("--- %s\n%s"), *Document->Path, *DumpDnaTree(*Document));
+		}
+	}
 
 	// -- generate
 	FDnaGenerateResult Result;
