@@ -1,5 +1,6 @@
 // 动作游戏黄金样例(照 NieR:Automata 序章写)的测试:边打边讲——频道并行、事件开的对话、打断、排队、暂停与接着说、
-// 按行时长自己往下说、Boss 换阶段、字母结局;探索全路径,鲭鱼结局从哪儿都到得了。
+// 按行时长自己往下说、Boss 换阶段、字母结局;多周目——结局记录与路线跨周目、二周目换视角、选章保留进度与支线、
+// 武器故事。探索全路径(含开新周目):鲭鱼结局从哪儿都到得了,A、B 两个结局都看得到。
 
 file
   with: ../Corpus/Validate/Samples/automata.dna
@@ -128,7 +129,40 @@ test 吃下鲭鱼进Q结局
   expect 吃了鲭鱼 and 鲭鱼结局.completed
   expect chapter == 结局_Q
 
+test 看过A结局的二周目换9S的视角
+  given
+    chapter = 工厂深处
+  emit 抵达撤离点
+    操作员: 撤离点确认。2B,回来吧。
+  expect chapter == 结局_A and 已见结局.A and 路线 == B
+  newgame
+  expect chapter == 序章 and 已见结局.A and not 已会合
+  talk 二B
+    二B: 9S,跟上。
+    九S: 是!这次换我来看。
+  expect 已会合
+
+test 选章回到序章_钓到的鱼和支线还在
+  newgame
+  accept 迷途的机械
+  set 钓到的鱼 = 1
+  expect 迷途的机械.completed
+  emit Boss击破
+    - 回去吧。
+  expect chapter == 工厂深处
+  select 序章
+  expect chapter == 序章 and not 巨型机械已击破 and 钓到的鱼 == 1 and 迷途的机械.completed
+
+test 武器故事升级就解锁_跨周目也在
+  set 武器等级.白之约定 = 2
+  archive 武器故事.白之约定: 铸剑的人把名字刻在了剑脊内侧。
+  archive 武器故事.白之约定: 后来那个名字被人磨掉了,
+    剑却记得。
+  newgame
+  archive 武器故事.白之约定 = 2
+
 explore 序章全路径
   jump 序章
   eventually chapter == 结局_Q
+  eventually 已见结局.A and 已见结局.B
   softlock 鲭鱼结局.completed

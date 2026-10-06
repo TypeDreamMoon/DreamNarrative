@@ -1,10 +1,12 @@
-// NieR:Automata 序章(工厂)· 黄金样例:边打边讲
+// NieR:Automata 序章(工厂)· 黄金样例:边打边讲,多周目
 //
 // 照 NieR:Automata 序章的人物与情境写,台词是新写的,不是原作台词:2B 潜入工厂,司令部的通讯、Pod 的战术报告、
-// 9S 的闲聊在玩家操作时并行出现,Boss 换阶段与血量告急插进来,吃下鲭鱼就进字母结局。
+// 9S 的闲聊在玩家操作时并行出现,Boss 换阶段与血量告急插进来,吃下鲭鱼就进字母结局。打完巨型机械进工厂深处,
+// 到撤离点是 A 结局;看过 A 的二周目换 9S 的视角,走到 B 结局。
 // 覆盖:频道(声明 / 覆盖主频道 / 自动推进 / 忙时排队、打断、丢弃 / pauses 与 stops / resume)、带参数的事件、
 //       on 事件的对话(条件读参数、插值、once、cooldown、priority)、emit 带实参、主频道上由事件开的对话与选项、
-//       隐藏任务做的字母结局。
+//       隐藏任务做的字母结局;GAS 映射;跨周目的结局记录与路线(profile)、选章也保留的进度(progress)、
+//       side 任务、检查点、武器故事(archive)。
 // 对外发布之前,人物与名字换成原创。
 
 // ---------------------------------------------------------------- 角色
@@ -86,10 +88,34 @@ fact 吃了鲭鱼: bool
 fact 巨型机械已击破: bool extern
 fact 交战中: bool extern gameplay 状态.交战中      // 玩家的能力系统上有这个标签就是真
 
+// 跨存档、跨周目:看过哪些结局,这一周目走哪条路线。
+fact 已见结局 profile
+  A: bool
+  B: bool
+  Q: bool
+fact 路线: tag in (A, B, C) = A profile
+
+// 选章也不丢的进度:钓上来的鱼是游戏记的数。
+fact 钓到的鱼: int range 0..99 extern progress
+
+fact 武器等级 extern
+  白之约定: int range 0..4
+
 // ---------------------------------------------------------------- 章节与字母结局
 
 chapter 序章
   advance -> 结局_Q if 鲭鱼结局.completed
+  advance -> 工厂深处 if 巨型机械已击破
+
+chapter 工厂深处 after 序章
+  implied
+    巨型机械已击破 = true
+
+chapter 结局_A after 工厂深处
+  title: A
+
+chapter 结局_B after 工厂深处
+  title: B
 
 chapter 结局_Q after 序章
   title: Q
@@ -99,7 +125,16 @@ quest 鲭鱼结局
   priority: hidden
   objective 吃了鲭鱼
   on complete
+    set 已见结局.Q = true
     play 结局字幕_Q
+
+// side 任务:选章时它的状态跟着进度走,不回检查点。
+quest 迷途的机械
+  title: 迷途的机械
+  objective 钓到的鱼 >= 1
+  journal
+    accepted: 有台机械说想吃鱼。
+    completed: 鱼送到了。
 
 stage 结局字幕_Q
   duration 6.0s
@@ -168,3 +203,35 @@ dialogue 击破之后 on Boss击破
   操作员: 2B,确认目标沉默。辛苦了。
   set 巨型机械已击破 = true
   emit 作战目标(目标 = 撤离点)
+
+// ---------------------------------------------------------------- 撤离与结局:看过 A 的下一周目走 B
+
+event 抵达撤离点 gameplay 事件.撤离
+
+dialogue 撤离_A on 抵达撤离点 if chapter == 工厂深处 and 路线 == A
+  操作员: 撤离点确认。2B,回来吧。
+  set 已见结局.A = true
+  advance 结局_A
+  set 路线 = B
+
+dialogue 撤离_B on 抵达撤离点 if chapter == 工厂深处 and 路线 == B
+  司令官: 9S,把你看到的都报告上来。
+  set 已见结局.B = true
+  advance 结局_B
+  set 路线 = C
+
+// 二周目:玩家是 9S,和 2B 说话。
+dialogue 二B_会合 for 二B if 路线 == B and not 已会合
+  二B: 9S,跟上。
+  九S: 是!这次换我来看。
+  set 已会合 = true
+
+// ---------------------------------------------------------------- 武器故事:解锁了就一直在,跨周目也在
+
+archive 武器故事.白之约定 profile
+  title: 白之约定
+  entry if 武器等级.白之约定 >= 1
+    铸剑的人把名字刻在了剑脊内侧。
+  entry if 武器等级.白之约定 >= 2
+    后来那个名字被人磨掉了,
+    剑却记得。
