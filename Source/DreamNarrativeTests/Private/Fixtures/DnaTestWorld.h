@@ -79,6 +79,8 @@ namespace UE::DreamNarrative::Tests
 		/** Same, for one source held in the test. */
 		bool CompileText(const FString& Text, const FString& Path = TEXT("Inline.dna"));
 
+		/** The game instance the world's subsystems live in: the outer for any other one a test makes. */
+		UGameInstance* GetGameInstance() const { return GameInstance; }
 		UDreamNarrativeLedger& Ledger() const { return *LedgerObject; }
 		UDreamNarrativeStory& Story() const { return *StoryObject; }
 		FDnaManualClock& Clock() const { return *ManualClock; }

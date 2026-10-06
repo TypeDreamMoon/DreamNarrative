@@ -13,17 +13,21 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "AbilitySystemComponent.h"
 #include "DreamNarrativeDialogueRunner.h"
+#include "DreamNarrativeGASBridge.h"
 #include "DreamNarrativeLedger.h"
 #include "DreamNarrativeRecorder.h"
 #include "DreamNarrativeScript.h"
 #include "DreamNarrativeStory.h"
 #include "Fixtures/DnaGameFixture.h"
 #include "Fixtures/DnaTestWorld.h"
+#include "GameFramework/Actor.h"
 #include "HAL/FileManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "GameplayTagContainer.h"
 #include "Replay/DnaReplay.h"
 #include "Smoke/DnaSmokeSaveGame.h"
 
@@ -298,6 +302,80 @@ bool FDnaSmokeQuestTimeoutSaveTest::RunTest(const FString& Parameters)
 	Session.Tick(0.4f, 2);
 	TestEqual(TEXT("out of time once it has"), Story->GetQuestStateOf(Quest), EDnaQuestState::TimedOut);
 	Console.Says(TEXT("dn.quests"), TEXT("信没送到。"));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaSmokeChannelsTest, "DreamNarrative.Smoke.InProcess.ChannelsInTheGame", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+
+bool FDnaSmokeChannelsTest::RunTest(const FString& Parameters)
+{
+	FDnaScratchAssets Assets(*this, { TEXT("Tests/Smoke/Channels.dna") });
+	if (!Assets.IsValid())
+	{
+		return false;
+	}
+	FDnaStandaloneGame Game;
+	FDnaConsole Console(*this, Game);
+	Console.Says(TEXT("dn.load"), TEXT("Registered 1 script(s)"));
+	UDreamNarrativeStory* Story = Game.GetStory();
+	UDreamNarrativeGASBridge* Bridge = Game.GetGameInstance()->GetSubsystem<UDreamNarrativeGASBridge>();
+	if (!TestNotNull(TEXT("the GAS bridge is a subsystem of the game instance"), Bridge))
+	{
+		return false;
+	}
+
+	// The boss: an actor in the world with an ability system, which the game hands to the bridge.
+	AActor* Boss = Game.GetWorld()->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("the boss"), Boss))
+	{
+		return false;
+	}
+	UAbilitySystemComponent* System = NewObject<UAbilitySystemComponent>(Boss);
+	System->RegisterComponent();
+	System->InitAbilityActorInfo(Boss, Boss);
+	Bridge->WatchAbilitySystem(System, /*bMirrorTags=*/false);
+
+	// The chatter starts and the boss changes phase meanwhile: two channels talk at once, and the
+	// player keeps the controls.
+	Console.Says(TEXT("dn.emit 闲置"), TEXT("你觉得机械生命体会做梦吗?"));
+	// The tag is one the test host registers (Tools/TestHost/Template/Config/Tags).
+	const FGameplayTag PhaseTag = FGameplayTag::RequestGameplayTag(TEXT("DreamNarrativeTest.Boss.Phase"), /*ErrorIfNotFound=*/false);
+	if (!TestTrue(TEXT("the test host registers the boss's phase tag"), PhaseTag.IsValid()))
+	{
+		return false;
+	}
+	FGameplayEventData Phase;
+	Phase.EventMagnitude = 2.f;
+	System->HandleGameplayEvent(PhaseTag, &Phase);
+	UDreamNarrativeDialogueRunner* Chatter = Story->GetRunner(TEXT("闲聊"));
+	UDreamNarrativeDialogueRunner* Report = Story->GetRunner(TEXT("侦察"));
+	if (!TestNotNull(TEXT("the chatter talks"), Chatter) || !TestNotNull(TEXT("the report came through the bridge"), Report))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the report's first line"), Report->GetCurrentLine().Text.ToString(), FString(TEXT("目标装甲脱落。")));
+	TestFalse(TEXT("neither takes the controls"), Story->IsInputLocked());
+
+	// The report moves on by itself on the world's time: its first line lasts 1.5 s.
+	Game.Tick(0.4f, 6);
+	TestEqual(TEXT("the report's next line, by itself"), Report->GetCurrentLine().Text.ToString(), FString(TEXT("建议:集中攻击核心。")));
+
+	// Talking to 9S holds the chatter still -- not the report -- until the talk is over.
+	const FString Held = Chatter->GetCurrentLine().Text.ToString();
+	Console.Says(TEXT("dn.talk 九S"), TEXT("先别说话,跟上。"));
+	TestTrue(TEXT("the talk takes the controls"), Story->IsInputLocked());
+	TestTrue(TEXT("the chatter holds still"), Chatter->IsPaused());
+	Game.Tick(0.4f, 10);
+	TestEqual(TEXT("time passing does not move it"), Chatter->GetCurrentLine().Text.ToString(), Held);
+	TestNull(TEXT("the report finished meanwhile"), Story->GetRunner(TEXT("侦察")));
+	Console.Says(TEXT("dn.next"), TEXT("[dialogue ended]"));
+	TestFalse(TEXT("the chatter goes on"), Chatter->IsPaused());
+	TestEqual(TEXT("from the line it was held at"), Chatter->GetCurrentLine().Text.ToString(), Held);
+	Game.Tick(0.4f, 15);
+	TestNull(TEXT("and says the rest by itself"), Story->GetRunner(TEXT("闲聊")));
+
+	Bridge->UnwatchAbilitySystem(System);
+	Boss->Destroy();
 	return !HasAnyErrors();
 }
 

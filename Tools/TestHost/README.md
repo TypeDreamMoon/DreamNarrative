@@ -26,6 +26,7 @@ DreamNarrativeTestHost/                    (default I:\UnrealProject_Moon\DEV_58
   DreamNarrativeTestHost.uproject          from Template/
   Config/DefaultEngine.ini                 from Template/
   Config/DefaultGame.ini                   from Template/
+  Config/Tags/DreamNarrativeTests.ini      from Template/ -- the gameplay tags the GAS tests use
   Source/DreamNarrativeTestHost*.Target.cs from Template/
   Source/DreamNarrativeTestHost/           from Template/ -- an empty primary game module
   Plugins/DreamNarrative/                  a git worktree of this repository

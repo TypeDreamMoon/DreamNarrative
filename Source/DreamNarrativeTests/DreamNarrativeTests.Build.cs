@@ -20,12 +20,15 @@ public class DreamNarrativeTests : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"GameplayTags",
+			"GameplayAbilities",
+			"GameplayTasks",
 			"Projects",
 			"AssetRegistry",
 			"Json",
 			"DreamNarrativeCore",
 			"DreamNarrativeStory",
 			"DreamNarrativeCompiler",
+			"DreamNarrativeGAS",
 		});
 	}
 }
