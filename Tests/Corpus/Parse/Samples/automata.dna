@@ -50,21 +50,24 @@ channel 闲聊
   busy: drop
 
 // ---------------------------------------------------------------- 事件:游戏或 GAS 发出,条件与台词里读参数
+//
+// 写了 gameplay 的事件由 GAS 桥从被盯着的能力系统里收到的 GameplayEvent(该标签或它下面的)发出;参数用 from 取:
+// magnitude 是事件的幅度,target tags 敌人.体型 是目标标签里「敌人.体型」下面那一个的末段(敌人.体型.大型 → 大型)。
 
 event 进入区域
   区域: tag in (海岸, 工厂外围, 工厂内部, 屋顶)
 
-event 发现敌人
-  类型: tag in (小型, 中型, 大型, 飞行)
-  数量: int = 1
+event 发现敌人 gameplay 事件.发现敌人
+  类型: tag in (小型, 中型, 大型, 飞行) from target tags 敌人.体型
+  数量: int = 1 from magnitude
 
-event Boss变阶段
-  阶段: int range 1..3
+event Boss变阶段 gameplay 事件.Boss.变阶段
+  阶段: int range 1..3 from magnitude
 
-event Boss击破
+event Boss击破 gameplay 事件.Boss.击破
 
-event 生命告急
-  剩余: float range 0..1
+event 生命告急 gameplay 事件.生命告急
+  剩余: float range 0..1 from magnitude
 
 event 使用物品
   物品: tag in (回复药, 鲭鱼)
@@ -81,6 +84,7 @@ fact 已会合: bool
 fact 工厂简报听过: bool
 fact 吃了鲭鱼: bool
 fact 巨型机械已击破: bool extern
+fact 交战中: bool extern gameplay 状态.交战中      // 玩家的能力系统上有这个标签就是真
 
 // ---------------------------------------------------------------- 章节与字母结局
 
@@ -148,9 +152,9 @@ dialogue 侦察_鲭鱼 on 使用物品 if 使用物品.物品 == 鲭鱼 channel 
   波德: 检测到异常摄入:鲭鱼。
   set 吃了鲭鱼 = true
 
-// ---------------------------------------------------------------- 闲聊:发呆时 9S 碎碎念,会合之前他还不在
+// ---------------------------------------------------------------- 闲聊:发呆时 9S 碎碎念,会合之前他还不在,打起来也不说
 
-dialogue 闲聊_发呆 on 闲置 if 已会合 channel 闲聊 cooldown 45s resume
+dialogue 闲聊_发呆 on 闲置 if 已会合 and not 交战中 channel 闲聊 cooldown 45s resume
   九S: 2B,你觉得机械生命体会做梦吗?
   九S: ……啊,当我没问。
 
