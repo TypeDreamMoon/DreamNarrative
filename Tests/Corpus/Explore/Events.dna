@@ -1,0 +1,30 @@
+// 探索器夹具:游戏随时可能发出有对话听的事件,参数取对话读到的各个关键值。三级警报在对讲频道上问要不要封锁,
+// 封了出口就再也走不了:软锁,复现路径里的选项写在对讲频道的块里。一级、二级警报什么也不开。
+
+character 甲
+
+channel 对讲
+  advance: player
+
+event 警报
+  级: int range 1..3
+
+fact 出口开着: bool = true
+fact 离开了: bool
+
+dialogue 警报_三级 on 警报 if 警报.级 >= 3 channel 对讲
+  甲: 三级警报,要封锁出口吗?
+  - 封锁。
+      set 出口开着 = false
+  - 不封。
+
+dialogue 出门 for 甲 if 出口开着
+  甲: 走吧。
+  set 离开了 = true
+
+dialogue 关着 for 甲
+  甲: 出不去了。
+
+// EXPECT DNS5105
+explore 走得了
+  softlock 离开了

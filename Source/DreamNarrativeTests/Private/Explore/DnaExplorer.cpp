@@ -4,6 +4,7 @@
 #include "Algo/Unique.h"
 #include "DreamNarrativeDialogue.h"
 #include "DreamNarrativeDialogueRunner.h"
+#include "DreamNarrativeEvent.h"
 #include "DreamNarrativeExpression.h"
 #include "DreamNarrativeLedger.h"
 #include "DreamNarrativeQuest.h"
@@ -14,7 +15,7 @@
 #include "Fixtures/DnaTestWorld.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/Crc.h"
-#include "UObject/StrongObjectPtr.h"
+#include "UObject/UObjectGlobals.h"
 
 namespace UE::DreamNarrative::Tests::Explore
 {
@@ -29,6 +30,10 @@ namespace UE::DreamNarrative::Tests::Explore
 		constexpr int32 SaveSampleEvery = 16;
 		/** Unreachable items listed per kind before the rest are only counted. */
 		constexpr int32 MaxListed = 12;
+		/** Ways of raising one event mixed from its parameters' key values; past this each parameter is varied alone. */
+		constexpr int32 MaxEventMixes = 64;
+		/** Every dialogue a run starts is a new object: the ones earlier runs left behind are let go every so many runs. */
+		constexpr int32 CollectEvery = 65536;
 
 		// ---------------------------------------------------------------- small pieces
 
@@ -288,6 +293,8 @@ namespace UE::DreamNarrative::Tests::Explore
 			Set,
 			/** Time runs until the next timer (a quest's timeout) goes off. */
 			Wait,
+			/** The game raises an event some dialogue opens on. */
+			Emit,
 		};
 
 		struct FMove
@@ -295,6 +302,8 @@ namespace UE::DreamNarrative::Tests::Explore
 			EMoveKind Kind = EMoveKind::Talk;
 			FName Target;
 			FDnaValue Value;
+			/** For Emit: the event as raised. */
+			FDnaEventPayload Event;
 			/** For Set: the fact's slot and the value as the state encodes it. */
 			int32 Slot = INDEX_NONE;
 			int32 Code = 0;
@@ -330,6 +339,8 @@ namespace UE::DreamNarrative::Tests::Explore
 		struct FRecording
 		{
 			TArray<TArray<FDnaChoiceView>> Choices;
+			/** The channel each of Choices was offered on. */
+			TArray<FName> ChoiceChannels;
 			TArray<FString> DrawNotes;
 			/** For a wait: how long it was. */
 			double WaitSeconds = 0.0;
@@ -422,7 +433,6 @@ namespace UE::DreamNarrative::Tests::Explore
 			IDnaRandomSource* const SavedSource = Ledger().GetRandomSource();
 			Ledger().SetTrace(&Trace);
 			Ledger().SetRandomSource(&Draws);
-			Runner.Reset(NewObject<UDreamNarrativeDialogueRunner>(GetTransientPackage()));
 			{
 				FDnaLogCapture Capture;
 				Log = &Capture;
@@ -451,11 +461,7 @@ namespace UE::DreamNarrative::Tests::Explore
 				Restore(States[0].Values);
 				Log = nullptr;
 			}
-			if (Runner->GetState() != EDnaRunnerState::Ended && Runner->GetState() != EDnaRunnerState::Idle)
-			{
-				Runner->Abort();
-			}
-			Runner.Reset();
+			Story().StopAllDialogue();
 			Ledger().SetRandomSource(SavedSource);
 			Ledger().SetTrace(SavedTrace);
 
@@ -484,6 +490,9 @@ namespace UE::DreamNarrative::Tests::Explore
 		TArray<FName> TimerNames;
 		TArray<FName> Talkers;
 		TArray<FName> Roots;
+		/** Events some dialogue opens on. */
+		TArray<FName> HeardEvents;
+		TArray<FName> ChannelNames;
 		TArray<FName> AllLines;
 		TArray<FName> AllOptions;
 		TMap<FName, int32> OptionIndex;
@@ -492,6 +501,8 @@ namespace UE::DreamNarrative::Tests::Explore
 		// -- the state layout
 		TMap<FName, FUsage> FactUse;
 		TMap<FName, FUsage> VisitUse;
+		/** Keyed `事件.参数`. */
+		TMap<FName, FUsage> ParamUse;
 		TArray<FFold> Folds;
 		int32 VisitBase = 0;
 		int32 OnceBase = 0;
@@ -518,7 +529,7 @@ namespace UE::DreamNarrative::Tests::Explore
 		FExploreTrace Trace;
 		FDrawSource Draws;
 		FDnaLogCapture* Log = nullptr;
-		TStrongObjectPtr<UDreamNarrativeDialogueRunner> Runner;
+		int32 RunsSinceCollect = 0;
 
 		UDreamNarrativeLedger& Ledger() const { return World.Ledger(); }
 		UDreamNarrativeStory& Story() const { return World.Story(); }
@@ -553,6 +564,7 @@ namespace UE::DreamNarrative::Tests::Explore
 
 			TSet<FName> Targets;
 			TSet<FName> TalkerSet;
+			TSet<FName> EventSet;
 			for (const TObjectPtr<UDreamNarrativeScript>& Script : World.GetScripts())
 			{
 				const UDnaDialogueSection* Dialogue = Script ? Script->FindSection<UDnaDialogueSection>() : nullptr;
@@ -566,6 +578,10 @@ namespace UE::DreamNarrative::Tests::Explore
 					if (!Node.ForCharacter.IsNone())
 					{
 						TalkerSet.Add(Node.ForCharacter);
+					}
+					if (!Node.OnEvent.IsNone())
+					{
+						EventSet.Add(Node.OnEvent);
 					}
 					for (const FDnaLineData& Line : Node.Lines)
 					{
@@ -593,13 +609,16 @@ namespace UE::DreamNarrative::Tests::Explore
 			}
 			Talkers = TalkerSet.Array();
 			Talkers.Sort([](const FName& A, const FName& B) { return A.ToString() < B.ToString(); });
-			// A dialogue with no `for` that no other dialogue goes to can only be started by the game.
+			HeardEvents = EventSet.Array();
+			HeardEvents.Sort([](const FName& A, const FName& B) { return A.ToString() < B.ToString(); });
+			Story().GetChannelNames(ChannelNames);
+			// A dialogue with no `for` and no `on` that no other dialogue goes to can only be started by the game.
 			for (const TObjectPtr<UDreamNarrativeScript>& Script : World.GetScripts())
 			{
 				const UDnaDialogueSection* Dialogue = Script ? Script->FindSection<UDnaDialogueSection>() : nullptr;
 				for (const FDnaDialogueNodeData& Node : Dialogue ? Dialogue->Nodes : TArray<FDnaDialogueNodeData>())
 				{
-					if (Node.ForCharacter.IsNone() && !Targets.Contains(Node.Name))
+					if (Node.ForCharacter.IsNone() && Node.OnEvent.IsNone() && !Targets.Contains(Node.Name))
 					{
 						Roots.Add(Node.Name);
 					}
@@ -636,6 +655,13 @@ namespace UE::DreamNarrative::Tests::Explore
 				}
 				for (const FDnaDialogueNodeData& Node : Dialogue->Nodes)
 				{
+					// A `once` entry asks whether it was ever left: `visited > 0`.
+					if (Node.bOnce)
+					{
+						FUsage& Usage = VisitUse.FindOrAdd(Node.Name);
+						Usage.bRead = true;
+						Usage.Compares.Add({ EDnaExprOperator::Gt, 0.0 });
+					}
 					Scan(Script->GetExpression(Node.Condition), ERole::Condition);
 					for (const FDnaLineData& Line : Node.Lines)
 					{
@@ -724,6 +750,10 @@ namespace UE::DreamNarrative::Tests::Explore
 			{
 				NoteRead(VisitUse.FindOrAdd(Node.Name), Expr, Index, Parent, Role);
 			}
+			else if (Node.Kind == EDnaExprNodeKind::EventParam)
+			{
+				NoteRead(ParamUse.FindOrAdd(ParamKey(Node.Event, Node.Name)), Expr, Index, Parent, Role);
+			}
 			for (const int32 Child : Node.Children)
 			{
 				ScanNode(Expr, Child, Index, Role);
@@ -784,6 +814,11 @@ namespace UE::DreamNarrative::Tests::Explore
 				}
 			}
 			Usage.bExact = true;
+		}
+
+		static FName ParamKey(FName Event, FName Param)
+		{
+			return FName(*FString::Printf(TEXT("%s.%s"), *Event.ToString(), *Param.ToString()));
 		}
 
 		void NoteWrite(FName Fact, EDnaAssignOp Assign, const FDnaCompiledExpr* Value)
@@ -877,6 +912,68 @@ namespace UE::DreamNarrative::Tests::Explore
 					Move.Code = EncodeValue(Slot, Value);
 				}
 			}
+			for (const FName& Event : HeardEvents)
+			{
+				for (FDnaEventPayload& Payload : KeyPayloads(Event))
+				{
+					FMove& Move = Moves.AddDefaulted_GetRef();
+					Move.Kind = EMoveKind::Emit;
+					Move.Target = Event;
+					Move.Event = MoveTemp(Payload);
+				}
+			}
+		}
+
+		/**
+		 * The ways worth raising an event: every mix of the key values of the parameters some dialogue
+		 * reads (the others keep their defaults), or, when that is too many, each such parameter varied
+		 * on its own.
+		 */
+		TArray<FDnaEventPayload> KeyPayloads(FName Event) const
+		{
+			FDnaEventPayload Plain;
+			Plain.Event = Event;
+			TArray<TPair<FName, TArray<FDnaValue>>> Varied;
+			const FDnaEventDecl* Decl = Ledger().FindEventDecl(Event);
+			for (const FDnaFactDecl& Param : Decl ? Decl->Params : TArray<FDnaFactDecl>())
+			{
+				const FUsage* Usage = ParamUse.Find(ParamKey(Event, Param.Name));
+				TArray<FDnaValue> Values = Usage && Usage->bRead ? KeyValues(Param, *Usage) : TArray<FDnaValue>();
+				if (Values.Num() > 0)
+				{
+					Varied.Add({ Param.Name, MoveTemp(Values) });
+				}
+			}
+			int64 Mixes = 1;
+			for (const TPair<FName, TArray<FDnaValue>>& Param : Varied)
+			{
+				Mixes = FMath::Min<int64>(Mixes * Param.Value.Num(), MaxEventMixes + 1);
+			}
+			TArray<FDnaEventPayload> Out = { Plain };
+			if (Mixes <= MaxEventMixes)
+			{
+				for (const TPair<FName, TArray<FDnaValue>>& Param : Varied)
+				{
+					TArray<FDnaEventPayload> Next;
+					for (const FDnaEventPayload& Partial : Out)
+					{
+						for (const FDnaValue& Value : Param.Value)
+						{
+							Next.Add_GetRef(Partial).Set(Param.Key, Value);
+						}
+					}
+					Out = MoveTemp(Next);
+				}
+				return Out;
+			}
+			for (const TPair<FName, TArray<FDnaValue>>& Param : Varied)
+			{
+				for (const FDnaValue& Value : Param.Value)
+				{
+					Out.Add_GetRef(Plain).Set(Param.Key, Value);
+				}
+			}
+			return Out;
 		}
 
 		/** The values of an extern worth writing: one per stretch its comparisons tell apart, and so on. */
@@ -1276,6 +1373,12 @@ namespace UE::DreamNarrative::Tests::Explore
 		FRunOutcome RunOnce(int32 From, int32 MoveIndex, const TArray<uint8>& Forced, FDialogueGraph* Graph, FRecording* Recording)
 		{
 			Restore(States[From].Values);
+			// Restoring ended every dialogue the last run left: nothing holds them any more.
+			if (++RunsSinceCollect >= CollectEvery)
+			{
+				RunsSinceCollect = 0;
+				CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+			}
 			FDecisions Decisions;
 			Decisions.Forced = Forced;
 			Draws.Decisions = &Decisions;
@@ -1284,19 +1387,16 @@ namespace UE::DreamNarrative::Tests::Explore
 
 			FRunOutcome Out;
 			const FMove& Move = Moves[MoveIndex];
-			bool bStarted = false;
 			switch (Move.Kind)
 			{
 			case EMoveKind::Talk:
 			{
 				const FName Entry = Story().SelectEntry(Move.Target);
-				bStarted = !Entry.IsNone() && StartNode(Entry);
-				if (!bStarted) { Out.End = ERunEnd::NotApplicable; }
+				if (Entry.IsNone() || !Story().StartDialogue(Entry)) { Out.End = ERunEnd::NotApplicable; }
 				break;
 			}
 			case EMoveKind::Start:
-				bStarted = StartNode(Move.Target);
-				if (!bStarted) { Out.End = ERunEnd::NotApplicable; }
+				if (!Story().StartDialogue(Move.Target)) { Out.End = ERunEnd::NotApplicable; }
 				break;
 			case EMoveKind::Set:
 				Ledger().SetFact(Move.Target, Move.Value, EDnaWriteSource::Game);
@@ -1311,11 +1411,16 @@ namespace UE::DreamNarrative::Tests::Explore
 					Out.End = ERunEnd::NotApplicable;
 				}
 				break;
+			case EMoveKind::Emit:
+				Ledger().RaiseEvent(Move.Event);
+				break;
 			}
-			if (bStarted)
+			// A write or a timer can open dialogue too (a quest's `emit`), so every move is talked out.
+			if (Out.End != ERunEnd::NotApplicable)
 			{
 				Drive(Out, Decisions, Graph, Recording);
 			}
+			NoteVisits(States[From].Values);
 			Draws.Decisions = nullptr;
 			Out.Points = MoveTemp(Decisions.Points);
 			Out.bDiverged = Decisions.bDiverged;
@@ -1339,25 +1444,27 @@ namespace UE::DreamNarrative::Tests::Explore
 			return false;
 		}
 
-		bool StartNode(FName Node)
-		{
-			const UDnaDialogueSection* Section = nullptr;
-			return Story().FindNode(Node, &Section) && Runner->Start(&Story(), &Ledger(), Section, Node);
-		}
-
+		/**
+		 * Lets every channel say all it has, the way a player who never waits would: lines move on at
+		 * once, each choice takes the run's next decision, waits run on the clock once nothing else is
+		 * left to show. The choice points of a dialogue talking alone go into the move's graph.
+		 */
 		void Drive(FRunOutcome& Out, FDecisions& Decisions, FDialogueGraph* Graph, FRecording* Recording)
 		{
 			int32 Previous = 0;
+			TArray<const UDreamNarrativeDialogueRunner*> Driven;
 			for (int32 Yield = 0;; ++Yield)
 			{
-				Out.LastNode = Runner->GetNodeName();
-				const EDnaRunnerState State = Runner->GetState();
-				if (State == EDnaRunnerState::Ended)
+				UDreamNarrativeDialogueRunner* Runner = NextRunnerToDrive(Story());
+				if (!Runner)
 				{
 					Out.End = ERunEnd::Ended;
 					if (Graph) { Graph->bEnds[Previous] = true; }
 					break;
 				}
+				Driven.AddUnique(Runner);
+				Out.LastNode = Runner->GetNodeName();
+				const EDnaRunnerState State = Runner->GetState();
 				if (Yield >= MaxYieldsPerRun)
 				{
 					Out.End = ERunEnd::Endless;
@@ -1377,7 +1484,8 @@ namespace UE::DreamNarrative::Tests::Explore
 					{
 						SeenOptions.Add(Choice.Id);
 					}
-					if (Graph)
+					// With another dialogue under way, where this one stands is not all there is of the run.
+					if (Graph && TalksAlone(*Runner))
 					{
 						FIntKey Key;
 						Key.Values.Add(NodeIndex.FindRef(Runner->GetNodeName()));
@@ -1405,6 +1513,7 @@ namespace UE::DreamNarrative::Tests::Explore
 					if (Recording)
 					{
 						Recording->Choices.Add(Choices);
+						Recording->ChoiceChannels.Add(Runner->GetChannel());
 					}
 					Runner->Choose(Decisions.Take(Choices.Num(), /*bDraw=*/false));
 				}
@@ -1428,23 +1537,52 @@ namespace UE::DreamNarrative::Tests::Explore
 					break;
 				}
 			}
-			NoteEnteredNodes();
+			for (const UDreamNarrativeDialogueRunner* Runner : Driven)
+			{
+				NoteEnteredNodes(*Runner);
+			}
 		}
 
-		/** Ends a dialogue the explorer leaves; nothing it does from here is a decision. */
+		/** Nothing but Runner talks, or waits its turn. */
+		bool TalksAlone(const UDreamNarrativeDialogueRunner& Runner) const
+		{
+			for (const FName& Channel : ChannelNames)
+			{
+				const UDreamNarrativeDialogueRunner* Other = Story().GetRunner(Channel);
+				if ((Other && Other != &Runner) || Story().GetQueueLength(Channel) > 0)
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+
+		/** Ends the dialogues the explorer leaves; nothing they do from here is a decision. */
 		void Stop()
 		{
 			Draws.Decisions = nullptr;
-			Runner->Abort();
+			Story().StopAllDialogue();
 		}
 
-		void NoteEnteredNodes()
+		void NoteEnteredNodes(const UDreamNarrativeDialogueRunner& Runner)
 		{
-			for (const FString& Entry : Runner->GetTranscript())
+			for (const FString& Entry : Runner.GetTranscript())
 			{
 				if (Entry.StartsWith(TEXT("[enter ")) && Entry.EndsWith(TEXT("]")))
 				{
 					SeenNodes.Add(FName(*Entry.Mid(7, Entry.Len() - 8)));
+				}
+			}
+		}
+
+		/** A dialogue that started and ended inside another's step was never driven, but it was left. */
+		void NoteVisits(const TArray<int32>& Before)
+		{
+			for (int32 Index = 0; Index < NodeNames.Num(); ++Index)
+			{
+				if (Ledger().GetVisited(NodeNames[Index]) > Before[VisitBase + Index])
+				{
+					SeenNodes.Add(NodeNames[Index]);
 				}
 			}
 		}
@@ -1465,6 +1603,7 @@ namespace UE::DreamNarrative::Tests::Explore
 			case EMoveKind::Start: return FString::Printf(TEXT("start %s"), *Move.Target.ToString());
 			case EMoveKind::Set: return FString::Printf(TEXT("set %s = %s"), *Move.Target.ToString(), *Move.Value.ToString());
 			case EMoveKind::Wait: return TEXT("wait for the next timer");
+			case EMoveKind::Emit: return TEXT("emit ") + Move.Event.ToString();
 			}
 			return FString();
 		}
@@ -1774,6 +1913,8 @@ namespace UE::DreamNarrative::Tests::Explore
 			TArray<FString> Rolls;
 			TArray<FString> Notes;
 			TArray<FString> Picks;
+			// Picks on other channels go under a `channel` block of the step, in the order the channels first chose.
+			TArray<TPair<FName, TArray<FString>>> ChannelPicks;
 			int32 Draw = 0;
 			int32 Choice = 0;
 			for (int32 Point = 0; Point < Limit; ++Point)
@@ -1787,7 +1928,17 @@ namespace UE::DreamNarrative::Tests::Explore
 				}
 				else if (Recording.Choices.IsValidIndex(Choice))
 				{
-					Picks.Add(TEXT("  - ") + PickText(Recording.Choices[Choice], Taken.Taken));
+					const FName Channel = Recording.ChoiceChannels[Choice];
+					const FString Pick = PickText(Recording.Choices[Choice], Taken.Taken);
+					if (Channel == ::DreamNarrative::MainChannelName())
+					{
+						Picks.Add(TEXT("  - ") + Pick);
+					}
+					else
+					{
+						TPair<FName, TArray<FString>>* Block = ChannelPicks.FindByPredicate([Channel](const TPair<FName, TArray<FString>>& Each) { return Each.Key == Channel; });
+						(Block ? *Block : ChannelPicks.Emplace_GetRef(Channel, TArray<FString>())).Value.Add(TEXT("    - ") + Pick);
+					}
 					++Choice;
 				}
 			}
@@ -1797,6 +1948,11 @@ namespace UE::DreamNarrative::Tests::Explore
 			}
 			Lines.Add(Moves[MoveIndex].Kind == EMoveKind::Wait ? FString::Printf(TEXT("wait %gs"), Recording.WaitSeconds) : DescribeMove(MoveIndex));
 			Lines.Append(Picks);
+			for (const TPair<FName, TArray<FString>>& Block : ChannelPicks)
+			{
+				Lines.Add(TEXT("  channel ") + Block.Key.ToString());
+				Lines.Append(Block.Value);
+			}
 		}
 
 		/** The label when it names the choice on its own and reads back as the same text; the id otherwise. */

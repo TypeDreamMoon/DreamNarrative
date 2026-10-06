@@ -4,9 +4,11 @@
 //
 // A state is the ledger between two moves (facts, chapter, visits, once-choices). A move is one of
 // the things a player or the game can do there: talk to a character, start a dialogue only the game
-// can start, or write an extern fact to one of its key values. A move that runs a dialogue is played
-// once per way through it -- every choice and both ends of every draw -- by replaying it from the
-// state with the decisions forced, so no dialogue position ever has to be saved.
+// can start, write an extern fact to one of its key values, or raise an event some dialogue opens on
+// (with key values for the parameters its dialogues read). After a move every channel says all it
+// has, so between two moves nothing talks. A move is played once per way through it -- every choice
+// and both ends of every draw -- by replaying it from the state with the decisions forced, so no
+// dialogue position ever has to be saved.
 //
 // Numbers only ever compared with constants and only ever moving one way (a counter, a visit count)
 // are folded at the farthest boundary any comparison draws, and what no condition reads is left out

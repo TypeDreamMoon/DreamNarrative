@@ -1,0 +1,16 @@
+// 探索器夹具:只开一次的入口。开没开过是状态的一部分——第一次见面之后才轮得到「又见面了」,
+// 两种情形要是并成一个状态,第二段对话就永远走不到。
+
+character 甲
+
+fact 熟了: bool
+
+dialogue 初见 for 甲 once priority 1
+  甲: 初次见面。
+
+dialogue 再见 for 甲
+  甲: 又见面了。
+  set 熟了 = true
+
+explore 第二次见面
+  eventually 熟了
