@@ -15,6 +15,7 @@
 #include "DreamNarrativeEvent.h"
 #include "DreamNarrativeExpression.h"
 #include "DreamNarrativeScript.h"
+#include "DreamNarrativeStageHost.h"
 #include "DreamNarrativeTrace.h"
 #include "DreamNarrativeTypes.h"
 #include "Math/RandomStream.h"
@@ -342,6 +343,15 @@ public:
 
 	void SetQuestStateProvider(IDnaQuestStateProvider* Provider) { QuestStateProvider = Provider; }
 
+	// ---------------------------------------------------------------- stages (played by Stage)
+
+	/** Who plays the stages the story asks for; null for nobody (the story then only tells the game). Not owned. */
+	void SetStageHost(IDnaStageHost* Host) { StageHost = Host; }
+	IDnaStageHost* GetStageHost() const { return StageHost; }
+
+	/** The host's stages starting and ending, for what holds still while one plays. The host broadcasts it. */
+	FDnaStageActivitySignature OnStageActivity;
+
 	// ---------------------------------------------------------------- time and chance
 
 	/**
@@ -460,6 +470,7 @@ private:
 	bool bApplyingSnapshot = false;
 
 	IDnaQuestStateProvider* QuestStateProvider = nullptr;
+	IDnaStageHost* StageHost = nullptr;
 	FRandomStream Random;
 	IDnaRandomSource* RandomSource = nullptr;
 	TSharedPtr<IDnaClock> Clock;

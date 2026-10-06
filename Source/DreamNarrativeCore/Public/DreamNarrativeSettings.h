@@ -45,6 +45,27 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Dialogue", meta = (ClampMin = "0.0"))
 	float AutoAdvanceMinimumSeconds = 1.5f;
 
+	/** Content paths a stage's bare asset names (`montage AM_咆哮`) are looked for under, in order. A name that starts with `/` is a path already. */
+	UPROPERTY(Config, EditAnywhere, Category = "Stage")
+	TArray<FString> StageAssetRoots = { TEXT("/Game") };
+
+	/**
+	 * Post-process materials for the mask verbs, by verb (`distort`, `exposure`, `streaks`, `comic`,
+	 * `black`, `white`). A material's scalar parameter `Strength` follows the entry's envelope. Without
+	 * one a verb uses the engine's own post-process settings (fringe, exposure bias, bloom, saturation,
+	 * gain, offset).
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Stage")
+	TMap<FName, TSoftObjectPtr<class UMaterialInterface>> MaskMaterials;
+
+	/** `ramp dark` without `to`: the world's sun and sky lights go down to this share of their intensity. */
+	UPROPERTY(Config, EditAnywhere, Category = "Stage", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float LightRampFloor = 0.2f;
+
+	/** A stage still playing this many seconds past its end (its blends included) is ended by the watchdog. */
+	UPROPERTY(Config, EditAnywhere, Category = "Stage", meta = (ClampMin = "0.0"))
+	float StageWatchdogSeconds = 5.f;
+
 	virtual FName GetCategoryName() const override { return TEXT("Plugins"); }
 
 	static const UDreamNarrativeSettings* Get() { return GetDefault<UDreamNarrativeSettings>(); }
