@@ -1,0 +1,80 @@
+// 多周目写错的地方:fact 的作用域只能有一个(progress 只配存档槽);资料最多 31 条;test 里写了不存在的资料。
+
+fact 甲: bool session profile
+// EXPECT DNS2023 (3,1)
+fact 乙: int progress profile
+// EXPECT DNS2023 (5,1)
+fact 丙 session progress
+  丁: bool
+// EXPECT DNS2023 (8,3)
+
+archive 太长
+  entry if 甲
+    第 1 条。
+  entry if 甲
+    第 2 条。
+  entry if 甲
+    第 3 条。
+  entry if 甲
+    第 4 条。
+  entry if 甲
+    第 5 条。
+  entry if 甲
+    第 6 条。
+  entry if 甲
+    第 7 条。
+  entry if 甲
+    第 8 条。
+  entry if 甲
+    第 9 条。
+  entry if 甲
+    第 10 条。
+  entry if 甲
+    第 11 条。
+  entry if 甲
+    第 12 条。
+  entry if 甲
+    第 13 条。
+  entry if 甲
+    第 14 条。
+  entry if 甲
+    第 15 条。
+  entry if 甲
+    第 16 条。
+  entry if 甲
+    第 17 条。
+  entry if 甲
+    第 18 条。
+  entry if 甲
+    第 19 条。
+  entry if 甲
+    第 20 条。
+  entry if 甲
+    第 21 条。
+  entry if 甲
+    第 22 条。
+  entry if 甲
+    第 23 条。
+  entry if 甲
+    第 24 条。
+  entry if 甲
+    第 25 条。
+  entry if 甲
+    第 26 条。
+  entry if 甲
+    第 27 条。
+  entry if 甲
+    第 28 条。
+  entry if 甲
+    第 29 条。
+  entry if 甲
+    第 30 条。
+  entry if 甲
+    第 31 条。
+  entry if 甲
+// EXPECT DNS2024 (74,3)
+    第 32 条。
+
+test 看资料
+  archive 没有的资料 = 1
+// EXPECT DNS3014 (79,3)

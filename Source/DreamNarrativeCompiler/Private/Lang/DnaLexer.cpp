@@ -92,6 +92,7 @@ namespace UE::DreamNarrative::Lang
 			TEXT("and"), TEXT("or"), TEXT("not"), TEXT("true"), TEXT("false"), TEXT("visited"), TEXT("random"),
 			TEXT("chance"), TEXT("extern"), TEXT("session"), TEXT("server"), TEXT("client"), TEXT("shared"),
 			TEXT("range"), TEXT("in"), TEXT("was"), TEXT("for"), TEXT("player"),
+			TEXT("archive"), TEXT("entry"), TEXT("profile"), TEXT("progress"),
 		};
 		return Reserved.Contains(Word);
 	}

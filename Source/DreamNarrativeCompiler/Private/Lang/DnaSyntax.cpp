@@ -22,6 +22,8 @@ namespace UE::DreamNarrative::Lang
 		case EDnaLineKind::Channel: return TEXT("Channel");
 		case EDnaLineKind::Event: return TEXT("Event");
 		case EDnaLineKind::EventParam: return TEXT("EventParam");
+		case EDnaLineKind::Archive: return TEXT("Archive");
+		case EDnaLineKind::ArchiveEntry: return TEXT("Entry");
 		case EDnaLineKind::Property: return TEXT("Property");
 		case EDnaLineKind::Flag: return TEXT("Flag");
 		case EDnaLineKind::Implied: return TEXT("Implied");
@@ -90,6 +92,9 @@ namespace UE::DreamNarrative::Lang
 		case EDnaTestStepKind::Journal: return TEXT("journal");
 		case EDnaTestStepKind::Emit: return TEXT("emit");
 		case EDnaTestStepKind::ChannelLines: return TEXT("channel");
+		case EDnaTestStepKind::NewGame: return TEXT("newgame");
+		case EDnaTestStepKind::Select: return TEXT("select");
+		case EDnaTestStepKind::Archive: return TEXT("archive");
 		}
 		return TEXT("?");
 	}
@@ -107,6 +112,8 @@ namespace UE::DreamNarrative::Lang
 		case EDnaLineKind::Stage:
 		case EDnaLineKind::Channel:
 		case EDnaLineKind::Event:
+		case EDnaLineKind::Archive:
+		case EDnaLineKind::ArchiveEntry:
 		case EDnaLineKind::Implied:
 		case EDnaLineKind::Journal:
 		case EDnaLineKind::Objective:
@@ -257,6 +264,8 @@ namespace UE::DreamNarrative::Lang
 			FString Result = P.Name + TEXT(": ") + ::DreamNarrative::LexToString(P.FactType);
 			if (P.bExtern) { Result += TEXT(" extern"); }
 			if (P.bSession) { Result += TEXT(" session"); }
+			if (P.bProfile) { Result += TEXT(" profile"); }
+			if (P.bProgress) { Result += TEXT(" progress"); }
 			if (P.Authority == EDnaAuthority::Server) { Result += TEXT(" server"); }
 			if (P.Authority == EDnaAuthority::Client) { Result += TEXT(" client"); }
 			if (P.bHasRange) { Result += FString::Printf(TEXT(" range %g..%g"), P.RangeMin, P.RangeMax); }
@@ -299,7 +308,14 @@ namespace UE::DreamNarrative::Lang
 				Detail = P.Name + (P.GameplayTag.IsEmpty() ? TEXT("") : TEXT(" gameplay ") + P.GameplayTag);
 				break;
 			case EDnaLineKind::FactGroup:
-				Detail = P.Name + (P.bExtern ? TEXT(" extern") : TEXT("")) + (P.bSession ? TEXT(" session") : TEXT(""));
+				Detail = P.Name + (P.bExtern ? TEXT(" extern") : TEXT("")) + (P.bSession ? TEXT(" session") : TEXT(""))
+					+ (P.bProfile ? TEXT(" profile") : TEXT("")) + (P.bProgress ? TEXT(" progress") : TEXT(""));
+				break;
+			case EDnaLineKind::Archive:
+				Detail = P.Name + (P.bProfile ? TEXT(" profile") : TEXT(""));
+				break;
+			case EDnaLineKind::ArchiveEntry:
+				Detail = P.Condition.IsValid() ? TEXT("if ") + P.Condition->ToString() : FString();
 				break;
 			case EDnaLineKind::Chapter:
 				Detail = P.Name + (P.Target.IsEmpty() ? TEXT("") : TEXT(" after ") + P.Target) + (P.WasName.IsEmpty() ? TEXT("") : TEXT(" was ") + P.WasName);
@@ -445,6 +461,10 @@ namespace UE::DreamNarrative::Lang
 				case EDnaTestStepKind::Journal: Detail += TEXT(" ") + P.Name + TEXT(" ") + TextDump(P.Text); break;
 				case EDnaTestStepKind::Emit: Detail += TEXT(" ") + P.Name + EmitArgsDump(P.EmitArgs) + (P.bHold ? TEXT(" hold") : TEXT("")); break;
 				case EDnaTestStepKind::ChannelLines: Detail += TEXT(" ") + P.Name + (P.bStrict ? TEXT(" strict") : TEXT("")); break;
+				case EDnaTestStepKind::Select: Detail += TEXT(" ") + P.Target; break;
+				case EDnaTestStepKind::Archive:
+					Detail += TEXT(" ") + P.Name + (P.Count == INDEX_NONE ? TEXT(" ") + TextDump(P.Text) : FString::Printf(TEXT(" = %d"), P.Count));
+					break;
 				case EDnaTestStepKind::Always:
 				case EDnaTestStepKind::Eventually: Detail += TEXT(" ") + ExprText(P.Condition); break;
 				case EDnaTestStepKind::Softlock:

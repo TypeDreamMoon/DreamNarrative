@@ -41,6 +41,8 @@ namespace UE::DreamNarrative::Lang
 			EventParams,
 			/** The expectations inside a test's `channel` block. */
 			TestChannel,
+			/** The title and entries of an `archive`. */
+			Archive,
 		};
 
 		enum class EModifierSet : uint8
@@ -368,6 +370,7 @@ namespace UE::DreamNarrative::Lang
 					ClassifyPropertyOnly(Node);
 					break;
 				case EContext::EventParams: ClassifyEventParam(Node); break;
+				case EContext::Archive: ClassifyArchiveLine(Node); break;
 				case EContext::TestChannel: ClassifyTestExpectation(Node, /*bInChannel=*/true); break;
 				case EContext::FactGroup: ClassifyFactEntry(Node); break;
 				case EContext::Chapter: ClassifyChapterLine(Node); break;
@@ -418,6 +421,7 @@ namespace UE::DreamNarrative::Lang
 				if (Word == TEXT("stage")) { ParseStageHeader(Node); return; }
 				if (Word == TEXT("channel")) { ParseNamedBlockHeader(Node, EDnaLineKind::Channel, LOCTEXT("ChannelName", "a channel name"), EContext::Channel, /*bAllowGameplay=*/false); return; }
 				if (Word == TEXT("event")) { ParseNamedBlockHeader(Node, EDnaLineKind::Event, LOCTEXT("EventName", "an event name"), EContext::EventParams, /*bAllowGameplay=*/true); return; }
+				if (Word == TEXT("archive")) { ParseArchiveHeader(Node); return; }
 				if (Word == TEXT("test")) { ParseTestHeader(Node, EDnaLineKind::Test); return; }
 				if (Word == TEXT("explore")) { ParseTestHeader(Node, EDnaLineKind::Explore); return; }
 
@@ -428,7 +432,58 @@ namespace UE::DreamNarrative::Lang
 					MarkChildrenUnknown(Node);
 					return;
 				}
-				Unexpected(Node, LOCTEXT("AtTopLevel", "at the top level; expected file, character, fact, chapter, quest, dialogue, stage, channel, event, test or explore"));
+				Unexpected(Node, LOCTEXT("AtTopLevel", "at the top level; expected file, character, fact, chapter, quest, dialogue, stage, channel, event, archive, test or explore"));
+			}
+
+			/** `archive 名 [profile]`, then its title and entries. */
+			void ParseArchiveHeader(FDnaLineNode& Node)
+			{
+				Node.Kind = EDnaLineKind::Archive;
+				TArray<FDnaToken> Tokens;
+				Tokenize(Node, 0, Tokens);
+				int32 Index = 1;
+				if (ExpectDottedName(Tokens, Index, LOCTEXT("ArchiveName", "an archive name"), Node.Payload.Name))
+				{
+					if (Tokens[Index].IsWord(TEXT("profile")))
+					{
+						Node.Payload.bProfile = true;
+						++Index;
+					}
+					ExpectEnd(Tokens, Index);
+				}
+				RequireBody(Node);
+				ClassifyChildren(Node, EContext::Archive);
+			}
+
+			/** `title: 标题` or `entry [if 条件]` with its text in the lines under it. */
+			void ClassifyArchiveLine(FDnaLineNode& Node)
+			{
+				if (FirstWord(Node.Raw.Content) == TEXT("entry"))
+				{
+					Node.Kind = EDnaLineKind::ArchiveEntry;
+					TArray<FDnaToken> Tokens;
+					Tokenize(Node, 0, Tokens);
+					int32 Index = 1;
+					bool bHeaderOk = true;
+					if (Tokens[Index].IsKeyword(EDnaKeyword::If))
+					{
+						++Index;
+						Node.Payload.Condition = ExpectExpression(Tokens, Index);
+						bHeaderOk = Node.Payload.Condition.IsValid();
+					}
+					if (bHeaderOk)
+					{
+						ExpectEnd(Tokens, Index);
+					}
+					RequireBody(Node);
+					ClassifyContinuations(Node);
+					return;
+				}
+				if (TryParseProperty(Node))
+				{
+					return;
+				}
+				Unexpected(Node, LOCTEXT("InArchive", "inside an archive; expected 'title:' or 'entry'"));
 			}
 
 			/**
@@ -468,10 +523,10 @@ namespace UE::DreamNarrative::Lang
 				P.Name = Tokens[0].Text;
 				int32 Index = 2;
 				if (ParseFactSpec(Node, Tokens, Index, /*bAllowSource=*/true)
-					&& (P.bExtern || P.bSession || P.Authority != EDnaAuthority::Shared || !P.WasName.IsEmpty() || !P.GameplayTag.IsEmpty()))
+					&& (P.bExtern || P.bSession || P.bProfile || P.bProgress || P.Authority != EDnaAuthority::Shared || !P.WasName.IsEmpty() || !P.GameplayTag.IsEmpty()))
 				{
 					Fail(TEXT("DNS2019"), Node.Raw.Span, LOCTEXT("ParamModifier",
-						"An event parameter takes a type, `in (...)`, `range`, a default and `from`; extern, session, server, client, was and gameplay belong to facts"));
+						"An event parameter takes a type, `in (...)`, `range`, a default and `from`; extern, session, profile, progress, server, client, was and gameplay belong to facts"));
 				}
 				RequireNoChildren(Node);
 			}
@@ -641,6 +696,8 @@ namespace UE::DreamNarrative::Lang
 				{
 					const FDnaToken& Token = Tokens[Index];
 					if (Token.IsWord(TEXT("extern"))) { P.bExtern = true; ++Index; continue; }
+					if (Token.IsWord(TEXT("profile"))) { P.bProfile = true; ++Index; continue; }
+					if (Token.IsWord(TEXT("progress"))) { P.bProgress = true; ++Index; continue; }
 					if (Token.IsWord(TEXT("gameplay")))
 					{
 						++Index;
@@ -1780,6 +1837,62 @@ namespace UE::DreamNarrative::Lang
 					if (ExpectIdentifier(Tokens, Index, LOCTEXT("JumpName", "a chapter name after 'jump'"), P.Target))
 					{
 						ExpectEnd(Tokens, Index);
+					}
+					RequireNoChildren(Node);
+					return;
+				}
+				if (Word == TEXT("newgame"))
+				{
+					BeginStep(EDnaTestStepKind::NewGame);
+					ExpectEnd(Tokens, 1);
+					RequireNoChildren(Node);
+					return;
+				}
+				if (Word == TEXT("select"))
+				{
+					BeginStep(EDnaTestStepKind::Select);
+					if (ExpectIdentifier(Tokens, Index, LOCTEXT("SelectName", "a chapter name after 'select'"), P.Target))
+					{
+						ExpectEnd(Tokens, Index);
+					}
+					RequireNoChildren(Node);
+					return;
+				}
+				if (Word == TEXT("archive"))
+				{
+					// `archive 资料: 文本` -- the text is read as text -- or `archive 资料 = n`.
+					Node.Kind = EDnaLineKind::TestStep;
+					P.TestStep = EDnaTestStepKind::Archive;
+					P.Count = INDEX_NONE;
+					int32 End = SkipSpaces(Content, Word.Len());
+					const int32 NameStart = End;
+					while (End < Content.Len())
+					{
+						const FString Part = FirstWord(Content.Mid(End));
+						End += Part.Len();
+						if (Part.IsEmpty() || End >= Content.Len() || Content[End] != TEXT('.'))
+						{
+							break;
+						}
+						++End;
+					}
+					P.Name = Content.Mid(NameStart, End - NameStart);
+					const int32 After = SkipSpaces(Content, End);
+					const TCHAR Mark = After < Content.Len() ? NormalizeDnaPunctuation(Content[After]) : TEXT('\0');
+					if (!P.Name.IsEmpty() && Mark == TEXT(':'))
+					{
+						ParseText(Node, SkipSpaces(Content, After + 1), Content.Len(), P.Text);
+						ClassifyContinuations(Node);
+						return;
+					}
+					const FString Number = Content.Mid(SkipSpaces(Content, After + 1)).TrimEnd();
+					if (!P.Name.IsEmpty() && Mark == TEXT('=') && !Number.IsEmpty() && Number.IsNumeric() && !Number.Contains(TEXT(".")) && !Number.StartsWith(TEXT("-")))
+					{
+						P.Count = FCString::Atoi(*Number);
+					}
+					else
+					{
+						Fail(TEXT("DNS2007"), Node.Raw.Span, LOCTEXT("ArchiveShape", "Expected 'archive 资料: 文本' or 'archive 资料 = 条数'"));
 					}
 					RequireNoChildren(Node);
 					return;

@@ -38,6 +38,10 @@ namespace UE::DreamNarrative::Lang
 		Event,
 		/** `名: type ...` inside an event: one parameter, read like a grouped fact. */
 		EventParam,
+		/** `archive 名 [profile]` opening a block of a title and entries. */
+		Archive,
+		/** `entry [if 条件]` inside an archive; the lines under it are its text. */
+		ArchiveEntry,
 
 		/** `key: value`. Name is the key, Value the raw text, Text the parsed text. */
 		Property,
@@ -179,6 +183,12 @@ namespace UE::DreamNarrative::Lang
 		Emit,
 		/** `channel 频道 [strict]` under a talk, start or emit: the lines that channel shows. Payload.Name, bStrict; children are expectations. */
 		ChannelLines,
+		/** `newgame`: the game starts a new playthrough. */
+		NewGame,
+		/** `select 章节`: the game goes back to the chapter's checkpoint. Payload.Target. */
+		Select,
+		/** `archive 资料: 文本` (that entry is unlocked; Count is INDEX_NONE) or `archive 资料 = n` (n entries are). Payload.Name, Text, Count. */
+		Archive,
 	};
 
 	/** The source keyword of a step: `seed`, `talk`, ...; `line`, `absent` and `pick` for the expectations. */
@@ -271,6 +281,9 @@ namespace UE::DreamNarrative::Lang
 		double RangeMax = 0.0;
 		TArray<FString> Domain;
 		FDnaExprPtr DefaultExpr;
+		/** `profile` (a fact, a fact group or an archive) and `progress` (a fact or a fact group). */
+		bool bProfile = false;
+		bool bProgress = false;
 		/** `gameplay 标签` on a fact or an event header. */
 		FString GameplayTag;
 		/** `from ...` on an event parameter, and its tag for the tag sources. */

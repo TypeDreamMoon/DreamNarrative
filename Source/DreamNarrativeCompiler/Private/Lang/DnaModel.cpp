@@ -17,6 +17,7 @@ namespace UE::DreamNarrative::Lang
 		if (Stages.Contains(Name)) { if (OutKind) { *OutKind = TEXT("stage"); } return true; }
 		if (Channels.Contains(Name)) { if (OutKind) { *OutKind = TEXT("channel"); } return true; }
 		if (Events.Contains(Name)) { if (OutKind) { *OutKind = TEXT("event"); } return true; }
+		if (Archives.Contains(Name)) { if (OutKind) { *OutKind = TEXT("archive"); } return true; }
 		return false;
 	}
 
@@ -74,6 +75,8 @@ namespace UE::DreamNarrative::Lang
 				Info.Type = P.FactType;
 				Info.bExtern = P.bExtern || (Group && Group->bExtern);
 				Info.bSession = P.bSession || (Group && Group->bSession);
+				Info.bProfile = P.bProfile || (Group && Group->bProfile);
+				Info.bProgress = P.bProgress || (Group && Group->bProgress);
 				Info.Authority = (Group && P.Authority == EDnaAuthority::Shared) ? Group->Authority : P.Authority;
 				Info.bHasRange = P.bHasRange;
 				Info.RangeMin = P.RangeMin;
@@ -259,6 +262,16 @@ namespace UE::DreamNarrative::Lang
 							FDnaFactInfo& ParamInfo = Info.Params.AddDefaulted_GetRef();
 							FillFact(ParamInfo, Param->Payload.Name, *Param, Document, nullptr);
 						}
+						break;
+					}
+					case EDnaLineKind::Archive:
+					{
+						if (!Admit(P.Name, TEXT("archive"), Root)) { break; }
+						FDnaArchiveInfo& Info = Program.Archives.Add(P.Name);
+						Info.Name = P.Name;
+						Info.Node = &Root;
+						Info.Document = &Document;
+						Info.bProfile = P.bProfile;
 						break;
 					}
 					case EDnaLineKind::Stage:

@@ -145,6 +145,9 @@ namespace UE::DreamNarrative::Lang
 				case EDnaLineKind::Event:
 					CheckEvent(Root);
 					break;
+				case EDnaLineKind::Archive:
+					CheckArchive(Root);
+					break;
 				case EDnaLineKind::Test:
 				case EDnaLineKind::Explore:
 					CheckTest(Root);
@@ -246,7 +249,15 @@ namespace UE::DreamNarrative::Lang
 						break;
 					}
 					case EDnaTestStepKind::Jump:
+					case EDnaTestStepKind::Select:
 						RequireChapter(P.Target, Step->Raw.Span);
+						break;
+					case EDnaTestStepKind::Archive:
+						if (!Program.IsArchive(P.Name))
+						{
+							Fail(TEXT("DNS3014"), Step->Raw.Span, FText::Format(LOCTEXT("UnknownArchive", "No archive called '{0}' exists"), FText::FromString(P.Name)));
+						}
+						CheckText(P.Text);
 						break;
 					case EDnaTestStepKind::Always:
 					case EDnaTestStepKind::Eventually:
@@ -313,6 +324,11 @@ namespace UE::DreamNarrative::Lang
 			void CheckFactDefault(const FDnaLineNode& Node, const FString& FullName)
 			{
 				const FDnaFactInfo* Fact = Program.FindFact(FullName);
+				if (Fact && ((Fact->bSession && Fact->bProfile) || (Fact->bProgress && (Fact->bSession || Fact->bProfile))))
+				{
+					Fail(TEXT("DNS2023"), Node.Raw.Span, FText::Format(LOCTEXT("ScopeConflict",
+						"'{0}' is kept in one place: the save slot (the default, which `progress` refines), the session or the profile"), FText::FromString(FullName)));
+				}
 				if (Fact && !Fact->GameplayTag.IsEmpty())
 				{
 					// The ability system writes it, as the game.
@@ -708,6 +724,44 @@ namespace UE::DreamNarrative::Lang
 					if (Child.IsValid() && Child->Kind == EDnaLineKind::Continuation)
 					{
 						CheckText(Child->Payload.Text);
+					}
+				}
+			}
+
+			void CheckArchive(FDnaLineNode& Root)
+			{
+				TArray<FDnaLineNode*> Lines;
+				Root.GetContentChildren(Lines);
+				int32 Entries = 0;
+				for (FDnaLineNode* Line : Lines)
+				{
+					if (Line->Kind == EDnaLineKind::Property)
+					{
+						CheckText(Line->Payload.Text);
+						continue;
+					}
+					if (Line->Kind != EDnaLineKind::ArchiveEntry)
+					{
+						continue;
+					}
+					if (Line->Payload.Condition.IsValid()) { CheckCondition(Line->Payload.Condition); }
+					CheckContinuations(*Line);
+					// What is unlocked is kept as the bits of one int.
+					if (++Entries == 32)
+					{
+						Fail(TEXT("DNS2024"), Line->Raw.Span, LOCTEXT("TooManyEntries", "An archive can have at most 31 entries; split it in two"));
+					}
+				}
+			}
+
+			void CheckContinuations(const FDnaLineNode& Node)
+			{
+				for (const FDnaLineNodePtr& Child : Node.Children)
+				{
+					if (Child.IsValid() && Child->Kind == EDnaLineKind::Continuation)
+					{
+						CheckText(Child->Payload.Text);
+						CheckContinuations(*Child);
 					}
 				}
 			}

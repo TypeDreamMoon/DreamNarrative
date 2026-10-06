@@ -28,6 +28,8 @@ namespace UE::DreamNarrative::Lang
 		EDnaFactType Type = EDnaFactType::Bool;
 		bool bExtern = false;
 		bool bSession = false;
+		bool bProfile = false;
+		bool bProgress = false;
 		EDnaAuthority Authority = EDnaAuthority::Shared;
 		bool bHasRange = false;
 		double RangeMin = 0.0;
@@ -97,6 +99,11 @@ namespace UE::DreamNarrative::Lang
 		}
 	};
 
+	struct FDnaArchiveInfo : FDnaDeclBase
+	{
+		bool bProfile = false;
+	};
+
 	struct FDnaStageInfo : FDnaDeclBase
 	{
 		/** `base: line` -- times are percentages of the line the stage is attached to. */
@@ -131,6 +138,7 @@ namespace UE::DreamNarrative::Lang
 		/** In declaration order across documents, main first. */
 		TArray<FString> ChannelOrder;
 		TMap<FString, FDnaEventInfo> Events;
+		TMap<FString, FDnaArchiveInfo> Archives;
 		TMap<FString, FDnaTestInfo> Tests;
 		TMap<FString, FDnaTestInfo> Explores;
 
@@ -142,6 +150,7 @@ namespace UE::DreamNarrative::Lang
 		bool IsDialogue(const FString& Name) const { return Dialogues.Contains(Name); }
 		bool IsStage(const FString& Name) const { return Stages.Contains(Name); }
 		bool IsCharacter(const FString& Name) const { return Characters.Contains(Name); }
+		bool IsArchive(const FString& Name) const { return Archives.Contains(Name); }
 
 		/** True when any declaration of any kind uses this name. Out parameter says which kind. */
 		bool IsDeclared(const FString& Name, FString* OutKind = nullptr) const;

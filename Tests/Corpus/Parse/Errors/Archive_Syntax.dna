@@ -1,0 +1,20 @@
+archive
+// EXPECT DNS2007 (1,8)
+  entry
+    无名。
+
+archive 回忆 profile 多余
+// EXPECT DNS2008 (6,20)
+  entry if
+// EXPECT DNS2007 (8,11)
+    缺条件。
+  条目 1
+// EXPECT DNS2003 (11,3)
+
+event 敲门
+  次: int profile
+// EXPECT DNS2019 (15,3)
+
+test 看资料
+  archive 回忆 多
+// EXPECT DNS2007 (19,3)

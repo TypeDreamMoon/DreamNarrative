@@ -2,6 +2,7 @@
 
 #include "Generation/DnaGenerator.h"
 #include "DreamNarrativeCompilerModule.h"
+#include "DreamNarrativeArchive.h"
 #include "DreamNarrativeDialogue.h"
 #include "DreamNarrativeQuest.h"
 #include "DreamNarrativeScript.h"
@@ -122,6 +123,51 @@ namespace UE::DreamNarrative::Lang
 			Out.Text = MakeLocalizable(Namespace, Key, Builder.Pattern);
 			Out.Args = MoveTemp(Builder.Args);
 			return Out;
+		}
+
+		/** An archive's title and entries, from its block. */
+		void CompileArchive(const FDnaLineNode& Root, FDnaArchiveData& Out, FDnaExprCompiler& Exprs, const FString& Namespace)
+		{
+			const FDnaLinePayload& P = Root.Payload;
+			const FString Key = TEXT("archive.") + P.Name;
+			Out.Name = FName(*P.Name);
+			Out.Title = FText::FromString(P.Name);
+			Out.bProfile = P.bProfile;
+			Out.SourceLine = Root.LineNumber();
+			TArray<FDnaLineNode*> Lines;
+			Root.GetContentChildren(Lines);
+			for (const FDnaLineNode* Line : Lines)
+			{
+				if (Line->Kind == EDnaLineKind::Property && Line->Payload.Name == TEXT("title"))
+				{
+					Out.Title = MakeLocalizable(Namespace, Key + TEXT(".title"), Line->Payload.Value);
+					continue;
+				}
+				if (Line->Kind != EDnaLineKind::ArchiveEntry)
+				{
+					continue;
+				}
+				FDnaArchiveEntryData& Entry = Out.Entries.AddDefaulted_GetRef();
+				Entry.Condition = Exprs.Compile(Line->Payload.Condition);
+				Entry.SourceLine = Line->LineNumber();
+				// The lines under it, one after another.
+				FTextBuilder Builder;
+				TFunction<void(const FDnaLineNode&)> Append = [&Builder, &Exprs, &Append](const FDnaLineNode& Node)
+				{
+					for (const FDnaLineNodePtr& Child : Node.Children)
+					{
+						if (Child.IsValid() && Child->Kind == EDnaLineKind::Continuation)
+						{
+							if (!Builder.Pattern.IsEmpty()) { Builder.Pattern += TEXT("\n"); }
+							Builder.Append(Child->Payload.Text, Exprs);
+							Append(*Child);
+						}
+					}
+				};
+				Append(*Line);
+				Entry.Text.Text = MakeLocalizable(Namespace, FString::Printf(TEXT("%s.entry%d"), *Key, Out.Entries.Num() - 1), Builder.Pattern);
+				Entry.Text.Args = MoveTemp(Builder.Args);
+			}
 		}
 
 		/** A quest's rules, from its block. Validation already checked every name and value. */
@@ -507,6 +553,8 @@ namespace UE::DreamNarrative::Lang
 				Decl.Owner = Info.bExtern ? EDnaFactOwner::Extern : EDnaFactOwner::Narrative;
 				Decl.Authority = Info.Authority;
 				Decl.bSession = Info.bSession;
+				Decl.bProfile = Info.bProfile;
+				Decl.bProgress = Info.bProgress;
 				Decl.bHasRange = Info.bHasRange;
 				Decl.RangeMin = Info.RangeMin;
 				Decl.RangeMax = Info.RangeMax;
@@ -643,6 +691,8 @@ namespace UE::DreamNarrative::Lang
 					}
 					State.Default = FDnaValue::FromTag(::DreamNarrative::QuestStateMember(EDnaQuestState::Inactive));
 					State.WasName = Quest.WasName.IsNone() ? NAME_None : ::DreamNarrative::QuestStateFact(Quest.WasName);
+					// A side quest is progress: selecting a chapter keeps where it stands.
+					State.bProgress = Quest.Priority == EDnaQuestPriority::Side;
 
 					FDnaFactDecl& Done = Script->Facts.AddDefaulted_GetRef();
 					Done.Name = ::DreamNarrative::QuestObjectivesFact(Quest.Name);
@@ -650,6 +700,30 @@ namespace UE::DreamNarrative::Lang
 					Done.Owner = EDnaFactOwner::Narrative;
 					Done.Default = FDnaValue::FromInt(0);
 					Done.WasName = Quest.WasName.IsNone() ? NAME_None : ::DreamNarrative::QuestObjectivesFact(Quest.WasName);
+					Done.bProgress = State.bProgress;
+				}
+				Script->Sections.Add(Section);
+			}
+
+			// -- archives: the texts in a section, what is unlocked in a fact each
+			TArray<FDnaLineNode*> ArchiveRoots;
+			Document.GetRootsOfKind(EDnaLineKind::Archive, ArchiveRoots);
+			if (ArchiveRoots.Num() > 0)
+			{
+				UDnaArchiveSection* Section = NewObject<UDnaArchiveSection>(Script, NAME_None, Options.bTransient ? RF_Transient : RF_NoFlags);
+				for (const FDnaLineNode* Root : ArchiveRoots)
+				{
+					const FDnaArchiveInfo* Info = Program.Archives.Find(Root->Payload.Name);
+					if (!Info || Info->Node != Root) { continue; }
+					FDnaArchiveData& Archive = Section->Archives.AddDefaulted_GetRef();
+					CompileArchive(*Root, Archive, Exprs, Namespace);
+
+					FDnaFactDecl& Unlocked = Script->Facts.AddDefaulted_GetRef();
+					Unlocked.Name = ::DreamNarrative::ArchiveFact(Archive.Name);
+					Unlocked.Type = EDnaFactType::Int;
+					Unlocked.Owner = EDnaFactOwner::Narrative;
+					Unlocked.Default = FDnaValue::FromInt(0);
+					Unlocked.bProfile = Archive.bProfile;
 				}
 				Script->Sections.Add(Section);
 			}
