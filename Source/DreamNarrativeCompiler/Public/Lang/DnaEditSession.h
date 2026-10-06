@@ -76,6 +76,12 @@ namespace UE::DreamNarrative::Lang
 		 */
 		bool SetStageTimeBase(const FString& Stage, bool bLine, double LineSeconds, FText& OutError);
 
+		/** Any change made through the printer, as one step: kept when it parses as cleanly as before. */
+		bool ApplyEdit(TFunctionRef<bool(FDnaSourceEdit&, FText&)> Edit, FText& OutError) { return Apply(Edit, OutError); }
+
+		/** The declaration of a kind and name at the top of the current text; null when there is none. */
+		const FDnaLineNode* FindDeclaration(EDnaLineKind Kind, const FString& Name) const { return FindRoot(Kind, Name); }
+
 		/** The node on a line of the current text; null when the line is blank, a comment or past the end. */
 		const FDnaLineNode* FindLine(int32 Line) const;
 
