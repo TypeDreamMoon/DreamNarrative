@@ -11,6 +11,7 @@
 void UDreamNarrativeStory::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+	EnsureMainChannel();
 	Ledger = Collection.InitializeDependency<UDreamNarrativeLedger>();
 	if (Ledger)
 	{
@@ -21,6 +22,7 @@ void UDreamNarrativeStory::Initialize(FSubsystemCollectionBase& Collection)
 
 void UDreamNarrativeStory::InitializeStandalone(UDreamNarrativeLedger* InLedger)
 {
+	EnsureMainChannel();
 	Ledger = InLedger;
 	if (Ledger)
 	{
@@ -32,6 +34,7 @@ void UDreamNarrativeStory::InitializeStandalone(UDreamNarrativeLedger* InLedger)
 void UDreamNarrativeStory::Deinitialize()
 {
 	StopRecording();
+	StopAllDialogue();
 	if (Ledger)
 	{
 		UnwatchLedger();
@@ -60,28 +63,45 @@ void UDreamNarrativeStory::RegisterScript(UDreamNarrativeScript* Script)
 			QuestOrder.AddUnique(Name);
 		}
 	}
+
+	if (const UDnaDialogueSection* Dialogue = Script->FindSection<UDnaDialogueSection>())
+	{
+		for (const FDnaChannelData& Channel : Dialogue->Channels)
+		{
+			if (Channel.Name == ::DreamNarrative::MainChannelName())
+			{
+				// main is built in: a script may only say what it pauses and stops.
+				FDnaChannelData& Main = ChannelDecls.FindChecked(Channel.Name);
+				Main.Pauses = Channel.Pauses;
+				Main.Stops = Channel.Stops;
+				continue;
+			}
+			ChannelDecls.Add(Channel.Name, Channel);
+			ChannelOrder.AddUnique(Channel.Name);
+			Channels.FindOrAdd(Channel.Name);
+		}
+		for (int32 Index = 0; Index < Dialogue->Nodes.Num(); ++Index)
+		{
+			const FDnaDialogueNodeData& Node = Dialogue->Nodes[Index];
+			FNodeRef& Ref = NodeIndex.FindOrAdd(Node.Name);
+			Ref.Section = Dialogue;
+			Ref.NodeIndex = Index;
+			if (!Node.ForCharacter.IsNone())
+			{
+				EntriesByCharacter.FindOrAdd(Node.ForCharacter).AddUnique(Node.Name);
+			}
+			if (!Node.OnEvent.IsNone())
+			{
+				EntriesByEvent.FindOrAdd(Node.OnEvent).AddUnique(Node.Name);
+			}
+		}
+	}
+
 	// A hidden quest that can start already does, rather than at the first write -- including one whose
 	// condition reads facts only this script declares.
 	if (!Ledger->IsApplyingSnapshot())
 	{
 		CheckQuests();
-	}
-
-	const UDnaDialogueSection* Dialogue = Script->FindSection<UDnaDialogueSection>();
-	if (!Dialogue)
-	{
-		return;
-	}
-	for (int32 Index = 0; Index < Dialogue->Nodes.Num(); ++Index)
-	{
-		const FDnaDialogueNodeData& Node = Dialogue->Nodes[Index];
-		FNodeRef& Ref = NodeIndex.FindOrAdd(Node.Name);
-		Ref.Section = Dialogue;
-		Ref.NodeIndex = Index;
-		if (!Node.ForCharacter.IsNone())
-		{
-			EntriesByCharacter.FindOrAdd(Node.ForCharacter).AddUnique(Node.Name);
-		}
 	}
 }
 
@@ -133,27 +153,7 @@ const FDnaDialogueNodeData* UDreamNarrativeStory::FindNode(FName Node, const UDn
 UDreamNarrativeDialogueRunner* UDreamNarrativeStory::StartDialogue(FName Node)
 {
 	OnStartRequested.Broadcast(Node);
-	return Begin(Node);
-}
-
-UDreamNarrativeDialogueRunner* UDreamNarrativeStory::Begin(FName Node)
-{
-	const UDnaDialogueSection* Section = nullptr;
-	if (!FindNode(Node, &Section))
-	{
-		UE_LOG(LogDreamNarrativeStory, Error, TEXT("StartDialogue: no dialogue called '%s'"), *Node.ToString());
-		return nullptr;
-	}
-	if (ActiveRunner && ActiveRunner->GetState() != EDnaRunnerState::Ended)
-	{
-		ActiveRunner->Abort();
-	}
-	UDreamNarrativeDialogueRunner* Runner = NewObject<UDreamNarrativeDialogueRunner>(this);
-	Runner->OnEnded.AddDynamic(this, &UDreamNarrativeStory::HandleRunnerEnded);
-	ActiveRunner = Runner;
-	OnDialogueStarted.Broadcast(Runner);
-	Runner->Start(this, Ledger, Section, Node);
-	return Runner;
+	return StartOnChannel(Node, nullptr, /*bRequested=*/true);
 }
 
 FName UDreamNarrativeStory::SelectEntry(FName Character) const
@@ -173,7 +173,7 @@ FName UDreamNarrativeStory::SelectEntry(FName Character) const
 	{
 		const UDnaDialogueSection* Section = nullptr;
 		const FDnaDialogueNodeData* Node = FindNode(Name, &Section);
-		if (!Node || !Section) { continue; }
+		if (!Node || !Section || IsEntrySpent(*Node, /*bForEvent=*/false)) { continue; }
 		if (Node->Condition != INDEX_NONE)
 		{
 			const FDnaCompiledExpr* Condition = Section->GetScript() ? Section->GetScript()->GetExpression(Node->Condition) : nullptr;
@@ -219,7 +219,7 @@ UDreamNarrativeDialogueRunner* UDreamNarrativeStory::TalkTo(FName Character)
 		UE_LOG(LogDreamNarrativeStory, Log, TEXT("TalkTo: no entry of '%s' applies right now"), *Character.ToString());
 		return nullptr;
 	}
-	return Begin(Entry);
+	return StartOnChannel(Entry, nullptr, /*bRequested=*/true);
 }
 
 UDreamNarrativeRecorder* UDreamNarrativeStory::StartRecording(const FString& Name)
@@ -241,10 +241,3 @@ FString UDreamNarrativeStory::StopRecording()
 	return Stopping->IsRecording() ? Stopping->End() : FString();
 }
 
-void UDreamNarrativeStory::HandleRunnerEnded(UDreamNarrativeDialogueRunner* Runner)
-{
-	if (ActiveRunner == Runner)
-	{
-		ActiveRunner = nullptr;
-	}
-}

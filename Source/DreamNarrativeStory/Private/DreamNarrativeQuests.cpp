@@ -129,6 +129,8 @@ void UDreamNarrativeStory::WatchLedger()
 	CommitHandle = Ledger->OnBatchCommitted.AddUObject(this, &UDreamNarrativeStory::HandleBatchCommitted);
 	TimerHandle = Ledger->OnTimerFired.AddUObject(this, &UDreamNarrativeStory::HandleTimerFired);
 	SnapshotHandle = Ledger->OnSnapshotApplied.AddUObject(this, &UDreamNarrativeStory::HandleSnapshotApplied);
+	ApplyingHandle = Ledger->OnSnapshotApplying.AddUObject(this, &UDreamNarrativeStory::HandleSnapshotApplying);
+	EventHandle = Ledger->OnEventRaised.AddUObject(this, &UDreamNarrativeStory::HandleEventRaised);
 }
 
 void UDreamNarrativeStory::UnwatchLedger()
@@ -138,10 +140,21 @@ void UDreamNarrativeStory::UnwatchLedger()
 		Ledger->OnBatchCommitted.Remove(CommitHandle);
 		Ledger->OnTimerFired.Remove(TimerHandle);
 		Ledger->OnSnapshotApplied.Remove(SnapshotHandle);
+		Ledger->OnSnapshotApplying.Remove(ApplyingHandle);
+		Ledger->OnEventRaised.Remove(EventHandle);
 	}
 	CommitHandle.Reset();
 	TimerHandle.Reset();
 	SnapshotHandle.Reset();
+	ApplyingHandle.Reset();
+	EventHandle.Reset();
+}
+
+void UDreamNarrativeStory::HandleSnapshotApplying()
+{
+	// Dialogue positions are not saved: a load ends every dialogue, and cooldowns start over.
+	StopAllDialogue();
+	LastStarted.Reset();
 }
 
 void UDreamNarrativeStory::HandleBatchCommitted(const TArray<FName>& Changed)
@@ -460,8 +473,17 @@ void UDreamNarrativeStory::RunHandler(FName Quest, const FDnaQuestHandlerData& H
 			OnQuestStage.Broadcast(Quest, Ins.Name);
 			break;
 		case EDnaOpCode::Emit:
-			Ledger->EmitEvent(Ins.Name);
+		{
+			FDnaEventPayload Raised;
+			Raised.Event = Ins.Name;
+			for (int32 Arg = 0; Arg < Ins.ArgNames.Num() && Arg < Ins.ArgExprs.Num(); ++Arg)
+			{
+				const FDnaCompiledExpr* Value = Script.GetExpression(Ins.ArgExprs[Arg]);
+				Raised.Args.Add({ Ins.ArgNames[Arg], Value ? Ledger->Evaluate(*Value) : FDnaValue() });
+			}
+			Ledger->RaiseEventAs(Raised, EDnaWriteSource::Narrative);
 			break;
+		}
 		default:
 			break;
 		}

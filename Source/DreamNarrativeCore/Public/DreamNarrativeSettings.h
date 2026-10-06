@@ -34,6 +34,17 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Ledger")
 	int32 RandomSeed = 0;
 
+	/**
+	 * How long a line stays up on a channel that moves on by itself, when the line has no `for` and no
+	 * voice says otherwise: this many seconds per character of its text...
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Dialogue", meta = (ClampMin = "0.0"))
+	float AutoAdvanceSecondsPerCharacter = 0.15f;
+
+	/** ...and never less than this. */
+	UPROPERTY(Config, EditAnywhere, Category = "Dialogue", meta = (ClampMin = "0.0"))
+	float AutoAdvanceMinimumSeconds = 1.5f;
+
 	virtual FName GetCategoryName() const override { return TEXT("Plugins"); }
 
 	static const UDreamNarrativeSettings* Get() { return GetDefault<UDreamNarrativeSettings>(); }

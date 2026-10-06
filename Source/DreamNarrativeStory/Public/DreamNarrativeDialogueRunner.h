@@ -3,12 +3,17 @@
 // Executes one dialogue node at a time. The runner owns no UI: it raises OnLine / OnChoices / OnEnded
 // and waits for the game to call Advance() or Choose(). Everything it decides, it decides by reading
 // the ledger; everything it changes, it changes by writing the ledger in a batch.
+//
+// A runner runs on a channel. On one that moves on by itself it advances its own lines when their
+// time is up. Its channel may pause it (another channel is talking) and resume it later, when it
+// shows the line it stopped at again. A dialogue an event opened sees the event's parameters.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "DreamNarrativeClock.h"
 #include "DreamNarrativeDialogue.h"
+#include "DreamNarrativeEvent.h"
 #include "DreamNarrativeDialogueRunner.generated.h"
 
 class UDreamNarrativeLedger;
@@ -60,6 +65,14 @@ struct DREAMNARRATIVESTORY_API FDnaLineView
 
 	UPROPERTY(BlueprintReadOnly, Category = "Narrative")
 	bool bNarration = false;
+
+	/** The channel the dialogue runs on. */
+	UPROPERTY(BlueprintReadOnly, Category = "Narrative")
+	FName Channel;
+
+	/** Shown again: the dialogue was paused on this line and has just resumed. */
+	UPROPERTY(BlueprintReadOnly, Category = "Narrative")
+	bool bRepeat = false;
 };
 
 USTRUCT(BlueprintType)
@@ -84,6 +97,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDnaRunnerChoiceMadeSignature, UDre
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDnaRunnerEndedSignature, UDreamNarrativeDialogueRunner*, Runner);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FDnaRunnerStageSignature, UDreamNarrativeDialogueRunner*, Runner, FName, Stage, bool, bBlocking);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDnaRunnerWaitSignature, UDreamNarrativeDialogueRunner*, Runner, float, Seconds);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDnaRunnerPausedSignature, UDreamNarrativeDialogueRunner*, Runner);
 
 UCLASS(BlueprintType)
 class DREAMNARRATIVESTORY_API UDreamNarrativeDialogueRunner : public UObject
@@ -94,8 +108,40 @@ public:
 	/**
 	 * Begins executing Node of Section. Returns false when the node does not exist. A runner can be
 	 * started again once its dialogue ends; starting it while one is still running aborts that one.
+	 * The channel and the event scope are whatever was set before (main and none unless set).
 	 */
 	bool Start(UDreamNarrativeStory* InStory, UDreamNarrativeLedger* InLedger, const UDnaDialogueSection* Section, FName Node);
+
+	/** The channel the next Start runs on, and whether its lines move on by themselves. */
+	void SetChannel(FName InChannel, bool bInAutoAdvance);
+
+	/** The event whose parameters the next Start's dialogue reads; ClearEventScope for none. */
+	void SetEventScope(const FDnaEventPayload& InEvent);
+	void ClearEventScope();
+
+	UFUNCTION(BlueprintPure, Category = "Narrative|Dialogue")
+	FName GetChannel() const { return Channel; }
+
+	/** The event that opened the dialogue, or null. */
+	const FDnaEventPayload* GetEventScope() const { return bHasEvent ? &Event : nullptr; }
+
+	/**
+	 * Holds the dialogue where it is: nothing advances, no wait runs down. Its channel does this
+	 * while another channel talks over it.
+	 */
+	void Pause();
+
+	/** Goes on after Pause: the line (or the choices) on screen is shown again, a wait runs on from where it stopped. */
+	void Resume();
+
+	UFUNCTION(BlueprintPure, Category = "Narrative|Dialogue")
+	bool IsPaused() const { return bPaused; }
+
+	/** How many times OnLine has fired: a line shown again after a pause counts again. */
+	int32 GetLinesShown() const { return LinesShown; }
+
+	/** Seconds a line stays up on a channel that moves on by itself: its `for`, else an estimate from its length. */
+	static float LineSeconds(const FDnaLineView& Line);
 
 	/** After a line: continue. */
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Dialogue")
@@ -152,6 +198,14 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Narrative|Dialogue")
 	FDnaRunnerWaitSignature OnWait;
 
+	/** The channel held the dialogue still (another channel is talking); take its line off screen. */
+	UPROPERTY(BlueprintAssignable, Category = "Narrative|Dialogue")
+	FDnaRunnerPausedSignature OnPaused;
+
+	/** The dialogue goes on; OnLine (or OnChoices) follows with what is on screen again. */
+	UPROPERTY(BlueprintAssignable, Category = "Narrative|Dialogue")
+	FDnaRunnerPausedSignature OnResumed;
+
 	/** Every line and choice shown so far, for tests and the debugger. */
 	const TArray<FString>& GetTranscript() const { return Transcript; }
 
@@ -166,6 +220,13 @@ private:
 	FText DisplayNameOf(FName Character) const;
 	const FDnaCompiledExpr* Expr(int32 Index) const;
 	bool Condition(int32 Index) const;
+	/** An expression's value, with the event that opened the dialogue in scope. */
+	FDnaValue Evaluate(const FDnaCompiledExpr& Compiled) const;
+	/** Shows CurrentLine (unless paused): the broadcast, and the clock for a channel that moves on by itself. */
+	void ShowLine();
+	void ScheduleAutoAdvance();
+	void CancelAutoAdvance();
+	void HandleAutoAdvance();
 
 	UPROPERTY()
 	TObjectPtr<UDreamNarrativeStory> Story;
@@ -197,4 +258,19 @@ private:
 	TArray<FString> Transcript;
 	/** Guards against runaway loops in a node that never yields. */
 	int32 StepBudget = 0;
+
+	FName Channel;
+	bool bAutoAdvance = false;
+	bool bHasEvent = false;
+
+	UPROPERTY()
+	FDnaEventPayload Event;
+
+	bool bPaused = false;
+	/** The line or choices on screen have been broadcast (a paused runner holds them back until it resumes). */
+	bool bShown = false;
+	int32 LinesShown = 0;
+	FDnaClockHandle AdvanceHandle;
+	/** What a wait had left when the runner paused; negative when none was cut short. */
+	double PausedWaitRemaining = -1.0;
 };

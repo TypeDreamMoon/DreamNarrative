@@ -46,6 +46,59 @@ enum class EDnaAssignOp : uint8
 	Sub,
 };
 
+/** What a channel does with a dialogue that arrives while it is talking. */
+UENUM(BlueprintType)
+enum class EDnaChannelBusy : uint8
+{
+	/** It waits its turn (by priority, then by arrival). */
+	Queue,
+	/** It cuts in when its priority is not lower than the one talking; otherwise it waits its turn. */
+	Interrupt,
+	/** It is dropped. */
+	Drop,
+};
+
+/**
+ * A channel: one dialogue at a time runs on it, alongside the dialogues of other channels. The main
+ * channel is built in; `channel 名` blocks declare the others (and may adjust main's pauses and stops).
+ */
+USTRUCT(BlueprintType)
+struct DREAMNARRATIVESTORY_API FDnaChannelData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	FName Name;
+
+	/** The player cannot act while a dialogue on it runs. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	bool bLockInput = false;
+
+	/** Lines move on by themselves after their time; otherwise the game calls Advance(). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	bool bAutoAdvance = true;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	EDnaChannelBusy Busy = EDnaChannelBusy::Queue;
+
+	/** Channels that hold still while this one talks, and go on where they stopped after. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	TArray<FName> Pauses;
+
+	/** Channels this one cuts off when it starts talking. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	TArray<FName> Stops;
+
+	UPROPERTY(VisibleAnywhere, Category = "Narrative")
+	int32 SourceLine = 0;
+};
+
+namespace DreamNarrative
+{
+	/** `main`: the channel a dialogue that names none runs on. */
+	DREAMNARRATIVESTORY_API FName MainChannelName();
+}
+
 /** One speech or narration line. Speaker is None for narration. */
 USTRUCT(BlueprintType)
 struct DREAMNARRATIVESTORY_API FDnaLineData
@@ -164,6 +217,13 @@ struct DREAMNARRATIVESTORY_API FDnaInstruction
 	UPROPERTY()
 	bool bAsync = false;
 
+	/** For Emit: the parameters given, and the expression each takes its value from. */
+	UPROPERTY()
+	TArray<FName> ArgNames;
+
+	UPROPERTY()
+	TArray<int32> ArgExprs;
+
 	UPROPERTY()
 	int32 SourceLine = 0;
 };
@@ -191,6 +251,26 @@ struct DREAMNARRATIVESTORY_API FDnaDialogueNodeData
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	bool bExplicitPriority = false;
 
+	/** The event this node is an entry for (`on 事件`), or None. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	FName OnEvent;
+
+	/** The channel it runs on; None is main. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	FName Channel;
+
+	/** `once`: as an entry it opens only while it has never been left. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	bool bOnce = false;
+
+	/** `cooldown`: as an entry it opens only this many narrative seconds after it last started. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	float Cooldown = 0.f;
+
+	/** `resume`: cut off, it waits and goes on from the line it was cut at, instead of ending. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	bool bResume = false;
+
 	UPROPERTY(VisibleAnywhere, Category = "Narrative")
 	TArray<FDnaInstruction> Code;
 
@@ -207,7 +287,7 @@ struct DREAMNARRATIVESTORY_API FDnaDialogueNodeData
 	FName WasName;
 };
 
-/** The dialogue nodes of one script. */
+/** The dialogue nodes of one script, and the channels it declares. */
 UCLASS()
 class DREAMNARRATIVESTORY_API UDnaDialogueSection : public UDreamNarrativeScriptSection
 {
@@ -216,6 +296,9 @@ class DREAMNARRATIVESTORY_API UDnaDialogueSection : public UDreamNarrativeScript
 public:
 	UPROPERTY(VisibleAnywhere, Category = "Narrative")
 	TArray<FDnaDialogueNodeData> Nodes;
+
+	UPROPERTY(VisibleAnywhere, Category = "Narrative")
+	TArray<FDnaChannelData> Channels;
 
 	const FDnaDialogueNodeData* FindNode(FName Name) const;
 };

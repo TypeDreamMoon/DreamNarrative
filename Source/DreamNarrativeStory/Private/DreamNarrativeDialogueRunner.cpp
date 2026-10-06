@@ -2,6 +2,7 @@
 
 #include "DreamNarrativeDialogueRunner.h"
 #include "DreamNarrativeLedger.h"
+#include "DreamNarrativeSettings.h"
 #include "DreamNarrativeStory.h"
 #include "DreamNarrativeStoryModule.h"
 #include "DreamNarrativeTrace.h"
@@ -87,6 +88,15 @@ bool UDreamNarrativeDialogueRunner::Start(UDreamNarrativeStory* InStory, UDreamN
 	CurrentGroup = INDEX_NONE;
 	CurrentOptionIndices.Reset();
 	WaitHandle = FDnaClockHandle();
+	AdvanceHandle = FDnaClockHandle();
+	bPaused = false;
+	bShown = false;
+	LinesShown = 0;
+	PausedWaitRemaining = -1.0;
+	if (Channel.IsNone())
+	{
+		Channel = ::DreamNarrative::MainChannelName();
+	}
 	Transcript.Reset();
 	if (!Ledger || !Section || !EnterNode(InNode))
 	{
@@ -95,6 +105,34 @@ bool UDreamNarrativeDialogueRunner::Start(UDreamNarrativeStory* InStory, UDreamN
 	}
 	Run();
 	return true;
+}
+
+void UDreamNarrativeDialogueRunner::SetChannel(FName InChannel, bool bInAutoAdvance)
+{
+	Channel = InChannel.IsNone() ? ::DreamNarrative::MainChannelName() : InChannel;
+	bAutoAdvance = bInAutoAdvance;
+}
+
+void UDreamNarrativeDialogueRunner::SetEventScope(const FDnaEventPayload& InEvent)
+{
+	Event = InEvent;
+	bHasEvent = true;
+}
+
+void UDreamNarrativeDialogueRunner::ClearEventScope()
+{
+	Event = FDnaEventPayload();
+	bHasEvent = false;
+}
+
+float UDreamNarrativeDialogueRunner::LineSeconds(const FDnaLineView& Line)
+{
+	if (Line.Duration > 0.f)
+	{
+		return Line.Duration;
+	}
+	const UDreamNarrativeSettings* Settings = UDreamNarrativeSettings::Get();
+	return FMath::Max(Settings->AutoAdvanceMinimumSeconds, Settings->AutoAdvanceSecondsPerCharacter * Line.Text.ToString().Len());
 }
 
 bool UDreamNarrativeDialogueRunner::EnterNode(FName InNode)
@@ -123,6 +161,16 @@ const FDnaCompiledExpr* UDreamNarrativeDialogueRunner::Expr(int32 Index) const
 	return Script ? Script->GetExpression(Index) : nullptr;
 }
 
+FDnaValue UDreamNarrativeDialogueRunner::Evaluate(const FDnaCompiledExpr& Compiled) const
+{
+	if (!Ledger)
+	{
+		return FDnaValue();
+	}
+	FDnaEventScopeContext Context(*Ledger, bHasEvent ? &Event : nullptr);
+	return ::DreamNarrative::EvaluateExpr(Compiled, Context);
+}
+
 bool UDreamNarrativeDialogueRunner::Condition(int32 Index) const
 {
 	if (Index == INDEX_NONE)
@@ -130,7 +178,7 @@ bool UDreamNarrativeDialogueRunner::Condition(int32 Index) const
 		return true;
 	}
 	const FDnaCompiledExpr* Compiled = Expr(Index);
-	return Compiled && Ledger && Ledger->EvaluateCondition(*Compiled);
+	return Compiled && Compiled->IsValid() && Evaluate(*Compiled).AsBool();
 }
 
 FText UDreamNarrativeDialogueRunner::FormatText(const FText& Pattern, const TArray<int32>& Args) const
@@ -143,7 +191,7 @@ FText UDreamNarrativeDialogueRunner::FormatText(const FText& Pattern, const TArr
 	for (const int32 Index : Args)
 	{
 		const FDnaCompiledExpr* Compiled = Expr(Index);
-		const FDnaValue Value = (Compiled && Ledger) ? Ledger->Evaluate(*Compiled) : FDnaValue();
+		const FDnaValue Value = Compiled ? Evaluate(*Compiled) : FDnaValue();
 		switch (Value.Type)
 		{
 		case EDnaFactType::Int: Ordered.Add(FText::AsNumber(Value.Int)); break;
@@ -224,11 +272,13 @@ void UDreamNarrativeDialogueRunner::Run()
 			CurrentLine.Duration = Line.Duration;
 			CurrentLine.Stage = Line.Stage;
 			CurrentLine.bNarration = Line.Speaker.IsNone();
+			CurrentLine.Channel = Channel;
 			Transcript.Add(Line.Speaker.IsNone()
 				? FString::Printf(TEXT("> %s"), *CurrentLine.Text.ToString())
 				: FString::Printf(TEXT("%s: %s"), *Line.Speaker.ToString(), *CurrentLine.Text.ToString()));
 			State = EDnaRunnerState::ShowingLine;
-			OnLine.Broadcast(this, CurrentLine);
+			bShown = false;
+			ShowLine();
 			return;
 		}
 		case EDnaOpCode::Choice:
@@ -272,7 +322,11 @@ void UDreamNarrativeDialogueRunner::Run()
 				Transcript.Add(FString::Printf(TEXT("  - %s"), *View.Label.ToString()));
 			}
 			State = EDnaRunnerState::AwaitingChoice;
-			OnChoices.Broadcast(this, CurrentChoices);
+			bShown = !bPaused;
+			if (bShown)
+			{
+				OnChoices.Broadcast(this, CurrentChoices);
+			}
 			return;
 		}
 		case EDnaOpCode::Jump:
@@ -299,7 +353,7 @@ void UDreamNarrativeDialogueRunner::Run()
 			{
 				Tracer->OnEvent(Ins.Assign == EDnaAssignOp::Set ? TEXT("dialogue.set.assign") : Ins.Assign == EDnaAssignOp::Add ? TEXT("dialogue.set.add") : TEXT("dialogue.set.sub"));
 			}
-			FDnaValue Value = Ledger->Evaluate(*Compiled);
+			FDnaValue Value = Evaluate(*Compiled);
 			if (Ins.Assign != EDnaAssignOp::Set)
 			{
 				const FDnaValue Current = Ledger->GetFact(Ins.Name);
@@ -349,10 +403,25 @@ void UDreamNarrativeDialogueRunner::Run()
 			OnPlayStage.Broadcast(this, Ins.Name, false);
 			continue;
 		case EDnaOpCode::Emit:
+		{
 			++PC;
-			Transcript.Add(FString::Printf(TEXT("[emit %s]"), *Ins.Name.ToString()));
-			Ledger->EmitEvent(Ins.Name);
+			FDnaEventPayload Raised;
+			Raised.Event = Ins.Name;
+			for (int32 Arg = 0; Arg < Ins.ArgNames.Num() && Arg < Ins.ArgExprs.Num(); ++Arg)
+			{
+				const FDnaCompiledExpr* Compiled = Expr(Ins.ArgExprs[Arg]);
+				Raised.Args.Add({ Ins.ArgNames[Arg], Compiled ? Evaluate(*Compiled) : FDnaValue() });
+			}
+			if (Tracer && Raised.Args.Num() > 0) { Tracer->OnEvent(TEXT("dialogue.emit.args")); }
+			Transcript.Add(FString::Printf(TEXT("[emit %s]"), *Raised.ToString()));
+			Ledger->RaiseEventAs(Raised, EDnaWriteSource::Narrative);
+			// What the event opened may have ended this dialogue.
+			if (State == EDnaRunnerState::Ended)
+			{
+				return;
+			}
 			continue;
+		}
 		case EDnaOpCode::Wait:
 		{
 			++PC;
@@ -362,7 +431,14 @@ void UDreamNarrativeDialogueRunner::Run()
 			if (Tracer) { Tracer->OnEvent(bManualWait ? TEXT("dialogue.wait.manual") : TEXT("dialogue.wait.clock")); }
 			if (!bManualWait)
 			{
-				WaitHandle = Ledger->GetClock().Schedule(Ins.Seconds, FSimpleDelegate::CreateUObject(this, &UDreamNarrativeDialogueRunner::NotifyWaitFinished));
+				if (bPaused)
+				{
+					PausedWaitRemaining = Ins.Seconds;
+				}
+				else
+				{
+					WaitHandle = Ledger->GetClock().Schedule(Ins.Seconds, FSimpleDelegate::CreateUObject(this, &UDreamNarrativeDialogueRunner::NotifyWaitFinished));
+				}
 			}
 			OnWait.Broadcast(this, Ins.Seconds);
 			return;
@@ -386,17 +462,107 @@ void UDreamNarrativeDialogueRunner::Run()
 
 void UDreamNarrativeDialogueRunner::Advance()
 {
-	if (State != EDnaRunnerState::ShowingLine)
+	if (State != EDnaRunnerState::ShowingLine || bPaused)
 	{
 		return;
 	}
+	CancelAutoAdvance();
 	State = EDnaRunnerState::Idle;
 	Run();
 }
 
+void UDreamNarrativeDialogueRunner::ShowLine()
+{
+	if (bPaused)
+	{
+		return;
+	}
+	CurrentLine.bRepeat = bShown;
+	bShown = true;
+	++LinesShown;
+	// Scheduled before the broadcast, as a wait is: a listener that moves on at once cancels it.
+	ScheduleAutoAdvance();
+	OnLine.Broadcast(this, CurrentLine);
+}
+
+void UDreamNarrativeDialogueRunner::ScheduleAutoAdvance()
+{
+	CancelAutoAdvance();
+	if (bAutoAdvance && !bPaused && Ledger && State == EDnaRunnerState::ShowingLine)
+	{
+		AdvanceHandle = Ledger->GetClock().Schedule(LineSeconds(CurrentLine), FSimpleDelegate::CreateUObject(this, &UDreamNarrativeDialogueRunner::HandleAutoAdvance));
+	}
+}
+
+void UDreamNarrativeDialogueRunner::CancelAutoAdvance()
+{
+	if (AdvanceHandle.IsValid() && Ledger)
+	{
+		Ledger->GetClock().Cancel(AdvanceHandle);
+	}
+	AdvanceHandle.Invalidate();
+}
+
+void UDreamNarrativeDialogueRunner::HandleAutoAdvance()
+{
+	AdvanceHandle.Invalidate();
+	if (IDnaTrace* Tracer = Ledger ? Ledger->GetTrace() : nullptr)
+	{
+		Tracer->OnEvent(TEXT("channel.auto-advance"));
+	}
+	Advance();
+}
+
+void UDreamNarrativeDialogueRunner::Pause()
+{
+	if (bPaused || State == EDnaRunnerState::Ended)
+	{
+		return;
+	}
+	bPaused = true;
+	CancelAutoAdvance();
+	if (State == EDnaRunnerState::Waiting && WaitHandle.IsValid() && Ledger)
+	{
+		PausedWaitRemaining = FMath::Max(0.0, Ledger->GetClock().GetRemaining(WaitHandle));
+		Ledger->GetClock().Cancel(WaitHandle);
+	}
+	Transcript.Add(TEXT("[pause]"));
+	OnPaused.Broadcast(this);
+}
+
+void UDreamNarrativeDialogueRunner::Resume()
+{
+	if (!bPaused || State == EDnaRunnerState::Ended)
+	{
+		return;
+	}
+	bPaused = false;
+	Transcript.Add(TEXT("[resume]"));
+	OnResumed.Broadcast(this);
+	switch (State)
+	{
+	case EDnaRunnerState::ShowingLine:
+		ShowLine();
+		break;
+	case EDnaRunnerState::AwaitingChoice:
+		bShown = true;
+		OnChoices.Broadcast(this, CurrentChoices);
+		break;
+	case EDnaRunnerState::Waiting:
+		if (!bManualWait && PausedWaitRemaining >= 0.0 && Ledger)
+		{
+			WaitHandle = Ledger->GetClock().Schedule(PausedWaitRemaining, FSimpleDelegate::CreateUObject(this, &UDreamNarrativeDialogueRunner::NotifyWaitFinished));
+		}
+		PausedWaitRemaining = -1.0;
+		break;
+	default:
+		break;
+	}
+}
+
 bool UDreamNarrativeDialogueRunner::Choose(int32 Index)
 {
-	if (State != EDnaRunnerState::AwaitingChoice || !CurrentOptionIndices.IsValidIndex(Index) || !Node)
+	if (State != EDnaRunnerState::AwaitingChoice || bPaused || !CurrentOptionIndices.IsValidIndex(Index) || !Node)
 	{
 		return false;
 	}
@@ -433,7 +599,7 @@ void UDreamNarrativeDialogueRunner::NotifyStageFinished()
 
 void UDreamNarrativeDialogueRunner::NotifyWaitFinished()
 {
-	if (State != EDnaRunnerState::Waiting)
+	if (State != EDnaRunnerState::Waiting || bPaused)
 	{
 		return;
 	}
@@ -470,6 +636,8 @@ void UDreamNarrativeDialogueRunner::Finish()
 	{
 		Ledger->GetClock().Cancel(WaitHandle);
 	}
+	CancelAutoAdvance();
+	bPaused = false;
 	if (Ledger && !NodeName.IsNone())
 	{
 		Ledger->MarkVisited(NodeName);

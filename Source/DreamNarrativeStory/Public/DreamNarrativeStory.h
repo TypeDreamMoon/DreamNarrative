@@ -1,7 +1,13 @@
 // Copyright DreamMoon. All Rights Reserved.
 //
 // The Story subsystem: knows every dialogue node and quest in every registered script, picks the
-// entry for a character, hands out runners, and runs quests. Chapters live on the ledger.
+// entry for a character or an event, runs dialogues on their channels, and runs quests. Chapters
+// live on the ledger.
+//
+// Dialogues run on channels, one at a time each and side by side across channels. A channel that is
+// talking holds new arrivals by its busy rule (queue, interrupt, drop), may pause other channels
+// while it talks and may stop them when it starts. An event raised on the ledger opens, on each
+// channel, the best `on` entry that applies.
 //
 // A quest watches the ledger: after every committed batch it checks `fail if`, latches objectives
 // that hold, and completes when the required ones are all done. A hidden quest starts itself the
@@ -52,6 +58,63 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDnaQuestUpdatedSignature, FName, Qu
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDnaQuestRewardsSignature, FName, Quest, const TArray<FDnaReward>&, Rewards);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDnaQuestStageSignature, FName, Quest, FName, Stage);
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FDnaQuestRequestedSignature, EDnaQuestRequest /*What*/, FName /*Quest*/, EDnaWriteSource /*Who*/);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FDnaEventHeardSignature, const FDnaEventPayload& /*Event*/, EDnaWriteSource /*Source*/);
+
+/** A dialogue waiting its turn on a channel. */
+USTRUCT()
+struct FDnaChannelQueueItem
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FName Node;
+
+	UPROPERTY()
+	FDnaEventPayload Event;
+
+	UPROPERTY()
+	bool bHasEvent = false;
+
+	UPROPERTY()
+	int32 Priority = 0;
+
+	/** A dialogue cut off on this channel that goes on where it stopped, instead of Node starting. */
+	UPROPERTY()
+	TObjectPtr<UDreamNarrativeDialogueRunner> Suspended;
+
+	/** For a dialogue another channel stopped: that channel, which has to fall quiet first. */
+	UPROPERTY()
+	FName WaitsFor;
+};
+
+/** Where one channel stands. */
+USTRUCT()
+struct FDnaChannelState
+{
+	GENERATED_BODY()
+
+	/** The dialogue running (or paused) on it. */
+	UPROPERTY()
+	TObjectPtr<UDreamNarrativeDialogueRunner> Runner;
+
+	UPROPERTY()
+	TArray<FDnaChannelQueueItem> Queue;
+
+	/** Dialogues another channel stopped that go on once that channel falls quiet. */
+	UPROPERTY()
+	TArray<FDnaChannelQueueItem> Parked;
+
+	/** The node the running dialogue started at, its priority, and whether it goes on after being cut off. */
+	FName RunnerNode;
+	int32 RunnerPriority = 0;
+	bool bRunnerResumes = false;
+
+	/** How many talking channels hold this one still. */
+	int32 PauseCount = 0;
+
+	/** Its pauses on other channels are in force: it is talking. */
+	bool bSuppressing = false;
+};
 
 class UDreamNarrativeRecorder;
 
@@ -75,13 +138,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Story")
 	int32 LoadAllScripts();
 
-	/** Starts a specific node. Null when it does not exist. */
+	/**
+	 * Starts a specific node on its channel, ending whatever ran there: the game asked for it. Null
+	 * when it does not exist.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Story")
 	UDreamNarrativeDialogueRunner* StartDialogue(FName Node);
 
 	/**
-	 * Picks the entry for a character: among its `for` nodes whose condition holds, the highest
-	 * priority wins, ties going to the earlier declaration. Null when nothing applies.
+	 * Picks the entry for a character: among its `for` nodes whose condition holds and that are not
+	 * spent (`once`) or cooling down (`cooldown`), the highest priority wins, ties going to the earlier
+	 * declaration. Null when nothing applies.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Story")
 	UDreamNarrativeDialogueRunner* TalkTo(FName Character);
@@ -90,8 +157,33 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Narrative|Story")
 	FName SelectEntry(FName Character) const;
 
+	/** The dialogue running on the main channel, or null. */
 	UFUNCTION(BlueprintPure, Category = "Narrative|Story")
-	UDreamNarrativeDialogueRunner* GetActiveRunner() const { return ActiveRunner; }
+	UDreamNarrativeDialogueRunner* GetActiveRunner() const { return GetRunner(NAME_None); }
+
+	// ---------------------------------------------------------------- channels and events
+
+	/** The dialogue running (or paused) on a channel; None is main. Null when the channel is quiet. */
+	UFUNCTION(BlueprintPure, Category = "Narrative|Story")
+	UDreamNarrativeDialogueRunner* GetRunner(FName Channel) const;
+
+	/** True while a dialogue runs, not paused, on a channel that locks input. */
+	UFUNCTION(BlueprintPure, Category = "Narrative|Story")
+	bool IsInputLocked() const;
+
+	/** Every channel, main first, then in the order the scripts declared them. */
+	void GetChannelNames(TArray<FName>& Out) const { Out = ChannelOrder; }
+	const FDnaChannelData* FindChannel(FName Channel) const;
+
+	/** How many dialogues wait their turn on a channel. */
+	int32 GetQueueLength(FName Channel) const;
+
+	/** Ends every dialogue on every channel, and drops what waited its turn. */
+	UFUNCTION(BlueprintCallable, Category = "Narrative|Story")
+	void StopAllDialogue();
+
+	/** An event was raised; fires before any dialogue it opens starts. */
+	FDnaEventHeardSignature OnEventHeard;
 
 	UFUNCTION(BlueprintPure, Category = "Narrative|Story")
 	UDreamNarrativeLedger* GetLedger() const { return Ledger; }
@@ -183,8 +275,32 @@ public:
 	virtual bool GetQuestState(FName Quest, EDnaQuestStateQuery Query) const override;
 
 private:
-	/** Starts a node: what StartDialogue and TalkTo share once they know which node. */
-	UDreamNarrativeDialogueRunner* Begin(FName Node);
+	// channels and events (DreamNarrativeChannels.cpp)
+
+	/**
+	 * Starts Node on its channel. Requested (the game asked): it starts now, ending what ran there.
+	 * Otherwise (an event opened it) the channel's busy rule decides. Null when it did not start now.
+	 */
+	UDreamNarrativeDialogueRunner* StartOnChannel(FName Node, const FDnaEventPayload* Event, bool bRequested);
+	UDreamNarrativeDialogueRunner* StartNow(FName Channel, FName Node, const FDnaDialogueNodeData& Data, const UDnaDialogueSection& Section, const FDnaEventPayload* Event);
+	FName ChannelOf(const FDnaDialogueNodeData& Data) const;
+	FDnaChannelState& StateOf(FName Channel);
+	void Enqueue(FName Channel, FDnaChannelQueueItem&& Item);
+	/** The channel's dialogue ended or was taken off it: the next in line goes on, or it falls quiet. */
+	void ContinueChannel(FName Channel);
+	void BecameBusy(FName Channel);
+	void BecameQuiet(FName Channel);
+	void PauseChannel(FName Channel);
+	void UnpauseChannel(FName Channel);
+	void StopChannel(FName Channel, FName By);
+	/** Takes the running dialogue off the channel: aborted, or held to go on later when it resumes. */
+	void CutOff(FName Channel, bool bHoldToResume, FName ParkFor);
+	void HandleEventRaised(const FDnaEventPayload& Event, EDnaWriteSource Source);
+	FName SelectEventEntry(FName Event, FName Channel, const FDnaEventPayload& Payload) const;
+	/** `once` used up, `cooldown` running, or (for an event) already running or waiting its turn. */
+	bool IsEntrySpent(const FDnaDialogueNodeData& Data, bool bForEvent) const;
+	bool IsRunningOrQueued(FName Node) const;
+	void EnsureMainChannel();
 
 	// quests (DreamNarrativeQuests.cpp)
 	void WatchLedger();
@@ -192,6 +308,7 @@ private:
 	void HandleBatchCommitted(const TArray<FName>& Changed);
 	void HandleTimerFired(FName Timer);
 	void HandleSnapshotApplied();
+	void HandleSnapshotApplying();
 	/** Changed: the facts the batch being committed changed, if any. */
 	void CheckQuests(TConstArrayView<FName> Changed = {});
 	void EvaluateQuest(const FDnaQuestData& Quest, const UDreamNarrativeScript& Script, TConstArrayView<FName> Changed);
@@ -218,6 +335,8 @@ private:
 	FDelegateHandle CommitHandle;
 	FDelegateHandle TimerHandle;
 	FDelegateHandle SnapshotHandle;
+	FDelegateHandle ApplyingHandle;
+	FDelegateHandle EventHandle;
 
 	UFUNCTION()
 	void HandleRunnerEnded(UDreamNarrativeDialogueRunner* Runner);
@@ -235,7 +354,7 @@ private:
 	TArray<TObjectPtr<UDreamNarrativeScript>> Scripts;
 
 	UPROPERTY()
-	TObjectPtr<UDreamNarrativeDialogueRunner> ActiveRunner;
+	TMap<FName, FDnaChannelState> Channels;
 
 	UPROPERTY()
 	TObjectPtr<UDreamNarrativeRecorder> Recorder;
@@ -243,4 +362,11 @@ private:
 	TMap<FName, FNodeRef> NodeIndex;
 	/** Entry nodes per character, in declaration order. */
 	TMap<FName, TArray<FName>> EntriesByCharacter;
+	/** Entry nodes per event, in declaration order. */
+	TMap<FName, TArray<FName>> EntriesByEvent;
+	TMap<FName, FDnaChannelData> ChannelDecls;
+	/** main first, then in the order the scripts declared them. */
+	TArray<FName> ChannelOrder;
+	/** When each node last started, on the ledger's clock: what `cooldown` counts from. Not saved. */
+	TMap<FName, double> LastStarted;
 };
