@@ -2,6 +2,7 @@
 
 #include "DreamNarrativeStagePose.h"
 #include "DreamNarrativeSettings.h"
+#include "GameFramework/Actor.h"
 
 namespace
 {
@@ -125,6 +126,44 @@ namespace DreamNarrative
 		case EDnaStageVerb::PlaySequence: return TEXT("play");
 		}
 		return TEXT("?");
+	}
+
+	namespace
+	{
+		FMinimalViewInfo ResolveShot(const FDnaStageData& Stage, FName Shot, float Push, const FMinimalViewInfo& GameView, TFunctionRef<AActor*(FName)> Resolve)
+		{
+			FMinimalViewInfo View = GameView;
+			if (const FDnaStageShot* Data = Shot.IsNone() ? nullptr : Stage.FindShot(Shot))
+			{
+				const AActor* Anchor = Resolve(!Data->Anchor.IsNone() ? Data->Anchor : Data->LookAt);
+				const AActor* Look = Data->LookAt.IsNone() ? Anchor : Resolve(Data->LookAt);
+				const FTransform Frame = Anchor ? Anchor->GetActorTransform() : FTransform::Identity;
+				View.Location = Frame.TransformPosition(Data->Offset);
+				const FVector Target = Look ? Look->GetActorLocation() : Frame.GetLocation();
+				if (!(Target - View.Location).IsNearlyZero())
+				{
+					View.Rotation = (Target - View.Location).Rotation();
+				}
+				if (Data->Fov > 0.f)
+				{
+					View.FOV = Data->Fov;
+				}
+			}
+			View.Location += View.Rotation.Vector() * Push;
+			return View;
+		}
+	}
+
+	FMinimalViewInfo EvaluateDnaStageView(const FDnaStageData& Stage, const FDnaStageCameraPose& Camera, const FMinimalViewInfo& GameView, TFunctionRef<AActor*(FName)> Resolve)
+	{
+		const FMinimalViewInfo From = ResolveShot(Stage, Camera.From, Camera.FromPush, GameView, Resolve);
+		const FMinimalViewInfo To = ResolveShot(Stage, Camera.To, Camera.Push, GameView, Resolve);
+		const float Alpha = FMath::Clamp(Camera.Alpha, 0.f, 1.f);
+		FMinimalViewInfo View = To;
+		View.Location = FMath::Lerp(From.Location, To.Location, Alpha);
+		View.Rotation = FQuat::Slerp(From.Rotation.Quaternion(), To.Rotation.Quaternion(), Alpha).Rotator();
+		View.FOV = FMath::Lerp(From.FOV, To.FOV, Alpha);
+		return View;
 	}
 
 	bool IsDnaStageCue(const FDnaStageEntry& Entry)

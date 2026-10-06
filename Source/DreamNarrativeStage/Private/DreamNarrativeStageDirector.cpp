@@ -300,13 +300,9 @@ void UDreamNarrativeStageDirector::ApplyCamera(const FDnaStageCameraPose& Camera
 
 	if (ACameraActor* Spawned = StageCamera.Get())
 	{
-		const FMinimalViewInfo From = ResolveShot(Camera.From, Camera.FromPush);
-		const FMinimalViewInfo To = ResolveShot(Camera.To, Camera.Push);
-		const float Alpha = FMath::Clamp(Camera.Alpha, 0.f, 1.f);
-		const FVector Location = FMath::Lerp(From.Location, To.Location, Alpha);
-		const FQuat Rotation = FQuat::Slerp(From.Rotation.Quaternion(), To.Rotation.Quaternion(), Alpha);
-		Spawned->SetActorLocationAndRotation(Location, Rotation);
-		Spawned->GetCameraComponent()->SetFieldOfView(FMath::Lerp(From.FOV, To.FOV, Alpha));
+		const FMinimalViewInfo View = DreamNarrative::EvaluateDnaStageView(Stage, Camera, GameView, [this](FName Role) { return ResolveActor(Role); });
+		Spawned->SetActorLocationAndRotation(View.Location, View.Rotation);
+		Spawned->GetCameraComponent()->SetFieldOfView(View.FOV);
 	}
 
 	if (Controller)
@@ -906,29 +902,6 @@ AActor* UDreamNarrativeStageDirector::ResolveActor(FName Role) const
 		}
 	}
 	return nullptr;
-}
-
-FMinimalViewInfo UDreamNarrativeStageDirector::ResolveShot(FName Shot, float Push) const
-{
-	FMinimalViewInfo View = GameView;
-	if (const FDnaStageShot* Data = Shot.IsNone() ? nullptr : Stage.FindShot(Shot))
-	{
-		const AActor* Anchor = ResolveActor(!Data->Anchor.IsNone() ? Data->Anchor : Data->LookAt);
-		const AActor* Look = Data->LookAt.IsNone() ? Anchor : ResolveActor(Data->LookAt);
-		const FTransform Frame = Anchor ? Anchor->GetActorTransform() : FTransform::Identity;
-		View.Location = Frame.TransformPosition(Data->Offset);
-		const FVector Target = Look ? Look->GetActorLocation() : Frame.GetLocation();
-		if (!(Target - View.Location).IsNearlyZero())
-		{
-			View.Rotation = (Target - View.Location).Rotation();
-		}
-		if (Data->Fov > 0.f)
-		{
-			View.FOV = Data->Fov;
-		}
-	}
-	View.Location += View.Rotation.Vector() * Push;
-	return View;
 }
 
 template <typename T>

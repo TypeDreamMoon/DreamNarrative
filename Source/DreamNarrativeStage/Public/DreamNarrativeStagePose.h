@@ -9,8 +9,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Camera/CameraTypes.h"
 #include "DreamNarrativeStageData.h"
 #include "DreamNarrativeStagePose.generated.h"
+
+class AActor;
 
 USTRUCT(BlueprintType)
 struct DREAMNARRATIVESTAGE_API FDnaStageCameraPose
@@ -136,6 +139,14 @@ namespace DreamNarrative
 	 * function whether a cut falls at a mask's peak.
 	 */
 	DREAMNARRATIVESTAGE_API float GetDnaMaskEnvelope(const FDnaStageEntry& Entry, float Time);
+
+	/**
+	 * Where the stage camera is for a camera pose: its shots placed by the actors Resolve finds for
+	 * their names (None is the stage's own actor), GameView standing in for where the game's view was
+	 * when the stage took over. The director and a timeline's preview both ask this.
+	 */
+	DREAMNARRATIVESTAGE_API FMinimalViewInfo EvaluateDnaStageView(const FDnaStageData& Stage, const FDnaStageCameraPose& Camera,
+		const FMinimalViewInfo& GameView, TFunctionRef<AActor*(FName)> Resolve);
 
 	/** True for the entries that happen once rather than holding a state: montage, spawn, stop, play. */
 	DREAMNARRATIVESTAGE_API bool IsDnaStageCue(const FDnaStageEntry& Entry);

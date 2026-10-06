@@ -167,8 +167,6 @@ private:
 
 	APlayerController* GetController() const;
 	APawn* GetPawn() const;
-	/** Where a shot puts the camera, and its field of view. Push moves it along its view. */
-	FMinimalViewInfo ResolveShot(FName Shot, float Push) const;
 	template <typename T> T* ResolveAsset(const FString& NameOrPath) const;
 	/** Logs a cue whose asset was not found; true when it was. */
 	bool WarnIfMissing(const FDnaStageEntry& Entry, const UObject* Asset, const TCHAR* What) const;
