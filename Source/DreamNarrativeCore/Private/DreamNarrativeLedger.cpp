@@ -267,7 +267,7 @@ void UDreamNarrativeLedger::Commit()
 
 // ---------------------------------------------------------------- chapter
 
-bool UDreamNarrativeLedger::SetChapter(FName Chapter)
+bool UDreamNarrativeLedger::SetChapter(FName Chapter, bool bLeaveCheckpoint)
 {
 	const FName Name = Resolve(Chapter);
 	if (!ChapterDecls.Contains(Name))
@@ -281,7 +281,125 @@ bool UDreamNarrativeLedger::SetChapter(FName Chapter)
 	}
 	const FName Old = CurrentChapter;
 	CurrentChapter = Name;
+	if (bLeaveCheckpoint)
+	{
+		// The first time only: entering a chapter again leaves the checkpoint it has.
+		if (Checkpoints.ContainsByPredicate([Name](const FDnaChapterCheckpoint& Point) { return Point.Chapter == Name; }))
+		{
+			if (Trace) { Trace->OnEvent(TEXT("checkpoint.kept")); }
+		}
+		else
+		{
+			LeaveCheckpoint(Name);
+		}
+	}
 	OnChapterChanged.Broadcast(Old, Name);
+	return true;
+}
+
+bool UDreamNarrativeLedger::IsProgress(FName Fact) const
+{
+	const FDnaFactDecl* Decl = FactDecls.Find(Resolve(Fact));
+	return Decl && Decl->bProgress && !Decl->bSession && !Decl->bProfile;
+}
+
+void UDreamNarrativeLedger::LeaveCheckpoint(FName Chapter)
+{
+	if (Trace) { Trace->OnEvent(TEXT("checkpoint.leave")); }
+	FDnaChapterCheckpoint& Point = Checkpoints.AddDefaulted_GetRef();
+	Point.Chapter = Chapter;
+	for (const TPair<FName, FDnaValue>& Pair : Values)
+	{
+		const FDnaFactDecl* Decl = FactDecls.Find(Pair.Key);
+		if (Decl && !Decl->bSession && !Decl->bProfile && !Decl->bProgress)
+		{
+			FDnaFactSnapshotEntry& Entry = Point.Facts.AddDefaulted_GetRef();
+			Entry.Fact = Pair.Key;
+			Entry.Value = Pair.Value;
+		}
+	}
+	Point.Visited = VisitCounts;
+	Point.ChosenOnce = ChosenOnce.Array();
+	for (const TPair<FName, FDnaClockHandle>& Pair : Timers)
+	{
+		if (!IsProgress(Pair.Key))
+		{
+			Point.Timers.Add(Pair.Key, static_cast<float>(FMath::Max(0.0, GetTimerRemaining(Pair.Key))));
+		}
+	}
+}
+
+TArray<FName> UDreamNarrativeLedger::GetChapterCheckpoints() const
+{
+	TArray<FName> Out;
+	for (const FDnaChapterCheckpoint& Point : Checkpoints)
+	{
+		Out.Add(Point.Chapter);
+	}
+	return Out;
+}
+
+void UDreamNarrativeLedger::StartNewPlaythrough()
+{
+	if (Trace) { Trace->OnEvent(TEXT("playthrough.new")); }
+	// An empty save: everything of the slot back to its defaults, and whatever ran on the old story ends.
+	ApplySnapshot(FDnaLedgerSnapshot());
+	OnNewPlaythrough.Broadcast();
+	if (ChapterOrder.Num() > 0)
+	{
+		SetChapter(ChapterOrder[0]);
+	}
+}
+
+bool UDreamNarrativeLedger::SelectChapter(FName Chapter)
+{
+	const FName Name = Resolve(Chapter);
+	const FDnaChapterCheckpoint* Point = Checkpoints.FindByPredicate([Name](const FDnaChapterCheckpoint& Each) { return Each.Chapter == Name; });
+	if (!Point)
+	{
+		UE_LOG(LogDreamNarrative, Warning, TEXT("SelectChapter: the story never entered '%s', so it has no checkpoint"), *Chapter.ToString());
+		return false;
+	}
+	OnChapterSelected.Broadcast(Name);
+	if (Trace) { Trace->OnEvent(TEXT("checkpoint.select")); }
+
+	FDnaLedgerSnapshot Snapshot;
+	Snapshot.Chapter = Name;
+	Snapshot.Facts = Point->Facts;
+	Snapshot.Visited = Point->Visited;
+	Snapshot.ChosenOnce = Point->ChosenOnce;
+	Snapshot.Timers = Point->Timers;
+	Snapshot.Checkpoints = Checkpoints;
+	// Progress goes on from where it is now, with its timers (a side quest's timeout, say).
+	bool bKept = false;
+	for (const TPair<FName, FDnaValue>& Pair : Values)
+	{
+		if (!IsProgress(Pair.Key))
+		{
+			continue;
+		}
+		Snapshot.Facts.RemoveAll([this, &Pair](const FDnaFactSnapshotEntry& Entry) { return Resolve(Entry.Fact) == Pair.Key; });
+		FDnaFactSnapshotEntry& Entry = Snapshot.Facts.AddDefaulted_GetRef();
+		Entry.Fact = Pair.Key;
+		Entry.Value = Pair.Value;
+		bKept = true;
+	}
+	for (auto It = Snapshot.Timers.CreateIterator(); It; ++It)
+	{
+		if (IsProgress(It.Key()))
+		{
+			It.RemoveCurrent();
+		}
+	}
+	for (const TPair<FName, FDnaClockHandle>& Pair : Timers)
+	{
+		if (IsProgress(Pair.Key))
+		{
+			Snapshot.Timers.Add(Pair.Key, static_cast<float>(FMath::Max(0.0, GetTimerRemaining(Pair.Key))));
+		}
+	}
+	if (bKept && Trace) { Trace->OnEvent(TEXT("checkpoint.progress-kept")); }
+	ApplySnapshot(Snapshot);
 	return true;
 }
 
@@ -334,7 +452,8 @@ bool UDreamNarrativeLedger::JumpToChapter(FName Chapter)
 			ApplyImplied(Decl);
 		}
 	}
-	return SetChapter(Target);
+	// A teleport is not the story moving on: it leaves no checkpoint.
+	return SetChapter(Target, /*bLeaveCheckpoint=*/false);
 }
 
 void UDreamNarrativeLedger::CheckAdvanceRules()
@@ -546,6 +665,14 @@ FDnaLedgerSnapshot UDreamNarrativeLedger::MakeSnapshot() const
 			}
 			continue;
 		}
+		if (Decl && Decl->bProfile)
+		{
+			if (Trace)
+			{
+				Trace->OnEvent(TEXT("ledger.snapshot.profile-left-out"));
+			}
+			continue;
+		}
 		FDnaFactSnapshotEntry& Entry = Snapshot.Facts.AddDefaulted_GetRef();
 		Entry.Fact = Pair.Key;
 		Entry.Value = Pair.Value;
@@ -557,7 +684,58 @@ FDnaLedgerSnapshot UDreamNarrativeLedger::MakeSnapshot() const
 	{
 		Snapshot.Timers.Add(Pair.Key, static_cast<float>(FMath::Max(0.0, GetTimerRemaining(Pair.Key))));
 	}
+	Snapshot.Checkpoints = Checkpoints;
 	return Snapshot;
+}
+
+FDnaProfileSnapshot UDreamNarrativeLedger::MakeProfileSnapshot() const
+{
+	FDnaProfileSnapshot Snapshot;
+	for (const TPair<FName, FDnaValue>& Pair : Values)
+	{
+		const FDnaFactDecl* Decl = FactDecls.Find(Pair.Key);
+		if (Decl && Decl->bProfile)
+		{
+			FDnaFactSnapshotEntry& Entry = Snapshot.Facts.AddDefaulted_GetRef();
+			Entry.Fact = Pair.Key;
+			Entry.Value = Pair.Value;
+		}
+	}
+	return Snapshot;
+}
+
+void UDreamNarrativeLedger::ApplyProfileSnapshot(const FDnaProfileSnapshot& Snapshot)
+{
+	if (Trace)
+	{
+		Trace->OnEvent(TEXT("profile.apply"));
+	}
+	// Loading a profile is no progress either: nothing it sets starts or finishes anything.
+	TGuardValue<bool> Applying(bApplyingSnapshot, true);
+	{
+		FBatchScope Batch(*this);
+		for (const TPair<FName, FDnaFactDecl>& Pair : FactDecls)
+		{
+			if (Pair.Value.bProfile)
+			{
+				FDnaValue Default = Pair.Value.Default;
+				Default.Type = Pair.Value.Type;
+				SetFact(Pair.Key, Default, EDnaWriteSource::Narrative);
+			}
+		}
+		for (const FDnaFactSnapshotEntry& Entry : Snapshot.Facts)
+		{
+			const FName Name = Resolve(Entry.Fact);
+			const FDnaFactDecl* Decl = FactDecls.Find(Name);
+			if (!Decl || !Decl->bProfile)
+			{
+				UE_LOG(LogDreamNarrative, Warning, TEXT("ApplyProfileSnapshot: '%s' is no longer a profile fact; its value was dropped"), *Entry.Fact.ToString());
+				continue;
+			}
+			SetFact(Name, Entry.Value, EDnaWriteSource::Narrative);
+		}
+	}
+	OnSnapshotApplied.Broadcast();
 }
 
 void UDreamNarrativeLedger::ApplySnapshot(const FDnaLedgerSnapshot& Snapshot)
@@ -588,10 +766,16 @@ void UDreamNarrativeLedger::ApplySnapshot(const FDnaLedgerSnapshot& Snapshot)
 			{
 				Trace->OnEvent(TEXT("ledger.snapshot.renamed"));
 			}
+			// Written before the fact moved to the profile: the profile has its own value now.
+			if (FactDecls[Name].bProfile)
+			{
+				continue;
+			}
 			SetFact(Name, Entry.Value, EDnaWriteSource::Narrative);
 		}
 		VisitCounts = Snapshot.Visited;
 		ChosenOnce = TSet<FName>(Snapshot.ChosenOnce);
+		Checkpoints = Snapshot.Checkpoints;
 	}
 	// Set after the batch has committed, while no chapter is current, so no advance rule runs: loading
 	// a save restores the chapter it was saved in. A rule it satisfies runs at the next write, as it
@@ -602,7 +786,7 @@ void UDreamNarrativeLedger::ApplySnapshot(const FDnaLedgerSnapshot& Snapshot)
 		{
 			Trace->OnEvent(TEXT("chapter.restored"));
 		}
-		SetChapter(Snapshot.Chapter);
+		SetChapter(Snapshot.Chapter, /*bLeaveCheckpoint=*/false);
 	}
 	// Timers go on from what they had left.
 	for (const TPair<FName, float>& Pair : Snapshot.Timers)
@@ -617,12 +801,17 @@ void UDreamNarrativeLedger::ResetToDefaults()
 	FBatchScope Batch(*this);
 	for (const TPair<FName, FDnaFactDecl>& Pair : FactDecls)
 	{
+		if (Pair.Value.bProfile)
+		{
+			continue;
+		}
 		FDnaValue Default = Pair.Value.Default;
 		Default.Type = Pair.Value.Type;
 		SetFact(Pair.Key, Default, EDnaWriteSource::Narrative);
 	}
 	VisitCounts.Reset();
 	ChosenOnce.Reset();
+	Checkpoints.Reset();
 	TArray<FName> Running;
 	Timers.GetKeys(Running);
 	for (const FName& Timer : Running)

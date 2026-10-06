@@ -112,6 +112,11 @@ namespace DreamNarrative
 		return FName(*(TEXT("@") + Quest.ToString() + TEXT(".objectives")));
 	}
 
+	FName ArchiveFact(FName Archive)
+	{
+		return FName(*(TEXT("@archive:") + Archive.ToString()));
+	}
+
 	FName QuestStateMember(EDnaQuestState State)
 	{
 		switch (State)

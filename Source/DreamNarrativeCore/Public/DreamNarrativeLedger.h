@@ -36,14 +36,43 @@ struct DREAMNARRATIVECORE_API FDnaFactSnapshotEntry
 	FDnaValue Value;
 };
 
-/** Everything the ledger needs to come back exactly as it was. Session facts are left out. */
+/**
+ * The story as it stood when it first entered a chapter: what selecting the chapter goes back to.
+ * Progress facts are left out (selecting keeps them as they are), and so are session and profile facts.
+ */
+USTRUCT(BlueprintType)
+struct DREAMNARRATIVECORE_API FDnaChapterCheckpoint
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
+	FName Chapter;
+
+	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
+	TArray<FDnaFactSnapshotEntry> Facts;
+
+	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
+	TMap<FName, int32> Visited;
+
+	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
+	TArray<FName> ChosenOnce;
+
+	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
+	TMap<FName, float> Timers;
+};
+
+/**
+ * Everything of the save slot the ledger needs to come back exactly as it was. Session facts are
+ * left out, and so are profile facts: they are in the profile snapshot.
+ */
 USTRUCT(BlueprintType)
 struct DREAMNARRATIVECORE_API FDnaLedgerSnapshot
 {
 	GENERATED_BODY()
 
+	/** 1: no checkpoints. 2: checkpoints. An older one loads as it was written. */
 	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
-	int32 SchemaVersion = 1;
+	int32 SchemaVersion = 2;
 
 	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
 	TArray<FDnaFactSnapshotEntry> Facts;
@@ -60,6 +89,23 @@ struct DREAMNARRATIVECORE_API FDnaLedgerSnapshot
 	/** Timers still running, with the narrative seconds each had left. */
 	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
 	TMap<FName, float> Timers;
+
+	/** One per chapter the story has entered, in the order it entered them. */
+	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
+	TArray<FDnaChapterCheckpoint> Checkpoints;
+};
+
+/** The profile facts: what outlives a save slot and a playthrough (endings seen, the route). Where it is kept is the game's. */
+USTRUCT(BlueprintType)
+struct DREAMNARRATIVECORE_API FDnaProfileSnapshot
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
+	int32 SchemaVersion = 1;
+
+	UPROPERTY(BlueprintReadWrite, SaveGame, Category = "Narrative")
+	TArray<FDnaFactSnapshotEntry> Facts;
 };
 
 /**
@@ -94,6 +140,8 @@ DECLARE_MULTICAST_DELEGATE(FDnaSnapshotAppliedSignature);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDnaEventPayloadSignature, const FDnaEventPayload&, Event);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FDnaEventRaisedSignature, const FDnaEventPayload& /*Event*/, EDnaWriteSource /*Source*/);
 DECLARE_MULTICAST_DELEGATE_OneParam(FDnaScriptRegisteredSignature, UDreamNarrativeScript* /*Script*/);
+DECLARE_MULTICAST_DELEGATE(FDnaNewPlaythroughSignature);
+DECLARE_MULTICAST_DELEGATE_OneParam(FDnaChapterSelectSignature, FName /*Chapter*/);
 
 UCLASS()
 class DREAMNARRATIVECORE_API UDreamNarrativeLedger : public UGameInstanceSubsystem, public IDnaEvalContext
@@ -182,9 +230,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Narrative|Chapter")
 	FName GetChapter() const { return CurrentChapter; }
 
-	/** Sets the chapter and broadcasts. Does not touch facts: `advance` is a state change, not a jump. */
+	/**
+	 * Sets the chapter and broadcasts. Does not touch facts: `advance` is a state change, not a jump.
+	 * The story moving on (bLeaveCheckpoint) leaves a checkpoint the first time it enters a chapter.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Chapter")
-	bool SetChapter(FName Chapter);
+	bool SetChapter(FName Chapter, bool bLeaveCheckpoint = true);
 
 	/**
 	 * The debug teleport: applies the implied facts of every chapter on the `after` chain, first to
@@ -195,6 +246,26 @@ public:
 
 	/** Chapters in declaration order. */
 	void GetChapterNames(TArray<FName>& Out) const { Out = ChapterOrder; }
+
+	// ---------------------------------------------------------------- playthroughs and chapter select
+
+	/**
+	 * Starts the story over: the save slot's layer back to its defaults (checkpoints too), the profile
+	 * kept as it is; then the first chapter is entered, leaving its checkpoint.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Narrative|Chapter")
+	void StartNewPlaythrough();
+
+	/**
+	 * Goes back to the checkpoint the story left when it first entered Chapter, keeping progress as it
+	 * is now: progress facts (side quests' among them) and their timers. False when there is none.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Narrative|Chapter")
+	bool SelectChapter(FName Chapter);
+
+	/** The chapters that can be selected, in the order the story first entered them. */
+	UFUNCTION(BlueprintPure, Category = "Narrative|Chapter")
+	TArray<FName> GetChapterCheckpoints() const;
 
 	// ---------------------------------------------------------------- dialogue bookkeeping
 
@@ -240,9 +311,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Save")
 	void ApplySnapshot(const FDnaLedgerSnapshot& Snapshot);
 
-	/** Every fact back to its default, chapter to none, bookkeeping cleared, timers stopped. */
+	/** The save slot's layer back to defaults: every fact but the profile's, chapter to none, bookkeeping and checkpoints cleared, timers stopped. */
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Save")
 	void ResetToDefaults();
+
+	/** The profile facts, for the game to keep apart from any save slot. */
+	UFUNCTION(BlueprintPure, Category = "Narrative|Save")
+	FDnaProfileSnapshot MakeProfileSnapshot() const;
+
+	/** Puts the profile facts back (those it does not carry to their defaults); the save slot's layer is left alone. */
+	UFUNCTION(BlueprintCallable, Category = "Narrative|Save")
+	void ApplyProfileSnapshot(const FDnaProfileSnapshot& Snapshot);
 
 	// ---------------------------------------------------------------- timers
 
@@ -328,6 +407,12 @@ public:
 	/** Fires when a debug teleport starts, before it writes the implied facts. */
 	FDnaJumpRequestedSignature OnJumpRequested;
 
+	/** A new playthrough: fires once the save slot's layer is back to defaults, before the first chapter is entered. */
+	FDnaNewPlaythroughSignature OnNewPlaythrough;
+
+	/** A chapter is selected: fires before the story goes back to its checkpoint. */
+	FDnaChapterSelectSignature OnChapterSelected;
+
 	/** Fires when a timer runs out; it is no longer running by then. */
 	FDnaTimerFiredSignature OnTimerFired;
 
@@ -343,6 +428,9 @@ public:
 private:
 	/** Follows `was` redirects to the current name. */
 	FName Resolve(FName Fact) const;
+	/** Left out of a checkpoint and kept by a selected chapter. */
+	bool IsProgress(FName Fact) const;
+	void LeaveCheckpoint(FName Chapter);
 	void ApplyImplied(const FDnaChapterDecl& Chapter);
 	void CheckAdvanceRules();
 	void Commit();
@@ -364,6 +452,7 @@ private:
 	FName CurrentChapter;
 	TMap<FName, int32> VisitCounts;
 	TSet<FName> ChosenOnce;
+	TArray<FDnaChapterCheckpoint> Checkpoints;
 
 	int32 BatchDepth = 0;
 	TArray<FName> DirtyFacts;

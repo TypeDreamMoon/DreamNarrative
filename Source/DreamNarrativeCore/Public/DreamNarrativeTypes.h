@@ -117,6 +117,14 @@ struct DREAMNARRATIVECORE_API FDnaFactDecl
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Narrative")
 	bool bSession = false;
 
+	/** `profile`: kept across save slots and playthroughs, in a snapshot of its own (MakeProfileSnapshot). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Narrative")
+	bool bProfile = false;
+
+	/** `progress`: a save-slot fact that selecting a chapter keeps as it is; checkpoints leave it out. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Narrative")
+	bool bProgress = false;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Narrative")
 	FDnaValue Default;
 
@@ -201,6 +209,8 @@ namespace DreamNarrative
 	 */
 	DREAMNARRATIVECORE_API FName QuestStateFact(FName Quest);
 	DREAMNARRATIVECORE_API FName QuestObjectivesFact(FName Quest);
+	/** `@archive:名`: which entries of an archive are unlocked, bit n for the (n+1)th; a profile fact when the archive is. */
+	DREAMNARRATIVECORE_API FName ArchiveFact(FName Archive);
 	/** The member of the state fact's set that stands for State: its enumerator's name. */
 	DREAMNARRATIVECORE_API FName QuestStateMember(EDnaQuestState State);
 	DREAMNARRATIVECORE_API bool TryParseQuestState(FName Member, EDnaQuestState& OutState);
