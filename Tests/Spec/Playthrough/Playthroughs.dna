@@ -1,0 +1,98 @@
+// 多周目:fact 存在哪(存档槽 / session / profile,progress 是存档槽里选章也保留的);第一次进一章留检查点,
+// 再进不覆盖,选章回检查点、进度保留(side 任务也算进度);新周目清空存档槽、profile 原样、从第一章开始;资料的
+// 条目第一次满足就解锁,之后一直在,写了 profile 的跨周目。
+
+character 甲
+
+fact 好感: int range 0..9
+fact 见过结局: bool profile
+fact 收集 extern progress
+  花: int range 0..9
+fact 道具 extern
+  钥匙: bool
+
+chapter 一章
+  advance -> 二章 if 好感 >= 2
+
+chapter 二章 after 一章
+  advance -> 终章 if 好感 >= 4
+
+chapter 终章 after 二章
+
+quest 采花
+  objective 收集.花 >= 3
+
+dialogue 甲_收尾 for 甲 if chapter == 终章 priority 5
+  甲: 结束了。
+  set 见过结局 = true
+
+dialogue 甲_聊 for 甲
+  甲: 嗯。
+  set 好感 += 1
+
+archive 回忆 profile
+  title: 回忆
+  entry
+    初次见面。
+  entry if 好感 >= 2
+    熟了。
+    第二行。
+
+archive 笔记
+  entry if 道具.钥匙
+    钥匙在花盆底下。
+
+test 进章留检查点_选章回去进度还在
+  newgame
+  expect chapter == 一章
+  talk 甲
+  talk 甲
+  expect chapter == 二章
+  set 收集.花 = 2
+  accept 采花
+  talk 甲
+  talk 甲
+  expect chapter == 终章
+  select 二章
+  expect chapter == 二章 and 好感 == 2 and 收集.花 == 2 and 采花.active
+  select 一章
+  expect chapter == 一章 and 好感 == 0 and 收集.花 == 2 and 采花.active
+
+test 再进一章不覆盖它的检查点
+  newgame
+  talk 甲
+  talk 甲
+  select 一章
+  set 道具.钥匙 = true
+  talk 甲
+  talk 甲
+  expect chapter == 二章 and 道具.钥匙
+  select 二章
+  expect not 道具.钥匙
+
+test 新周目清空存档槽_profile还在
+  given
+    好感 = 4
+    chapter = 终章
+  talk 甲
+    甲: 结束了。
+  expect 见过结局
+  newgame
+  expect 见过结局 and 好感 == 0 and chapter == 一章
+  save
+
+test 资料解锁了就一直在_写了profile的跨周目
+  archive 回忆 = 1
+  archive 回忆: 初次见面。
+  newgame
+  talk 甲
+  talk 甲
+  archive 回忆: 熟了。
+    第二行。
+  set 道具.钥匙 = true
+  archive 笔记: 钥匙在花盆底下。
+  set 道具.钥匙 = false
+  archive 笔记 = 1
+  newgame
+  archive 笔记 = 0
+  archive 回忆 = 2

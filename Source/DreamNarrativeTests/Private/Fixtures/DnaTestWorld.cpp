@@ -54,6 +54,32 @@ namespace UE::DreamNarrative::Tests
 	TArray<FString> DiffSnapshots(const FDnaLedgerSnapshot& Expected, const FDnaLedgerSnapshot& Actual)
 	{
 		TArray<FString> Differences;
+		// A checkpoint is a story of its own: compared the same way, each line saying whose it is.
+		auto AsSnapshot = [](const FDnaChapterCheckpoint& Point)
+		{
+			FDnaLedgerSnapshot Snapshot;
+			Snapshot.SchemaVersion = 0;
+			Snapshot.Chapter = Point.Chapter;
+			Snapshot.Facts = Point.Facts;
+			Snapshot.Visited = Point.Visited;
+			Snapshot.ChosenOnce = Point.ChosenOnce;
+			Snapshot.Timers = Point.Timers;
+			return Snapshot;
+		};
+		for (int32 Index = 0; Index < FMath::Max(Expected.Checkpoints.Num(), Actual.Checkpoints.Num()); ++Index)
+		{
+			if (!Expected.Checkpoints.IsValidIndex(Index) || !Actual.Checkpoints.IsValidIndex(Index))
+			{
+				const FDnaChapterCheckpoint& Point = Expected.Checkpoints.IsValidIndex(Index) ? Expected.Checkpoints[Index] : Actual.Checkpoints[Index];
+				Differences.Add(FString::Printf(TEXT("checkpoint %s %s"), *Point.Chapter.ToString(), Expected.Checkpoints.IsValidIndex(Index) ? TEXT("did not come back") : TEXT("appeared from nowhere")));
+				continue;
+			}
+			const FString Whose = FString::Printf(TEXT("checkpoint %s: "), *Expected.Checkpoints[Index].Chapter.ToString());
+			for (const FString& Difference : DiffSnapshots(AsSnapshot(Expected.Checkpoints[Index]), AsSnapshot(Actual.Checkpoints[Index])))
+			{
+				Differences.Add(Whose + Difference);
+			}
+		}
 		if (Expected.SchemaVersion != Actual.SchemaVersion)
 		{
 			Differences.Add(FString::Printf(TEXT("schema version: %d, came back as %d"), Expected.SchemaVersion, Actual.SchemaVersion));
@@ -681,8 +707,38 @@ namespace UE::DreamNarrative::Tests
 			Fresh->RegisterScript(Script);
 		}
 		Fresh->ApplySnapshot(Loaded);
+
+		// The profile goes its own way, through the same kind of archive.
+		const FDnaProfileSnapshot SavedProfile = LedgerObject->MakeProfileSnapshot();
+		TArray<uint8> ProfileBytes;
+		{
+			FMemoryWriter Writer(ProfileBytes, /*bIsPersistent=*/true);
+			Writer.ArIsSaveGame = true;
+			FObjectAndNameAsStringProxyArchive Archive(Writer, /*bInLoadIfFindFails=*/false);
+			Archive.ArIsSaveGame = true;
+			FDnaProfileSnapshot Copy = SavedProfile;
+			FDnaProfileSnapshot::StaticStruct()->SerializeItem(Archive, &Copy, nullptr);
+		}
+		FDnaProfileSnapshot LoadedProfile;
+		{
+			FMemoryReader Reader(ProfileBytes, /*bIsPersistent=*/true);
+			Reader.ArIsSaveGame = true;
+			FObjectAndNameAsStringProxyArchive Archive(Reader, /*bInLoadIfFindFails=*/false);
+			Archive.ArIsSaveGame = true;
+			FDnaProfileSnapshot::StaticStruct()->SerializeItem(Archive, &LoadedProfile, nullptr);
+		}
+		Fresh->ApplyProfileSnapshot(LoadedProfile);
 		Fresh->SetTrace(nullptr);
 
-		return DiffSnapshots(Saved, Fresh->MakeSnapshot());
+		TArray<FString> Differences = DiffSnapshots(Saved, Fresh->MakeSnapshot());
+		FDnaLedgerSnapshot ProfileBefore;
+		ProfileBefore.Facts = SavedProfile.Facts;
+		FDnaLedgerSnapshot ProfileAfter;
+		ProfileAfter.Facts = Fresh->MakeProfileSnapshot().Facts;
+		for (const FString& Difference : DiffSnapshots(ProfileBefore, ProfileAfter))
+		{
+			Differences.Add(TEXT("profile: ") + Difference);
+		}
+		return Differences;
 	}
 }

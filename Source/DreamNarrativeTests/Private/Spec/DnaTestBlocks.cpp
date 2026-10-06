@@ -179,7 +179,8 @@ namespace UE::DreamNarrative::Tests
 					if (Chapter)
 					{
 						World.SetContext(Where(*Chapter));
-						bOk &= World.Ledger().SetChapter(FName(*Chapter->Payload.Target));
+						// A starting state, not the story moving on: no checkpoint.
+						bOk &= World.Ledger().SetChapter(FName(*Chapter->Payload.Target), /*bLeaveCheckpoint=*/false);
 					}
 					World.SetContext(Where(Step));
 					return World.FinishStep(TEXT("given"), bOk);
@@ -234,6 +235,52 @@ namespace UE::DreamNarrative::Tests
 
 				case EDnaTestStepKind::Save:
 					return World.CheckSaveRoundTrip(TEXT("save"));
+
+				case EDnaTestStepKind::NewGame:
+					World.Ledger().StartNewPlaythrough();
+					return World.FinishStep(TEXT("newgame"), true);
+
+				case EDnaTestStepKind::Select:
+				{
+					const FString What = TEXT("select ") + P.Target;
+					const bool bOk = World.Ledger().SelectChapter(FName(*P.Target));
+					if (!bOk)
+					{
+						TArray<FString> Checkpoints;
+						for (const FName& Chapter : World.Ledger().GetChapterCheckpoints()) { Checkpoints.Add(Chapter.ToString()); }
+						World.ReportError(FString::Printf(TEXT("%s: the story never entered %s, so it has no checkpoint. Checkpoints: %s"), *What, *P.Target,
+							Checkpoints.Num() > 0 ? *FString::Join(Checkpoints, TEXT(", ")) : TEXT("(none)")));
+					}
+					return World.FinishStep(What, bOk);
+				}
+
+				case EDnaTestStepKind::Archive:
+				{
+					const FDnaArchiveView View = World.Story().GetArchive(FName(*P.Name));
+					TArray<FString> Unlocked;
+					for (const FText& Entry : View.Entries) { Unlocked.Add(TEXT("\"") + Entry.ToString() + TEXT("\"")); }
+					const FString Listed = Unlocked.Num() > 0 ? FString::Join(Unlocked, TEXT(", ")) : FString(TEXT("(none)"));
+					if (P.Count != INDEX_NONE)
+					{
+						if (View.Entries.Num() != P.Count)
+						{
+							World.ReportError(FString::Printf(TEXT("archive %s has %d entries unlocked, not %d: %s"), *P.Name, View.Entries.Num(), P.Count, *Listed));
+							return false;
+						}
+						return true;
+					}
+					FString Expected;
+					if (!ExpectedText(Step, Expected))
+					{
+						return false;
+					}
+					if (!View.Entries.ContainsByPredicate([&Expected](const FText& Entry) { return Entry.ToString() == Expected; }))
+					{
+						World.ReportError(FString::Printf(TEXT("archive %s has no unlocked entry \"%s\". Unlocked: %s"), *P.Name, *Expected, *Listed));
+						return false;
+					}
+					return true;
+				}
 
 				case EDnaTestStepKind::Rolls:
 					World.ForceRolls(P.Rolls);

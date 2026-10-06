@@ -187,7 +187,15 @@
     "channel.pause": "说话的频道让别的频道停下(pauses)",
     "channel.resume": "停下或被打断的对话接着说",
     "channel.stop": "开口的频道打断别的频道(stops)",
-    "channel.auto-advance": "自己往下说的频道按行的时长往下走"
+    "channel.auto-advance": "自己往下说的频道按行的时长往下走",
+    "ledger.snapshot.profile-left-out": "存档槽快照不带 profile fact",
+    "profile.apply": "profile 快照放回去",
+    "playthrough.new": "开新周目",
+    "checkpoint.leave": "第一次进一章留检查点",
+    "checkpoint.kept": "再进一章,检查点不覆盖",
+    "checkpoint.select": "选章回到检查点",
+    "checkpoint.progress-kept": "选章保留进度(progress fact、side 任务)",
+    "archive.unlock": "资料的一条解锁"
   },
   "pending": {
     "dialogue.play.blocking": "要有演出监听者;Stage 运行时之后由它接上"
