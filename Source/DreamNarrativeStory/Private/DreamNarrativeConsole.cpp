@@ -253,6 +253,62 @@ namespace
 			}
 		}));
 
+	FAutoConsoleCommandWithWorldAndArgs GNewGame(
+		TEXT("dn.newgame"), TEXT("dn.newgame -- start a new playthrough: the save slot back to defaults, the profile kept, the first chapter entered"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>&, UWorld* World)
+		{
+			UDreamNarrativeStory* Story = StoryOf(World);
+			UDreamNarrativeLedger* Ledger = Story ? Story->GetLedger() : nullptr;
+			if (!Ledger) { return; }
+			if (Ledger->GetScripts().Num() == 0) { Story->LoadAllScripts(); }
+			Ledger->StartNewPlaythrough();
+			Say(FString::Printf(TEXT("New playthrough; chapter = %s"), *Ledger->GetChapter().ToString()), FColor::Green);
+		}));
+
+	FAutoConsoleCommandWithWorldAndArgs GSelect(
+		TEXT("dn.select"), TEXT("dn.select <chapter> -- go back to the checkpoint of a chapter the story has entered, keeping progress"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			UDreamNarrativeStory* Story = StoryOf(World);
+			UDreamNarrativeLedger* Ledger = Story ? Story->GetLedger() : nullptr;
+			if (!Ledger || Args.Num() < 1) { Say(TEXT("dn.select <chapter>")); return; }
+			if (Ledger->SelectChapter(FName(*Args[0]))) { Say(FString::Printf(TEXT("chapter = %s"), *Ledger->GetChapter().ToString()), FColor::Green); }
+			else { Say(FString::Printf(TEXT("No checkpoint for '%s'"), *Args[0]), FColor::Red); }
+		}));
+
+	FAutoConsoleCommandWithWorldAndArgs GCheckpoints(
+		TEXT("dn.checkpoints"), TEXT("dn.checkpoints -- the chapters that can be selected, in the order the story entered them"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>&, UWorld* World)
+		{
+			UDreamNarrativeStory* Story = StoryOf(World);
+			UDreamNarrativeLedger* Ledger = Story ? Story->GetLedger() : nullptr;
+			if (!Ledger) { return; }
+			TArray<FString> Chapters;
+			for (const FName& Chapter : Ledger->GetChapterCheckpoints()) { Chapters.Add(Chapter.ToString()); }
+			Say(Chapters.Num() > 0 ? FString::Join(Chapters, TEXT(", ")) : FString(TEXT("No checkpoints yet")), FColor::Green);
+		}));
+
+	FAutoConsoleCommandWithWorldAndArgs GArchive(
+		TEXT("dn.archive"), TEXT("dn.archive [name] -- an archive's unlocked entries; alone, every archive with how many are unlocked"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			UDreamNarrativeStory* Story = StoryOf(World);
+			if (!Story) { return; }
+			TArray<FName> Names;
+			if (Args.Num() > 0) { Names.Add(FName(*Args[0])); }
+			else { Story->GetArchiveNames(Names); }
+			for (const FName& Name : Names)
+			{
+				const FDnaArchiveView View = Story->GetArchive(Name);
+				if (View.Name.IsNone()) { Say(FString::Printf(TEXT("No archive '%s'"), *Name.ToString()), FColor::Red); continue; }
+				Say(FString::Printf(TEXT("%s (%d/%d)"), *View.Title.ToString(), View.Entries.Num(), View.Total), FColor::Green);
+				if (Args.Num() > 0)
+				{
+					for (const FText& Entry : View.Entries) { Say(TEXT("  ") + Entry.ToString(), FColor::Silver); }
+				}
+			}
+		}));
+
 	FAutoConsoleCommandWithWorldAndArgs GJump(
 		TEXT("dn.jump"), TEXT("dn.jump <chapter> -- teleport to a chapter, applying its implied facts"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
