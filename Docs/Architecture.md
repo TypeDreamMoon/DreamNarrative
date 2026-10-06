@@ -203,3 +203,14 @@ fact key 集中声明,并标明归谁写 —— 叙事侧写的,还是游戏系�
   用单词 `from` 而不是箭头,`<-` 会和 `x <-1` 撞。桥是 GameInstance 子系统,游戏把要盯的能力系统交给它
   (`WatchAbilitySystem`),脚本后注册的也会重新绑定;标签项目里没注册就警告一次、什么也不听。校验补了 DNS2021、
   DNS2022、DNS4007。测试用的标签放在测试宿主工程的 `Config/Tags` 里,不随插件发出去。
+- 2026-10-06 多周目:存档作用域、检查点与选章、资料库。fact 存在三个地方之一:存档槽(默认)、`session`(不存)、
+  `profile`(跨存档槽与周目,单独一份快照 `MakeProfileSnapshot` / `ApplyProfileSnapshot`,落盘归游戏);`progress` 是
+  存档槽里选章也保留的。剧情第一次进入一章(推进规则、`advance`、游戏调 SetChapter、开新周目进第一章)时在存档槽里
+  留一份检查点,再进不覆盖,调试传送与读档不留;选章回到检查点,保留 progress fact 与它们的计时器——side 任务的两条
+  隐藏 fact 由编译器标成 progress,所以账本不用认识任务。开新周目 = 读一份空存档(存档槽一层清回默认,检查点也清,
+  profile 不动),hidden 任务重新自启,再进第一章。存档快照升到 2(带检查点),旧存档照读;fact 改成 profile 之前写的
+  存档读进来不会盖掉 profile 的值。`archive` 块:条目第一次满足条件就解锁并锁存(隐藏 fact `@archive:名`,资料写了
+  `profile` 它就是 profile 的),读档不算解锁时机。test 加 `newgame`、`select 章节`、`archive 资料: 文本` /
+  `archive 资料 = n`,逐步存读档对拍扩到 profile 快照与检查点;探索器把 profile fact 放进状态并把「开新周目」算作一步
+  (回到探索起点,profile 保留),选章不建模;录制器写 `newgame`、`select`,profile 写进 given。控制台 `dn.newgame`、
+  `dn.select`、`dn.checkpoints`、`dn.archive`。校验补了 DNS2023、DNS2024、DNS3014。
