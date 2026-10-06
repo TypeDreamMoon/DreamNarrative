@@ -196,3 +196,10 @@ fact key 集中声明,并标明归谁写 —— 叙事侧写的,还是游戏系�
   把各频道说完;录制器把游戏发出的事件记成 `emit`,事件开的对话记在发出它的那一步下面,暂停后重说的行只记一次。
   控制台加了 `dn.emit`、`dn.channels`,`dn.next` / `dn.choose` 可以指定频道。校验补了 DNS2015–2020、DNS3010–3013。
   动作游戏黄金样例照 NieR:Automata 序章写(台词新写,发布前人物换成原创);之后的样例与测试照别的 3A 作品写。
+- 2026-10-06 GAS 事件桥。映射写在 `.dna` 的声明上(文本仍是唯一真相,校验器和探索器都看得见):`event 名 gameplay 标签`
+  让 GAS 桥把被盯着的能力系统收到的 GameplayEvent(该标签或它下面的)发成这个事件,参数用 `from magnitude`、
+  `from instigator tags 标签`、`from target tags 标签` 从载荷里取(bool 看有没有,tag 取那个标签下面一层的末段);
+  `fact 名: bool extern gameplay 标签` 让能力系统上这个标签的层数喂这个 fact(bool 看有没有,int 是层数)。参数来源
+  用单词 `from` 而不是箭头,`<-` 会和 `x <-1` 撞。桥是 GameInstance 子系统,游戏把要盯的能力系统交给它
+  (`WatchAbilitySystem`),脚本后注册的也会重新绑定;标签项目里没注册就警告一次、什么也不听。校验补了 DNS2021、
+  DNS2022、DNS4007。测试用的标签放在测试宿主工程的 `Config/Tags` 里,不随插件发出去。
