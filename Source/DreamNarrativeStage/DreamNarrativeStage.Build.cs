@@ -32,6 +32,7 @@ public class DreamNarrativeStage : ModuleRules
 			"CinematicCamera",
 			"Niagara",
 			"RenderCore",
+			"AssetRegistry",
 		});
 	}
 }
