@@ -106,6 +106,7 @@ namespace UE::DreamNarrative::Lang
 					else if (Key == TEXT("busy")) { Info.Busy = Value; }
 					else if (Key == TEXT("pauses")) { Info.Pauses = SplitDnaNameList(Value); }
 					else if (Key == TEXT("stops")) { Info.Stops = SplitDnaNameList(Value); }
+					else if (Key == TEXT("stage")) { Info.bPauseDuringStage = Value == TEXT("pause"); }
 				}
 			}
 

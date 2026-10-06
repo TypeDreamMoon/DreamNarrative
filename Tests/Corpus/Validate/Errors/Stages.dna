@@ -1,0 +1,114 @@
+// 演出写错的地方:时间单位和时间基不合、越出长度、范围倒着写、动词不在这条轨上、该写范围的写成了时刻、切到没声明的
+// 机位、切镜头时没有遮罩盖住、改了世界没放回去、绝对时间的演出没写长度、play 了跟着台词走的演出。
+
+character 狼
+
+stage 没有长度
+// EXPECT DNS7009 (6,1)
+  camera
+    0.0s     blend from game 0.3s
+    1.0s     blend back 0.3s
+
+stage 秒里写百分数
+  duration 2.0s
+  game
+    50%      input lock
+// EXPECT DNS7004 (15,5)
+
+stage 台词里写秒
+  base: line
+  duration 2.0s
+// EXPECT DNS7004 (20,3)
+  camera
+    0.5s     push 4cm over 100%
+// EXPECT DNS7004 (23,5)
+    0%       push 4cm over 2.0s
+// EXPECT DNS7004 (25,28)
+
+stage 越出长度
+  duration 2.0s
+  camera
+    0.0s     blend from game 0.3s
+    3.0s     blend back 0.3s
+// EXPECT DNS7002 (32,5)
+  restore
+    camera   blend back 0.3s
+
+stage 倒着的范围
+  duration 2.0s
+  game
+    2.0s..1.0s   input lock
+// EXPECT DNS7005 (40,5)
+
+stage 不认识的
+  duration 2.0s
+  speed: fast
+// EXPECT DNS7006 (45,3)
+  camera
+    0.0s     zoom 2x
+// EXPECT DNS7006 (48,5)
+  light
+    0.0s     ramp dark
+// EXPECT DNS7006 (51,5)
+  restore
+    ui       hide hud
+// EXPECT DNS7006 (54,5)
+
+stage 范围与时刻
+  duration 2.0s
+  shots
+    近景     local (0, -100, 50) look 狼
+  mask
+    0.0s..1.0s   cut black
+    1.0s         distort strength 0.5
+// EXPECT DNS7007 (63,5)
+  camera
+    0.0s..1.0s   cut -> 近景
+// EXPECT DNS7007 (66,5)
+    1.5s         blend back 0.2s
+
+stage 没声明的机位
+  duration 2.0s
+  mask
+    0.0s..2.0s   cut black
+  camera
+    0.5s     cut -> 没有的机位
+// EXPECT DNS7008 (75,5)
+    1.5s     blend back 0.2s
+
+stage 没盖住的一刀
+  duration 2.0s
+  shots
+    近景     local (0, -100, 50) look 狼
+  mask
+    0.0s..0.5s   distort strength 0.8
+  camera
+    1.0s     cut -> 近景
+// EXPECT DNS7001 (86,5)
+    1.5s     blend back 0.2s
+
+stage 没放回去
+  duration 2.0s
+  camera
+    0.0s     blend from game 0.3s
+// EXPECT DNS7003 (93,5)
+  ui
+    0.0s     hide hud
+// EXPECT DNS7003 (96,5)
+    0.5s     text 「狼来了」
+// EXPECT DNS7003 (98,5)
+  light
+    0.0s     ramp dark 0.5s
+// EXPECT DNS7003 (101,5)
+    0.0s     key 狼 on
+// EXPECT DNS7003 (103,5)
+
+stage 跟着台词
+  base: line
+  camera
+    0%       push 4cm over 100%
+
+dialogue 狼_来了 for 狼
+  狼: 嗷。
+  play 跟着台词
+// EXPECT DNS7010 (113,3)

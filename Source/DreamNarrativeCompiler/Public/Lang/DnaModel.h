@@ -84,6 +84,8 @@ namespace UE::DreamNarrative::Lang
 		FString Busy = TEXT("queue");
 		TArray<FString> Pauses;
 		TArray<FString> Stops;
+		/** `stage: pause`: holds still while a stage plays. */
+		bool bPauseDuringStage = false;
 	};
 
 	/** An event and its parameters, each typed like a fact (only the value clauses mean anything). */

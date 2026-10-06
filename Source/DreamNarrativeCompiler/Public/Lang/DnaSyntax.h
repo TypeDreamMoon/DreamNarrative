@@ -310,7 +310,10 @@ namespace UE::DreamNarrative::Lang
 		double TimeStart = 0.0;
 		double TimeEnd = 0.0;
 		bool bIsRange = false;
+		/** The start (bPercent) and the end (bEndPercent) are percentages; bBareTime: one of them is a number with no unit. */
 		bool bPercent = false;
+		bool bEndPercent = false;
+		bool bBareTime = false;
 		/** Everything after the verb (stage entry) or the name (shot, restore entry), as tokens. */
 		TArray<FDnaToken> Args;
 

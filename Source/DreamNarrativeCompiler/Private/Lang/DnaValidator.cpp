@@ -2,6 +2,7 @@
 
 #include "Lang/DnaValidator.h"
 #include "Lang/DnaLexer.h"
+#include "Lang/DnaStageCompiler.h"
 
 #define LOCTEXT_NAMESPACE "DreamNarrativeLang"
 
@@ -138,7 +139,11 @@ namespace UE::DreamNarrative::Lang
 					CheckDialogue(Root);
 					break;
 				case EDnaLineKind::Stage:
+				{
+					FDnaStageData Stage;
+					bOk &= CompileDnaStage(Root, Stage, Diagnostics);
 					break;
+				}
 				case EDnaLineKind::Channel:
 					CheckChannel(Root);
 					break;
@@ -531,6 +536,14 @@ namespace UE::DreamNarrative::Lang
 						}
 						continue;
 					}
+					if (Key == TEXT("stage"))
+					{
+						if (Value != TEXT("pause") && Value != TEXT("continue"))
+						{
+							Fail(TEXT("DNS2015"), Line->Raw.Span, FText::Format(LOCTEXT("ChannelStage", "'{0}' is not a value of stage; expected pause or continue"), FText::FromString(Value)));
+						}
+						continue;
+					}
 					if (Key == TEXT("pauses") || Key == TEXT("stops"))
 					{
 						const TArray<FString> Names = SplitDnaNameList(Value);
@@ -555,7 +568,7 @@ namespace UE::DreamNarrative::Lang
 						}
 						continue;
 					}
-					Fail(TEXT("DNS2015"), Line->Raw.Span, FText::Format(LOCTEXT("ChannelKey", "'{0}' is not a channel property; a channel has input, advance, busy, pauses and stops"), FText::FromString(Key)));
+					Fail(TEXT("DNS2015"), Line->Raw.Span, FText::Format(LOCTEXT("ChannelKey", "'{0}' is not a channel property; a channel has input, advance, busy, pauses, stops and stage"), FText::FromString(Key)));
 				}
 			}
 
@@ -832,7 +845,11 @@ namespace UE::DreamNarrative::Lang
 					RequireChapter(P.Name, Line.Raw.Span);
 					break;
 				case EDnaCommandKind::Play:
-					RequireStage(P.Name, Line.Raw.Span);
+					if (RequireStage(P.Name, Line.Raw.Span) && Program.Stages[P.Name].bLineRelative)
+					{
+						Fail(TEXT("DNS7010"), Line.Raw.Span, FText::Format(LOCTEXT("PlayLineStage",
+							"Stage '{0}' follows a line (`base: line`); attach it to one with `@{0}` instead of playing it"), FText::FromString(P.Name)));
+					}
 					break;
 				case EDnaCommandKind::Emit:
 					CheckEmit(P.Name, P.EmitArgs, Line.Raw.Span);
@@ -889,13 +906,14 @@ namespace UE::DreamNarrative::Lang
 				}
 			}
 
-			void RequireStage(const FString& Name, const FDnaSpan& Span)
+			bool RequireStage(const FString& Name, const FDnaSpan& Span)
 			{
 				if (!Program.IsStage(Name))
 				{
-					Fail(TEXT("DNS3006"), Span,
+					return Fail(TEXT("DNS3006"), Span,
 						FText::Format(LOCTEXT("UnknownStage", "No stage called '{0}' exists"), FText::FromString(Name)));
 				}
+				return true;
 			}
 
 			void RequireChapter(const FString& Name, const FDnaSpan& Span)

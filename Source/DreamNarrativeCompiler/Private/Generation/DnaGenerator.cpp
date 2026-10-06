@@ -7,8 +7,10 @@
 #include "DreamNarrativeQuest.h"
 #include "DreamNarrativeScript.h"
 #include "DreamNarrativeSettings.h"
+#include "DreamNarrativeStageData.h"
 #include "Generation/DnaExprCompiler.h"
 #include "Lang/DnaLexer.h"
+#include "Lang/DnaStageCompiler.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 #include "UObject/Package.h"
@@ -728,6 +730,32 @@ namespace UE::DreamNarrative::Lang
 				Script->Sections.Add(Section);
 			}
 
+			// -- stages: the timeline of each, its texts localisable
+			TArray<FDnaLineNode*> StageRoots;
+			Document.GetRootsOfKind(EDnaLineKind::Stage, StageRoots);
+			if (StageRoots.Num() > 0)
+			{
+				UDnaStageSection* Section = NewObject<UDnaStageSection>(Script, NAME_None, Options.bTransient ? RF_Transient : RF_NoFlags);
+				for (const FDnaLineNode* Root : StageRoots)
+				{
+					const FDnaStageInfo* Info = Program.Stages.Find(Root->Payload.Name);
+					if (!Info || Info->Node != Root) { continue; }
+					// The validator has said what is wrong with it already.
+					FDnaDiagnosticSink Checked;
+					FDnaStageData& Stage = Section->Stages.AddDefaulted_GetRef();
+					CompileDnaStage(*Root, Stage, Checked);
+					int32 TextIndex = 0;
+					for (FDnaStageEntry& Entry : Stage.Entries)
+					{
+						if (Entry.Verb == EDnaStageVerb::Text)
+						{
+							Entry.Text = MakeLocalizable(Namespace, FString::Printf(TEXT("stage.%s.text%d"), *Info->Name, TextIndex++), Entry.Text.ToString());
+						}
+					}
+				}
+				Script->Sections.Add(Section);
+			}
+
 			// -- dialogue, and the channels it runs on
 			TArray<FDnaLineNode*> DialogueRoots;
 			Document.GetRootsOfKind(EDnaLineKind::Dialogue, DialogueRoots);
@@ -747,6 +775,7 @@ namespace UE::DreamNarrative::Lang
 					Channel.Busy = Info->Busy == TEXT("interrupt") ? EDnaChannelBusy::Interrupt : Info->Busy == TEXT("drop") ? EDnaChannelBusy::Drop : EDnaChannelBusy::Queue;
 					for (const FString& Other : Info->Pauses) { Channel.Pauses.Add(FName(*Other)); }
 					for (const FString& Other : Info->Stops) { Channel.Stops.Add(FName(*Other)); }
+					Channel.bPauseDuringStage = Info->bPauseDuringStage;
 					Channel.SourceLine = Root->LineNumber();
 				}
 				FDialogueCompiler Compiler(Exprs, Program, Namespace);

@@ -89,6 +89,10 @@ struct DREAMNARRATIVESTORY_API FDnaChannelData
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	TArray<FName> Stops;
 
+	/** `stage: pause`: it holds still while a stage plays (not one attached to a line), and goes on after. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	bool bPauseDuringStage = false;
+
 	UPROPERTY(VisibleAnywhere, Category = "Narrative")
 	int32 SourceLine = 0;
 };

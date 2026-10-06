@@ -1660,6 +1660,7 @@ namespace UE::DreamNarrative::Lang
 				Node.Kind = EDnaLineKind::StageEntry;
 				FDnaLinePayload& P = Node.Payload;
 				P.bPercent = Tokens[0].Is(EDnaTokenKind::Percent);
+				P.bBareTime = Tokens[0].Is(EDnaTokenKind::Int) || Tokens[0].Is(EDnaTokenKind::Float);
 				P.TimeStart = Tokens[0].Real;
 				++Index;
 				if (Tokens[Index].Is(EDnaTokenKind::DotDot))
@@ -1671,6 +1672,8 @@ namespace UE::DreamNarrative::Lang
 						return;
 					}
 					P.bIsRange = true;
+					P.bEndPercent = Tokens[Index].Is(EDnaTokenKind::Percent);
+					P.bBareTime |= Tokens[Index].Is(EDnaTokenKind::Int) || Tokens[Index].Is(EDnaTokenKind::Float);
 					P.TimeEnd = Tokens[Index].Real;
 					++Index;
 				}
