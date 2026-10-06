@@ -64,6 +64,18 @@ void UDreamNarrativeStory::RegisterScript(UDreamNarrativeScript* Script)
 		}
 	}
 
+	if (const UDnaArchiveSection* Archives = Script->FindSection<UDnaArchiveSection>())
+	{
+		for (int32 Index = 0; Index < Archives->Archives.Num(); ++Index)
+		{
+			const FName Name = Archives->Archives[Index].Name;
+			FArchiveRef& Ref = ArchiveIndex.FindOrAdd(Name);
+			Ref.Section = Archives;
+			Ref.ArchiveIndex = Index;
+			ArchiveOrder.AddUnique(Name);
+		}
+	}
+
 	if (const UDnaDialogueSection* Dialogue = Script->FindSection<UDnaDialogueSection>())
 	{
 		for (const FDnaChannelData& Channel : Dialogue->Channels)
@@ -102,6 +114,7 @@ void UDreamNarrativeStory::RegisterScript(UDreamNarrativeScript* Script)
 	if (!Ledger->IsApplyingSnapshot())
 	{
 		CheckQuests();
+		CheckArchives();
 	}
 }
 

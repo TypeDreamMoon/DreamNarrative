@@ -17,6 +17,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "DreamNarrativeArchive.h"
 #include "DreamNarrativeDialogue.h"
 #include "DreamNarrativeDialogueRunner.h"
 #include "DreamNarrativeLedger.h"
@@ -59,6 +60,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDnaQuestRewardsSignature, FName, Q
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDnaQuestStageSignature, FName, Quest, FName, Stage);
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FDnaQuestRequestedSignature, EDnaQuestRequest /*What*/, FName /*Quest*/, EDnaWriteSource /*Who*/);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FDnaEventHeardSignature, const FDnaEventPayload& /*Event*/, EDnaWriteSource /*Source*/);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDnaArchiveUnlockedSignature, FName, Archive, int32, Entry);
 
 /** A dialogue waiting its turn on a channel. */
 USTRUCT()
@@ -274,6 +276,23 @@ public:
 	// IDnaQuestStateProvider
 	virtual bool GetQuestState(FName Quest, EDnaQuestStateQuery Query) const override;
 
+	// ---------------------------------------------------------------- archives
+
+	/** An archive's title and the entries unlocked so far, interpolated now. Empty for an unknown one. */
+	UFUNCTION(BlueprintPure, Category = "Narrative|Archive")
+	FDnaArchiveView GetArchive(FName Archive) const;
+
+	UFUNCTION(BlueprintPure, Category = "Narrative|Archive")
+	bool IsArchiveEntryUnlocked(FName Archive, int32 Entry) const;
+
+	/** Archives in the order they were declared. */
+	void GetArchiveNames(TArray<FName>& Out) const { Out = ArchiveOrder; }
+	const FDnaArchiveData* FindArchive(FName Archive, const UDnaArchiveSection** OutSection = nullptr) const;
+
+	/** An entry unlocked: its condition held for the first time. It stays unlocked. */
+	UPROPERTY(BlueprintAssignable, Category = "Narrative|Archive")
+	FDnaArchiveUnlockedSignature OnArchiveUnlocked;
+
 private:
 	// channels and events (DreamNarrativeChannels.cpp)
 
@@ -309,6 +328,8 @@ private:
 	void HandleTimerFired(FName Timer);
 	void HandleSnapshotApplied();
 	void HandleSnapshotApplying();
+	/** The save slot is back to defaults: hidden quests start themselves again, entries with nothing to wait for unlock. */
+	void HandleNewPlaythrough();
 	/** Changed: the facts the batch being committed changed, if any. */
 	void CheckQuests(TConstArrayView<FName> Changed = {});
 	void EvaluateQuest(const FDnaQuestData& Quest, const UDreamNarrativeScript& Script, TConstArrayView<FName> Changed);
@@ -337,6 +358,19 @@ private:
 	FDelegateHandle SnapshotHandle;
 	FDelegateHandle ApplyingHandle;
 	FDelegateHandle EventHandle;
+	FDelegateHandle PlaythroughHandle;
+
+	// archives (DreamNarrativeArchives.cpp)
+	/** Unlocks every entry whose condition holds now; what is unlocked stays. */
+	void CheckArchives();
+
+	struct FArchiveRef
+	{
+		TWeakObjectPtr<const UDnaArchiveSection> Section;
+		int32 ArchiveIndex = INDEX_NONE;
+	};
+	TMap<FName, FArchiveRef> ArchiveIndex;
+	TArray<FName> ArchiveOrder;
 
 	UFUNCTION()
 	void HandleRunnerEnded(UDreamNarrativeDialogueRunner* Runner);

@@ -131,6 +131,7 @@ void UDreamNarrativeStory::WatchLedger()
 	SnapshotHandle = Ledger->OnSnapshotApplied.AddUObject(this, &UDreamNarrativeStory::HandleSnapshotApplied);
 	ApplyingHandle = Ledger->OnSnapshotApplying.AddUObject(this, &UDreamNarrativeStory::HandleSnapshotApplying);
 	EventHandle = Ledger->OnEventRaised.AddUObject(this, &UDreamNarrativeStory::HandleEventRaised);
+	PlaythroughHandle = Ledger->OnNewPlaythrough.AddUObject(this, &UDreamNarrativeStory::HandleNewPlaythrough);
 }
 
 void UDreamNarrativeStory::UnwatchLedger()
@@ -142,12 +143,14 @@ void UDreamNarrativeStory::UnwatchLedger()
 		Ledger->OnSnapshotApplied.Remove(SnapshotHandle);
 		Ledger->OnSnapshotApplying.Remove(ApplyingHandle);
 		Ledger->OnEventRaised.Remove(EventHandle);
+		Ledger->OnNewPlaythrough.Remove(PlaythroughHandle);
 	}
 	CommitHandle.Reset();
 	TimerHandle.Reset();
 	SnapshotHandle.Reset();
 	ApplyingHandle.Reset();
 	EventHandle.Reset();
+	PlaythroughHandle.Reset();
 }
 
 void UDreamNarrativeStory::HandleSnapshotApplying()
@@ -165,6 +168,13 @@ void UDreamNarrativeStory::HandleBatchCommitted(const TArray<FName>& Changed)
 		return;
 	}
 	CheckQuests(Changed);
+	CheckArchives();
+}
+
+void UDreamNarrativeStory::HandleNewPlaythrough()
+{
+	CheckQuests();
+	CheckArchives();
 }
 
 void UDreamNarrativeStory::CheckQuests(TConstArrayView<FName> Changed)
