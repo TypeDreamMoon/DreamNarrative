@@ -103,6 +103,7 @@ void UDreamNarrativeRecorder::Begin(UDreamNarrativeStory* InStory, const FString
 
 	// Session facts are left out of a snapshot; a recording starts from them all the same.
 	StartSnapshot = Ledger->MakeSnapshot();
+	StartProfile = Ledger->MakeProfileSnapshot();
 	StartSession.Reset();
 	TArray<FName> Facts;
 	Ledger->GetFactNames(Facts);
@@ -120,6 +121,8 @@ void UDreamNarrativeRecorder::Begin(UDreamNarrativeStory* InStory, const FString
 	Story->OnDialogueStarted.AddDynamic(this, &UDreamNarrativeRecorder::HandleDialogueStarted);
 	WriteHandle = Ledger->OnFactWritten.AddUObject(this, &UDreamNarrativeRecorder::HandleFactWritten);
 	JumpHandle = Ledger->OnJumpRequested.AddUObject(this, &UDreamNarrativeRecorder::HandleJump);
+	PlaythroughHandle = Ledger->OnNewPlaythrough.AddUObject(this, &UDreamNarrativeRecorder::HandleNewPlaythrough);
+	SelectHandle = Ledger->OnChapterSelected.AddUObject(this, &UDreamNarrativeRecorder::HandleSelect);
 	QuestHandle = Story->OnQuestRequested.AddUObject(this, &UDreamNarrativeRecorder::HandleQuestRequested);
 	EventHandle = Story->OnEventHeard.AddUObject(this, &UDreamNarrativeRecorder::HandleEvent);
 	PassOn = Ledger->GetRandomSource();
@@ -157,6 +160,7 @@ FString UDreamNarrativeRecorder::End()
 		}
 	};
 	for (const FDnaFactSnapshotEntry& Entry : StartSnapshot.Facts) { AddGiven(Entry.Fact, Entry.Value); }
+	for (const FDnaFactSnapshotEntry& Entry : StartProfile.Facts) { AddGiven(Entry.Fact, Entry.Value); }
 	for (const TPair<FName, FDnaValue>& Session : StartSession) { AddGiven(Session.Key, Session.Value); }
 	Given.Sort([](const TPair<FString, FString>& A, const TPair<FString, FString>& B) { return A.Key < B.Key; });
 	TArray<FString> GivenLines;
@@ -219,6 +223,7 @@ FString UDreamNarrativeRecorder::End()
 	// -- where it ended: every fact that changed, and the chapter
 	TMap<FName, FDnaValue> Before;
 	for (const FDnaFactSnapshotEntry& Entry : StartSnapshot.Facts) { Before.Add(Entry.Fact, Entry.Value); }
+	for (const FDnaFactSnapshotEntry& Entry : StartProfile.Facts) { Before.Add(Entry.Fact, Entry.Value); }
 	Before.Append(StartSession);
 	TArray<FName> Facts;
 	Ledger->GetFactNames(Facts);
@@ -297,6 +302,8 @@ void UDreamNarrativeRecorder::Detach()
 	{
 		Ledger->OnFactWritten.Remove(WriteHandle);
 		Ledger->OnJumpRequested.Remove(JumpHandle);
+		Ledger->OnNewPlaythrough.Remove(PlaythroughHandle);
+		Ledger->OnChapterSelected.Remove(SelectHandle);
 		if (Ledger->GetRandomSource() == this)
 		{
 			Ledger->SetRandomSource(PassOn);
@@ -374,6 +381,16 @@ void UDreamNarrativeRecorder::HandleStart(FName Node)
 void UDreamNarrativeRecorder::HandleJump(FName Chapter)
 {
 	AddStep(TEXT("jump ") + Chapter.ToString());
+}
+
+void UDreamNarrativeRecorder::HandleNewPlaythrough()
+{
+	AddStep(TEXT("newgame"));
+}
+
+void UDreamNarrativeRecorder::HandleSelect(FName Chapter)
+{
+	AddStep(TEXT("select ") + Chapter.ToString());
 }
 
 void UDreamNarrativeRecorder::HandleEvent(const FDnaEventPayload& Event, EDnaWriteSource Source)

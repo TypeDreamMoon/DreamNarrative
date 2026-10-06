@@ -64,6 +64,8 @@ private:
 	void HandleEvent(const FDnaEventPayload& Event, EDnaWriteSource Source);
 	void HandleFactWritten(FName Fact, const FDnaValue& Value, EDnaWriteSource Source);
 	void HandleJump(FName Chapter);
+	void HandleNewPlaythrough();
+	void HandleSelect(FName Chapter);
 	void HandleQuestRequested(EDnaQuestRequest What, FName Quest, EDnaWriteSource Who);
 
 	UFUNCTION()
@@ -107,8 +109,9 @@ private:
 	/** For each event, the step it was last raised in. */
 	TMap<FName, int32> EventSteps;
 
-	/** The ledger as it stood when recording began. */
+	/** The ledger as it stood when recording began: the save slot's layer and the profile. */
 	FDnaLedgerSnapshot StartSnapshot;
+	FDnaProfileSnapshot StartProfile;
 	TMap<FName, FDnaValue> StartSession;
 
 	TArray<FStep> Steps;
@@ -120,4 +123,6 @@ private:
 	FDelegateHandle JumpHandle;
 	FDelegateHandle QuestHandle;
 	FDelegateHandle EventHandle;
+	FDelegateHandle PlaythroughHandle;
+	FDelegateHandle SelectHandle;
 };
