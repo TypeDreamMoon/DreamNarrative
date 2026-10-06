@@ -97,7 +97,10 @@ enum class EDnaStageVerb : uint8
 	PlaySequence,
 };
 
-/** A named camera position under `shots`: `名 local (x, y, z) [of 角色] [look 角色] [fov n]`. */
+/**
+ * A named camera position under `shots`: `名 local (x, y, z) [rot (pitch, yaw, roll)] [of 角色] [look 角色] [fov n]`.
+ * An anchor no actor answers to is the world itself: its local space is world space.
+ */
 USTRUCT(BlueprintType)
 struct DREAMNARRATIVESTAGE_API FDnaStageShot
 {
@@ -114,9 +117,16 @@ struct DREAMNARRATIVESTAGE_API FDnaStageShot
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	FVector Offset = FVector::ZeroVector;
 
-	/** The actor the camera looks at; None to look at the anchor. */
+	/** The actor the camera looks at; None to look at the anchor. Ignored when the shot has a rotation. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	FName LookAt;
+
+	/** `rot (pitch, yaw, roll)`: the camera's rotation in the anchor's space, instead of looking at something. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	bool bHasRotation = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	FRotator Rotation = FRotator::ZeroRotator;
 
 	/** Degrees; 0 keeps the game's field of view. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
@@ -156,7 +166,7 @@ struct DREAMNARRATIVESTAGE_API FDnaStageEntry
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	float Amount = 0.f;
 
-	/** `on` for a key light; `persist` for a spawned effect. */
+	/** `on` for a key light; `persist` for a spawned effect; `hard` for a cut meant to be seen. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	bool bFlag = false;
 

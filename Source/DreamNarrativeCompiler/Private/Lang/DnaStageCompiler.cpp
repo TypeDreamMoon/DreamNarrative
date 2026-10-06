@@ -273,7 +273,18 @@ namespace UE::DreamNarrative::Lang
 				{
 					FString Name;
 					double X = 0.0, Y = 0.0, Z = 0.0, Fov = 0.0;
-					if (Args.Word(TEXT("local")))
+					if (Args.Word(TEXT("rot")))
+					{
+						if (!(Args.Is(EDnaTokenKind::LeftParen) && Args.Number(X) && Args.Is(EDnaTokenKind::Comma) && Args.Number(Y)
+							&& Args.Is(EDnaTokenKind::Comma) && Args.Number(Z) && Args.Is(EDnaTokenKind::RightParen)))
+						{
+							Fail(TEXT("DNS7006"), Line.Raw.Span, LOCTEXT("ShotRot", "`rot` takes pitch, yaw and roll in degrees, such as (0, -90, 0)"));
+							return;
+						}
+						Shot.Rotation = FRotator(X, Y, Z);
+						Shot.bHasRotation = true;
+					}
+					else if (Args.Word(TEXT("local")))
 					{
 						if (!(Args.Is(EDnaTokenKind::LeftParen) && Args.Number(X) && Args.Is(EDnaTokenKind::Comma) && Args.Number(Y)
 							&& Args.Is(EDnaTokenKind::Comma) && Args.Number(Z) && Args.Is(EDnaTokenKind::RightParen)))
@@ -289,7 +300,7 @@ namespace UE::DreamNarrative::Lang
 					else if (Args.Word(TEXT("fov")) && Args.Number(Fov) && Fov > 0.0 && Fov < 180.0) { Shot.Fov = static_cast<float>(Fov); }
 					else
 					{
-						Fail(TEXT("DNS7006"), Line.Raw.Span, LOCTEXT("ShotArgs", "A shot reads `名 local (x, y, z) [of 角色] [look 角色] [fov 度数]`"));
+						Fail(TEXT("DNS7006"), Line.Raw.Span, LOCTEXT("ShotArgs", "A shot reads `名 local (x, y, z) [rot (pitch, yaw, roll)] [of 角色] [look 角色] [fov 度数]`"));
 						return;
 					}
 				}
@@ -360,9 +371,11 @@ namespace UE::DreamNarrative::Lang
 					}
 					if (Verb == TEXT("cut") || Verb == TEXT("whip"))
 					{
-						if (!(Args.Is(EDnaTokenKind::Arrow) && Args.Name(Name))) { return BadArgs(Line, Verb == TEXT("cut") ? TEXT("cut -> 机位") : TEXT("whip -> 机位")); }
+						if (!(Args.Is(EDnaTokenKind::Arrow) && Args.Name(Name))) { return BadArgs(Line, Verb == TEXT("cut") ? TEXT("cut -> 机位 [hard]") : TEXT("whip -> 机位")); }
 						Entry.Verb = Verb == TEXT("cut") ? EDnaStageVerb::Cut : EDnaStageVerb::Whip;
 						Entry.Target = FName(*Name);
+						// `hard`: a cut meant to be seen, as between the shots of a cutscene; no mask needs to hide it.
+						Entry.bFlag = Verb == TEXT("cut") && Args.Word(TEXT("hard"));
 						return true;
 					}
 					if (Verb == TEXT("push"))
@@ -663,7 +676,7 @@ namespace UE::DreamNarrative::Lang
 			{
 				for (const FReadEntry& Cut : Timed)
 				{
-					if (Cut.Entry.Verb != EDnaStageVerb::Cut)
+					if (Cut.Entry.Verb != EDnaStageVerb::Cut || Cut.Entry.bFlag)
 					{
 						continue;
 					}
@@ -674,7 +687,7 @@ namespace UE::DreamNarrative::Lang
 					if (!bCovered)
 					{
 						Fail(TEXT("DNS7001"), Cut.Span, FText::Format(LOCTEXT("CutUncovered",
-							"The cut to '{0}' is not hidden: no mask is at full at that moment (a distort or flash peaks at the middle of its range; a fade is full after its fade)"),
+							"The cut to '{0}' is not hidden: no mask is at full at that moment (a distort or flash peaks at the middle of its range; a fade is full after its fade). A cut meant to be seen is written `cut -> {0} hard`"),
 							FText::FromName(Cut.Entry.Target)));
 					}
 				}

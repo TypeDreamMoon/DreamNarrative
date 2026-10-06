@@ -140,7 +140,11 @@ namespace DreamNarrative
 				const FTransform Frame = Anchor ? Anchor->GetActorTransform() : FTransform::Identity;
 				View.Location = Frame.TransformPosition(Data->Offset);
 				const FVector Target = Look ? Look->GetActorLocation() : Frame.GetLocation();
-				if (!(Target - View.Location).IsNearlyZero())
+				if (Data->bHasRotation)
+				{
+					View.Rotation = Frame.TransformRotation(Data->Rotation.Quaternion()).Rotator();
+				}
+				else if (!(Target - View.Location).IsNearlyZero())
 				{
 					View.Rotation = (Target - View.Location).Rotation();
 				}

@@ -385,7 +385,7 @@ gameplay 来源和类型对不上。
 
 切镜头时没有遮罩盖住。
 
-**中文散文**:`cut -> 机位` 让画面一下子跳到另一个机位,观众会看到这一跳。演出的规矩是:跳的那一刻,mask 轨上必须有一个条目正处在最强——`distort`、`exposure`、`streaks` 在它范围的正中间最强,`fade black / white 时长` 淡进去之后就是最强,`cut black`、`comic` 整段都是最强。把切点挪到遮罩的峰值上,或者给切点配一个遮罩(比如 `1.9s..2.1s distort strength 0.8` 盖住 2.0s 的切),或者改用 `blend -> 机位 时长` / `whip -> 机位` 这种看得见过程的移动。
+**中文散文**:`cut -> 机位` 让画面一下子跳到另一个机位,观众会看到这一跳。演出的规矩是:跳的那一刻,mask 轨上必须有一个条目正处在最强——`distort`、`exposure`、`streaks` 在它范围的正中间最强,`fade black / white 时长` 淡进去之后就是最强,`cut black`、`comic` 整段都是最强。把切点挪到遮罩的峰值上,或者给切点配一个遮罩(比如 `1.9s..2.1s distort strength 0.8` 盖住 2.0s 的切),或者改用 `blend -> 机位 时长` / `whip -> 机位` 这种看得见过程的移动。过场里镜头之间本来就该看得见的硬切写 `cut -> 机位 hard`,这条就不查它。
 
 ### DNS7002
 
@@ -415,7 +415,7 @@ gameplay 来源和类型对不上。
 
 这条轨上没有这个动词,或者参数不对。
 
-**中文散文**:每条轨只认自己的动词:camera 有 `blend from game / back / ->`、`cut ->`、`whip ->`、`push`;light 有 `ramp dark`、`restore`、`key`;mask 有 `distort`、`exposure`、`streaks`、`comic`、`cut black`、`fade black / white`;vfx 有 `spawn`、`stop`;ui 有 `hide hud`、`show hud`、`text`、`clear`;anim 有 `montage`;game 有 `input lock`、`hitstop`、`time`、`damage window`;sequence 有 `play`。消息里给出了这个动词该怎么写。同一个码也报这几种情况:演出属性只有 `base` 和 `gameplay`;机位要写 `local (x, y, z)`;`restore` 里只能放把世界放回去的条目(`camera blend back`、`light restore`、`light key 角色 off`、`ui show hud`、`ui clear`、`vfx stop`)。
+**中文散文**:每条轨只认自己的动词:camera 有 `blend from game / back / ->`、`cut ->`、`whip ->`、`push`;light 有 `ramp dark`、`restore`、`key`;mask 有 `distort`、`exposure`、`streaks`、`comic`、`cut black`、`fade black / white`;vfx 有 `spawn`、`stop`;ui 有 `hide hud`、`show hud`、`text`、`clear`;anim 有 `montage`;game 有 `input lock`、`hitstop`、`time`、`damage window`;sequence 有 `play`。消息里给出了这个动词该怎么写。同一个码也报这几种情况:演出属性只有 `base` 和 `gameplay`;机位要写 `local (x, y, z)`,可以再写 `rot (pitch, yaw, roll)`;`restore` 里只能放把世界放回去的条目(`camera blend back`、`light restore`、`light key 角色 off`、`ui show hud`、`ui clear`、`vfx stop`)。
 
 ### DNS7007
 
