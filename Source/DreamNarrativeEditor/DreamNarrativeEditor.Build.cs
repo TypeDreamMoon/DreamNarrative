@@ -39,6 +39,7 @@ public class DreamNarrativeEditor : ModuleRules
 			"Projects",
 			"WorkspaceMenuStructure",
 			"GameplayTagsEditor",
+			"DeveloperSettings",
 		});
 	}
 }
