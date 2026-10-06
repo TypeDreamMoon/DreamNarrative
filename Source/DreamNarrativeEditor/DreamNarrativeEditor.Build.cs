@@ -40,6 +40,9 @@ public class DreamNarrativeEditor : ModuleRules
 			"WorkspaceMenuStructure",
 			"GameplayTagsEditor",
 			"DeveloperSettings",
+			"LevelSequence",
+			"MovieScene",
+			"MovieSceneTracks",
 		});
 	}
 }
