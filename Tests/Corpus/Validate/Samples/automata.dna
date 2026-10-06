@@ -45,11 +45,12 @@ channel 侦察
   busy: interrupt
   pauses: 闲聊
 
-// 9S 的碎碎念:正在说就算了。
+// 9S 的碎碎念:正在说就算了;过场演出时闭嘴,演完接着说。
 channel 闲聊
   input: free
   advance: auto
   busy: drop
+  stage: pause
 
 // ---------------------------------------------------------------- 事件:游戏或 GAS 发出,条件与台词里读参数
 //
@@ -139,6 +140,48 @@ quest 迷途的机械
 stage 结局字幕_Q
   duration 6.0s
 
+// 处决:巨型机械倒下前的最后一击。时序跟着动画走,所以按秒;两刀切镜头都藏在遮罩最强的那一刻。能力系统发出
+// 能力.处决 的 GameplayEvent 时演这一段(GAS 桥),演完前玩家动不了,结束后 HUD 回来。
+stage 处决_巨型机械
+  duration 4.0s
+  gameplay: 能力.处决
+  shots
+    侧面     local (0, -600, 150) of 巨型机械 look 巨型机械 fov 50
+    特写     local (250, 80, 120) of 二B look 巨型机械 fov 30
+  camera
+    0.0s     blend from game 0.25s
+    1.0s     cut -> 侧面                     // 0.9..1.1 的扭曲在 1.0 最强
+    2.4s     cut -> 特写                     // 2.3..2.5 的白闪在 2.4 全白
+    2.4s     push 60cm over 1.2s
+    4.0s     blend back 0.5s
+  mask
+    0.9s..1.1s   distort strength 0.8
+    2.3s..2.5s   fade white 0.1s
+  light
+    0.0s     ramp dark 0.4s to 0.3
+    3.6s     restore 0.4s
+  anim
+    0.0s     montage AM_二B_处决 actor 二B warp 处决点 巨型机械
+  vfx
+    2.4s     spawn /Game/FX/NS_处决_斩击 at 巨型机械
+  ui
+    0.0s     hide hud
+  game
+    0.0s..4.0s   input lock
+    0.0s..2.4s   damage window
+    2.4s..2.6s   hitstop 0.1x
+  restore
+    ui       show hud
+
+// 骇入闪回:9S 想起骇入时看到的东西。跟着挂上的那一行台词走,一闪而过。
+stage 骇入闪回
+  base: line
+  mask
+    10%..30%   comic
+    30%..34%   cut black
+  ui
+    12%..30%   text 「这里也有……一样的东西」 style 骇入
+
 // ---------------------------------------------------------------- 主频道:和 9S 说话
 
 dialogue 九S_会合 for 九S if not 已会合
@@ -215,7 +258,7 @@ dialogue 撤离_A on 抵达撤离点 if chapter == 工厂深处 and 路线 == A
   set 路线 = B
 
 dialogue 撤离_B on 抵达撤离点 if chapter == 工厂深处 and 路线 == B
-  司令官: 9S,把你看到的都报告上来。
+  司令官: 9S,把你看到的都报告上来。 @骇入闪回
   set 已见结局.B = true
   advance 结局_B
   set 路线 = C
