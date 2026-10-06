@@ -392,6 +392,32 @@ void UDreamNarrativeDialogueRunner::Run()
 		case EDnaOpCode::Play:
 			++PC;
 			Transcript.Add(FString::Printf(TEXT("[play %s%s]"), *Ins.Name.ToString(), Ins.bAsync ? TEXT(" async") : TEXT("")));
+			if (IDnaStageHost* Host = HostFor(Ins.Name))
+			{
+				// The Stage module plays it; a blocking one holds the dialogue until it is over.
+				FDnaStageRequest Request;
+				Request.Stage = Ins.Name;
+				Request.Channel = Channel;
+				if (Ins.bAsync)
+				{
+					if (Tracer) { Tracer->OnEvent(TEXT("dialogue.play.staged-async")); }
+					Host->PlayStage(Request, FDnaStageFinishedDelegate());
+					continue;
+				}
+				const uint32 Serial = ++StageSerial;
+				State = EDnaRunnerState::PlayingStage;
+				const uint64 Ticket = Host->PlayStage(Request, FDnaStageFinishedDelegate::CreateWeakLambda(this, [this, Serial](EDnaStageEnd)
+				{
+					HandleStageEnded(Serial);
+				}));
+				if (Ticket != 0)
+				{
+					if (Tracer) { Tracer->OnEvent(TEXT("dialogue.play.staged")); }
+					StageTicket = Ticket;
+					return;
+				}
+				State = EDnaRunnerState::Idle;
+			}
 			if (OnPlayStage.IsBound() && !Ins.bAsync)
 			{
 				if (Tracer) { Tracer->OnEvent(TEXT("dialogue.play.blocking")); }
@@ -467,6 +493,7 @@ void UDreamNarrativeDialogueRunner::Advance()
 		return;
 	}
 	CancelAutoAdvance();
+	StopLineStage();
 	State = EDnaRunnerState::Idle;
 	Run();
 }
@@ -482,7 +509,52 @@ void UDreamNarrativeDialogueRunner::ShowLine()
 	++LinesShown;
 	// Scheduled before the broadcast, as a wait is: a listener that moves on at once cancels it.
 	ScheduleAutoAdvance();
+	PlayLineStage();
 	OnLine.Broadcast(this, CurrentLine);
+}
+
+IDnaStageHost* UDreamNarrativeDialogueRunner::HostFor(FName Stage) const
+{
+	IDnaStageHost* Host = Ledger ? Ledger->GetStageHost() : nullptr;
+	return Host && !Stage.IsNone() && Host->HasStage(Stage) ? Host : nullptr;
+}
+
+void UDreamNarrativeDialogueRunner::HandleStageEnded(uint32 Serial)
+{
+	if (Serial != StageSerial || State != EDnaRunnerState::PlayingStage)
+	{
+		return;
+	}
+	StageTicket = 0;
+	State = EDnaRunnerState::Idle;
+	Run();
+}
+
+void UDreamNarrativeDialogueRunner::PlayLineStage()
+{
+	StopLineStage();
+	if (IDnaStageHost* Host = HostFor(CurrentLine.Stage))
+	{
+		FDnaStageRequest Request;
+		Request.Stage = CurrentLine.Stage;
+		Request.LineSeconds = LineSeconds(CurrentLine);
+		Request.Channel = Channel;
+		LineStageTicket = Host->PlayStage(Request, FDnaStageFinishedDelegate());
+		if (IDnaTrace* Tracer = LineStageTicket != 0 ? Ledger->GetTrace() : nullptr)
+		{
+			Tracer->OnEvent(TEXT("dialogue.line.staged"));
+		}
+	}
+}
+
+void UDreamNarrativeDialogueRunner::StopLineStage()
+{
+	const uint64 Ticket = LineStageTicket;
+	LineStageTicket = 0;
+	if (IDnaStageHost* Host = Ticket != 0 && Ledger ? Ledger->GetStageHost() : nullptr)
+	{
+		Host->StopStage(Ticket);
+	}
 }
 
 void UDreamNarrativeDialogueRunner::ScheduleAutoAdvance()
@@ -521,6 +593,7 @@ void UDreamNarrativeDialogueRunner::Pause()
 	}
 	bPaused = true;
 	CancelAutoAdvance();
+	StopLineStage();
 	if (State == EDnaRunnerState::Waiting && WaitHandle.IsValid() && Ledger)
 	{
 		PausedWaitRemaining = FMath::Max(0.0, Ledger->GetClock().GetRemaining(WaitHandle));
@@ -593,6 +666,14 @@ void UDreamNarrativeDialogueRunner::NotifyStageFinished()
 	{
 		return;
 	}
+	// The game moves on before the host is done: the stage stops, and its late end is not heard.
+	const uint64 Ticket = StageTicket;
+	StageTicket = 0;
+	++StageSerial;
+	if (IDnaStageHost* Host = Ticket != 0 && Ledger ? Ledger->GetStageHost() : nullptr)
+	{
+		Host->StopStage(Ticket);
+	}
 	State = EDnaRunnerState::Idle;
 	Run();
 }
@@ -637,6 +718,18 @@ void UDreamNarrativeDialogueRunner::Finish()
 		Ledger->GetClock().Cancel(WaitHandle);
 	}
 	CancelAutoAdvance();
+	StopLineStage();
+	if (StageTicket != 0)
+	{
+		// Cut off while a stage held it: the stage goes too.
+		const uint64 Ticket = StageTicket;
+		StageTicket = 0;
+		++StageSerial;
+		if (IDnaStageHost* Host = Ledger ? Ledger->GetStageHost() : nullptr)
+		{
+			Host->StopStage(Ticket);
+		}
+	}
 	bPaused = false;
 	if (Ledger && !NodeName.IsNone())
 	{

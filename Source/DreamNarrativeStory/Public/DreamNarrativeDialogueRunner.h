@@ -16,6 +16,7 @@
 #include "DreamNarrativeEvent.h"
 #include "DreamNarrativeDialogueRunner.generated.h"
 
+class IDnaStageHost;
 class UDreamNarrativeLedger;
 class UDreamNarrativeStory;
 
@@ -29,7 +30,7 @@ enum class EDnaRunnerState : uint8
 	AwaitingChoice,
 	/** A `wait` is in progress; continues when the ledger's clock says so, or on NotifyWaitFinished(). */
 	Waiting,
-	/** A blocking `play`; continues on NotifyStageFinished(). */
+	/** A blocking `play`; continues when the stage host says the stage is over, or on NotifyStageFinished(). */
 	PlayingStage,
 	Ended,
 };
@@ -155,7 +156,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Dialogue")
 	void Abort();
 
-	/** For a blocking `play`: the stage is over, continue. */
+	/** For a blocking `play`: the stage is over, continue. A stage the host still plays is stopped. */
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Dialogue")
 	void NotifyStageFinished();
 
@@ -227,6 +228,13 @@ private:
 	void ScheduleAutoAdvance();
 	void CancelAutoAdvance();
 	void HandleAutoAdvance();
+	/** The stage host, when there is one and it has Stage; null otherwise. */
+	IDnaStageHost* HostFor(FName Stage) const;
+	/** The host says the blocking stage numbered Serial is over. */
+	void HandleStageEnded(uint32 Serial);
+	/** A line's `@` stage: plays with the line, stops when the line goes. */
+	void PlayLineStage();
+	void StopLineStage();
 
 	UPROPERTY()
 	TObjectPtr<UDreamNarrativeStory> Story;
@@ -273,4 +281,9 @@ private:
 	FDnaClockHandle AdvanceHandle;
 	/** What a wait had left when the runner paused; negative when none was cut short. */
 	double PausedWaitRemaining = -1.0;
+	/** The blocking stage the host plays for it (0: none), and a number that tells a late end from the current one. */
+	uint64 StageTicket = 0;
+	uint32 StageSerial = 0;
+	/** The stage attached to the line on screen, while the host plays it. */
+	uint64 LineStageTicket = 0;
 };

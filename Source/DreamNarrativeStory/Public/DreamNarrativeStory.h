@@ -315,6 +315,8 @@ private:
 	/** Takes the running dialogue off the channel: aborted, or held to go on later when it resumes. */
 	void CutOff(FName Channel, bool bHoldToResume, FName ParkFor);
 	void HandleEventRaised(const FDnaEventPayload& Event, EDnaWriteSource Source);
+	/** A stage started or ended: channels with `stage: pause` hold still while any (not on a line) plays. */
+	void HandleStageActivity(FName Stage, bool bStarted, bool bOnLine);
 	FName SelectEventEntry(FName Event, FName Channel, const FDnaEventPayload& Payload) const;
 	/** `once` used up, `cooldown` running, or (for an event) already running or waiting its turn. */
 	bool IsEntrySpent(const FDnaDialogueNodeData& Data, bool bForEvent) const;
@@ -359,6 +361,9 @@ private:
 	FDelegateHandle ApplyingHandle;
 	FDelegateHandle EventHandle;
 	FDelegateHandle PlaythroughHandle;
+	FDelegateHandle StageHandle;
+	/** Stages playing now that are not on a line. */
+	int32 StagesPlaying = 0;
 
 	// archives (DreamNarrativeArchives.cpp)
 	/** Unlocks every entry whose condition holds now; what is unlocked stays. */

@@ -417,6 +417,28 @@ void UDreamNarrativeStory::BecameQuiet(FName Channel)
 	}
 }
 
+void UDreamNarrativeStory::HandleStageActivity(FName Stage, bool bStarted, bool bOnLine)
+{
+	if (bOnLine)
+	{
+		return;
+	}
+	if (bStarted ? ++StagesPlaying != 1 : (StagesPlaying == 0 || --StagesPlaying != 0))
+	{
+		return;
+	}
+	for (const FName& Channel : ChannelOrder)
+	{
+		const FDnaChannelData* Decl = ChannelDecls.Find(Channel);
+		if (Decl && Decl->bPauseDuringStage)
+		{
+			Note(Ledger, bStarted ? TEXT("channel.stage-pause") : TEXT("channel.stage-resume"));
+			if (bStarted) { PauseChannel(Channel); }
+			else { UnpauseChannel(Channel); }
+		}
+	}
+}
+
 void UDreamNarrativeStory::PauseChannel(FName Channel)
 {
 	FDnaChannelState& State = StateOf(Channel);

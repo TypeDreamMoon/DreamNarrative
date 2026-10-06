@@ -132,6 +132,7 @@ void UDreamNarrativeStory::WatchLedger()
 	ApplyingHandle = Ledger->OnSnapshotApplying.AddUObject(this, &UDreamNarrativeStory::HandleSnapshotApplying);
 	EventHandle = Ledger->OnEventRaised.AddUObject(this, &UDreamNarrativeStory::HandleEventRaised);
 	PlaythroughHandle = Ledger->OnNewPlaythrough.AddUObject(this, &UDreamNarrativeStory::HandleNewPlaythrough);
+	StageHandle = Ledger->OnStageActivity.AddUObject(this, &UDreamNarrativeStory::HandleStageActivity);
 }
 
 void UDreamNarrativeStory::UnwatchLedger()
@@ -144,6 +145,7 @@ void UDreamNarrativeStory::UnwatchLedger()
 		Ledger->OnSnapshotApplying.Remove(ApplyingHandle);
 		Ledger->OnEventRaised.Remove(EventHandle);
 		Ledger->OnNewPlaythrough.Remove(PlaythroughHandle);
+		Ledger->OnStageActivity.Remove(StageHandle);
 	}
 	CommitHandle.Reset();
 	TimerHandle.Reset();
@@ -151,6 +153,7 @@ void UDreamNarrativeStory::UnwatchLedger()
 	ApplyingHandle.Reset();
 	EventHandle.Reset();
 	PlaythroughHandle.Reset();
+	StageHandle.Reset();
 }
 
 void UDreamNarrativeStory::HandleSnapshotApplying()
@@ -481,6 +484,12 @@ void UDreamNarrativeStory::RunHandler(FName Quest, const FDnaQuestHandlerData& H
 			break;
 		case EDnaOpCode::Play:
 			OnQuestStage.Broadcast(Quest, Ins.Name);
+			if (IDnaStageHost* Host = Ledger->GetStageHost(); Host && Host->HasStage(Ins.Name))
+			{
+				FDnaStageRequest Request;
+				Request.Stage = Ins.Name;
+				Host->PlayStage(Request, FDnaStageFinishedDelegate());
+			}
 			break;
 		case EDnaOpCode::Emit:
 		{
