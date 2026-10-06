@@ -1,0 +1,51 @@
+// 演出冒烟:真游戏世界里的导演与恢复事务。机位和角色按名字找——测试给主角和 Boss 打上同名的 actor 标签;关卡序列
+// 是测试在内存里临时建的。
+
+character 甲
+character 乙
+
+channel 闲话
+  stage: pause
+
+event 闲着
+
+stage 过场
+  duration 3.0s
+  shots
+    近景     local (200, 0, 80) of 主角 look 主角 fov 40
+  camera
+    0.0s     blend from game 0.2s
+    1.0s     cut -> 近景                    // 0.9..1.1 的扭曲在 1.0 最强
+    3.0s     blend back 0.3s
+  mask
+    0.9s..1.1s   distort strength 0.6
+  light
+    0.0s     ramp dark 0.5s
+    2.5s     restore 0.5s
+    0.0s..3.0s   key 主角 on
+  ui
+    0.0s     hide hud
+    0.5s..2.0s   text 「三天后」 style 字幕
+  game
+    0.0s..3.0s   input lock
+    1.0s..1.2s   hitstop 0.2x
+    0.0s..1.0s   damage window
+  sequence
+    0.0s     play /Temp/DreamNarrativeStageSmoke/LS_Cutscene
+  restore
+    ui       show hud
+
+stage 推近
+  base: line
+  camera
+    0%       push 30cm over 100%
+
+dialogue 甲_过场 for 甲
+  甲: 看好了。
+  play 过场
+  甲: 就这样。 @推近
+  甲: 走吧。
+
+dialogue 闲话_一 on 闲着 channel 闲话
+  乙: 今天天气不错。
+  乙: 适合散步。

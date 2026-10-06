@@ -84,6 +84,8 @@ namespace UE::DreamNarrative::Tests
 		// Nothing has happened yet, so the first-water entry applies.
 		Console.Says(TEXT("dn.talk 凛"), TEXT("凛: 水该换了。"));
 		Console.Says(TEXT("dn.next"), TEXT("玩家: 我来。"));
+		// The water-changing stage holds the dialogue; the next step does not wait for it.
+		Console.Says(TEXT("dn.next"), TEXT("[playing a stage"));
 		Console.Says(TEXT("dn.next"), TEXT("凛: 第一滴。"));
 		Console.Says(TEXT("dn.next"), TEXT("[dialogue ended]"));
 		Console.Says(TEXT("dn.fact 换水次数"), TEXT("换水次数 = 1"));
@@ -95,6 +97,7 @@ namespace UE::DreamNarrative::Tests
 		Console.Says(TEXT("dn.talk 凛"), TEXT("凛: 你回来了。"));
 		Console.Says(TEXT("dn.next"), TEXT("[0] 你在等什么?"));
 		Console.Says(TEXT("dn.choose 0"), TEXT("凛: ……"));
+		Console.Says(TEXT("dn.next"), TEXT("[playing a stage"));
 		Console.Says(TEXT("dn.next"), TEXT("[dialogue ended]"));
 		Console.Says(TEXT("dn.fact 凛提到过等待"), TEXT("凛提到过等待 = true"));
 
@@ -176,11 +179,13 @@ bool FDnaSmokeSaveGameTest::RunTest(const FString& Parameters)
 		Console.Says(TEXT("dn.talk 凛"), TEXT("凛: 水该换了。"));
 		Console.Type(TEXT("dn.next"));
 		Console.Type(TEXT("dn.next"));
+		Console.Type(TEXT("dn.next"));
 		Console.Says(TEXT("dn.next"), TEXT("[dialogue ended]"));
 		Console.Type(TEXT("dn.fact 周期 1"));
 		Console.Says(TEXT("dn.talk 凛"), TEXT("凛: 你回来了。"));
 		Console.Type(TEXT("dn.next"));
 		Console.Type(TEXT("dn.choose 0"));
+		Console.Type(TEXT("dn.next"));
 		Console.Says(TEXT("dn.next"), TEXT("[dialogue ended]"));
 
 		UDnaSmokeSaveGame* SaveGame = Cast<UDnaSmokeSaveGame>(UGameplayStatics::CreateSaveGameObject(UDnaSmokeSaveGame::StaticClass()));
