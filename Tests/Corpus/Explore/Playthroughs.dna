@@ -1,0 +1,24 @@
+// 探索器夹具:二周目才走得到的结局。一周目说完就结束了;profile 里记着通关过,开新周目之后甲才说别的。
+// profile fact 在状态里,「开新周目」是一步(回到探索起点,profile 保留),所以这个结局找得到。
+
+character 甲
+
+fact 通关过: bool profile
+fact 本周目结束: bool
+fact 真结局: bool
+
+dialogue 二周目 for 甲 if 通关过 and not 本周目结束 priority 2
+  甲: 又见面了。
+  set 真结局 = true
+  set 本周目结束 = true
+
+dialogue 一周目 for 甲 if not 本周目结束
+  甲: 结束了。
+  set 通关过 = true
+  set 本周目结束 = true
+
+dialogue 无话 for 甲
+  甲: ……
+
+explore 二周目的结局
+  eventually 真结局

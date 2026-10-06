@@ -295,6 +295,8 @@ namespace UE::DreamNarrative::Tests::Explore
 			Wait,
 			/** The game raises an event some dialogue opens on. */
 			Emit,
+			/** A new playthrough: back to where the exploration started, the profile kept. */
+			NewGame,
 		};
 
 		struct FMove
@@ -912,6 +914,11 @@ namespace UE::DreamNarrative::Tests::Explore
 					Move.Code = EncodeValue(Slot, Value);
 				}
 			}
+			// A new playthrough means something only when something outlives it.
+			if (FactDecls.ContainsByPredicate([](const FDnaFactDecl& Decl) { return Decl.bProfile; }))
+			{
+				Moves.AddDefaulted_GetRef().Kind = EMoveKind::NewGame;
+			}
 			for (const FName& Event : HeardEvents)
 			{
 				for (FDnaEventPayload& Payload : KeyPayloads(Event))
@@ -1203,6 +1210,21 @@ namespace UE::DreamNarrative::Tests::Explore
 				}
 			}
 			Ledger().ApplySnapshot(Snapshot);
+			// A save leaves the profile out: it goes back on its own.
+			FDnaProfileSnapshot Profile;
+			for (int32 Slot = 0; Slot < FactNames.Num(); ++Slot)
+			{
+				if (FactDecls[Slot].bProfile)
+				{
+					FDnaFactSnapshotEntry& Entry = Profile.Facts.AddDefaulted_GetRef();
+					Entry.Fact = FactNames[Slot];
+					Entry.Value = DecodeValue(Slot, Values[Slot]);
+				}
+			}
+			if (Profile.Facts.Num() > 0)
+			{
+				Ledger().ApplyProfileSnapshot(Profile);
+			}
 		}
 
 		/** Adds the state the ledger is in, unless an equal one is known. Returns its index, INDEX_NONE when the state limit is hit. */
@@ -1414,6 +1436,19 @@ namespace UE::DreamNarrative::Tests::Explore
 			case EMoveKind::Emit:
 				Ledger().RaiseEvent(Move.Event);
 				break;
+			case EMoveKind::NewGame:
+			{
+				TArray<int32> Fresh = States[0].Values;
+				for (int32 Slot = 0; Slot < FactNames.Num(); ++Slot)
+				{
+					if (FactDecls[Slot].bProfile)
+					{
+						Fresh[Slot] = States[From].Values[Slot];
+					}
+				}
+				Restore(Fresh);
+				break;
+			}
 			}
 			// A write or a timer can open dialogue too (a quest's `emit`), so every move is talked out.
 			if (Out.End != ERunEnd::NotApplicable)
@@ -1604,6 +1639,7 @@ namespace UE::DreamNarrative::Tests::Explore
 			case EMoveKind::Set: return FString::Printf(TEXT("set %s = %s"), *Move.Target.ToString(), *Move.Value.ToString());
 			case EMoveKind::Wait: return TEXT("wait for the next timer");
 			case EMoveKind::Emit: return TEXT("emit ") + Move.Event.ToString();
+			case EMoveKind::NewGame: return TEXT("newgame");
 			}
 			return FString();
 		}
