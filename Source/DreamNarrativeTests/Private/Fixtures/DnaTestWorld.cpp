@@ -4,6 +4,7 @@
 #include "DreamNarrativeDialogueRunner.h"
 #include "DreamNarrativeLedger.h"
 #include "DreamNarrativeScript.h"
+#include "DreamNarrativeStageSubsystem.h"
 #include "DreamNarrativeStory.h"
 #include "Engine/GameInstance.h"
 #include "Generation/DnaGenerator.h"
@@ -205,6 +206,11 @@ namespace UE::DreamNarrative::Tests
 		{
 			StoryObject->StopAllDialogue();
 		}
+		if (StagesObject)
+		{
+			StagesObject->StopAllStages();
+			StagesObject->Deinitialize();
+		}
 		if (LedgerObject && LedgerObject->GetRandomSource() == &Rolls)
 		{
 			LedgerObject->SetRandomSource(nullptr);
@@ -216,8 +222,19 @@ namespace UE::DreamNarrative::Tests
 		Collector.AddReferencedObject(GameInstance);
 		Collector.AddReferencedObject(LedgerObject);
 		Collector.AddReferencedObject(StoryObject);
+		Collector.AddReferencedObject(StagesObject);
 		Collector.AddReferencedObjects(Scripts);
 		Collector.AddReferencedObject(ExpressionPool);
+	}
+
+	UDreamNarrativeStageSubsystem* FDnaTestWorld::EnableStages()
+	{
+		if (!StagesObject)
+		{
+			StagesObject = NewObject<UDreamNarrativeStageSubsystem>(GameInstance, NAME_None, RF_Transient);
+			StagesObject->InitializeStandalone(LedgerObject);
+		}
+		return StagesObject;
 	}
 
 	// ---------------------------------------------------------------- compiling

@@ -25,8 +25,11 @@ public class DreamNarrativeTests : ModuleRules
 			"Projects",
 			"AssetRegistry",
 			"Json",
+			"LevelSequence",
+			"MovieScene",
 			"DreamNarrativeCore",
 			"DreamNarrativeStory",
+			"DreamNarrativeStage",
 			"DreamNarrativeCompiler",
 			"DreamNarrativeGAS",
 		});

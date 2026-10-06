@@ -21,6 +21,7 @@
 class FAutomationTestBase;
 class UDreamNarrativeDialogueRunner;
 class UDreamNarrativeScript;
+class UDreamNarrativeStageSubsystem;
 class UDreamNarrativeStory;
 class UGameInstance;
 
@@ -78,6 +79,15 @@ namespace UE::DreamNarrative::Tests
 
 		/** Same, for one source held in the test. */
 		bool CompileText(const FString& Text, const FString& Path = TEXT("Inline.dna"));
+
+		/**
+		 * Puts the Stage module's host on the ledger, with nobody to show a stage to: `play`, `@` and
+		 * `stage: pause` go through it and a stage takes its time on the clock, unless the dialogue
+		 * moves on first (the steps finish blocking stages at once). Off by default: without a host the
+		 * story only tells the game, as in a project without Stage.
+		 */
+		UDreamNarrativeStageSubsystem* EnableStages();
+		UDreamNarrativeStageSubsystem* GetStages() const { return StagesObject; }
 
 		/** The game instance the world's subsystems live in: the outer for any other one a test makes. */
 		UGameInstance* GetGameInstance() const { return GameInstance; }
@@ -226,6 +236,7 @@ namespace UE::DreamNarrative::Tests
 		TObjectPtr<UGameInstance> GameInstance;
 		TObjectPtr<UDreamNarrativeLedger> LedgerObject;
 		TObjectPtr<UDreamNarrativeStory> StoryObject;
+		TObjectPtr<UDreamNarrativeStageSubsystem> StagesObject;
 		TArray<TObjectPtr<UDreamNarrativeScript>> Scripts;
 		/** Holds the expressions a test compiles; never registered with the ledger. */
 		TObjectPtr<UDreamNarrativeScript> ExpressionPool;

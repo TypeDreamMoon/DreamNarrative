@@ -1,0 +1,78 @@
+// 演出:对话里的 play 交给演出宿主,阻塞的等演完再往下说,async 的不等;台词上挂的 @演出跟着这一行播,行一走就停。
+// 频道写了 stage: pause 的,在演出(不算挂在台词上的)期间停下,演完从停下的那一行接着说。test 的步骤把阻塞的演出
+// 当场演完,所以这里看的是对话怎么走,演出本身的样子由 C++ 与冒烟层看。
+
+character 甲
+character 乙
+
+channel 闲话
+  stage: pause
+
+event 闲着
+
+fact 到了: bool extern
+
+stage 开场
+  duration 2.0s
+  camera
+    0.0s     blend from game 0.3s
+    2.0s     blend back 0.3s
+  ui
+    0.0s..2.0s   hide hud
+
+stage 远景
+  duration 1.0s
+  mask
+    0.0s..1.0s   fade black 0.2s
+
+stage 微推
+  base: line
+  camera
+    0%       push 4cm over 100%
+  restore
+    camera   blend back 10%
+
+dialogue 甲_开场 for 甲
+  甲: 看那边。
+  play 开场
+  甲: 看到了吗?
+
+dialogue 甲_远景 for 乙
+  乙: 我先走一步。
+  play 远景 async
+  乙: 你慢慢看。
+
+dialogue 甲_微推 for 甲 if 到了 priority 1
+  甲: 就是这里。 @微推
+  甲: 走吧。
+
+dialogue 闲话_一 on 闲着 channel 闲话
+  乙: 今天天气不错。
+  乙: 适合散步。
+
+test 阻塞的演出演完对话接着说
+  talk 甲 strict
+    甲: 看那边。
+    甲: 看到了吗?
+
+test async的演出不等
+  talk 乙 strict
+    乙: 我先走一步。
+    乙: 你慢慢看。
+
+test 台词上挂的演出跟着这一行
+  set 到了 = true
+  talk 甲 strict
+    甲: 就是这里。
+    甲: 走吧。
+
+test 演出期间stage_pause的频道停下演完接着说
+  emit 闲着 hold
+    channel 闲话
+      乙: 今天天气不错。
+  talk 甲
+    甲: 看那边。
+    甲: 看到了吗?
+    channel 闲话 strict
+      乙: 今天天气不错。
+      乙: 适合散步。

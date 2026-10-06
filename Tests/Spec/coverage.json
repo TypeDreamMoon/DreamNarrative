@@ -114,8 +114,9 @@
     "dialogue.set.assign": "set =",
     "dialogue.set.add": "set +=",
     "dialogue.set.sub": "set -=",
-    "dialogue.play.unheard": "阻塞 play 但没有监听者,直接继续",
-    "dialogue.play.async": "play async",
+    "dialogue.play.staged": "阻塞 play 交给演出宿主,演完接着说",
+    "dialogue.play.staged-async": "play async 交给演出宿主,不等",
+    "dialogue.line.staged": "台词挂的 @演出跟着这一行播,行一走就停",
     "dialogue.wait.clock": "wait 走账本时钟",
 
     "dialogue.entry.conditional": "挑中带条件的入口",
@@ -195,12 +196,16 @@
     "checkpoint.kept": "再进一章,检查点不覆盖",
     "checkpoint.select": "选章回到检查点",
     "checkpoint.progress-kept": "选章保留进度(progress fact、side 任务)",
-    "archive.unlock": "资料的一条解锁"
+    "archive.unlock": "资料的一条解锁",
+    "channel.stage-pause": "stage: pause 的频道在演出期间停下",
+    "channel.stage-resume": "演出演完,stage: pause 的频道接着说"
   },
   "pending": {
-    "dialogue.play.blocking": "要有演出监听者;Stage 运行时之后由它接上"
   },
   "outside": {
+    "dialogue.play.async": "没有演出宿主时的 play async:只告诉游戏;test 块总有宿主,由 C++ 覆盖",
+    "dialogue.play.unheard": "没有演出宿主(项目没开 Stage)、游戏也不听 OnPlayStage:阻塞 play 直接继续;test 块总有宿主,由 C++ 覆盖",
+    "dialogue.play.blocking": "没有演出宿主、游戏自己听 OnPlayStage 演;由 C++ 覆盖",
     "dialogue.wait.manual": "bManualWait 由游戏代码设置",
     "dialogue.choice.all-hidden": "DNS5008 要求每组有兜底选项,合法源码到不了;运行时的防御分支",
     "dialogue.entry.none": "test 块里没有入口会让 talk 失败;由 C++ 与冒烟层覆盖",

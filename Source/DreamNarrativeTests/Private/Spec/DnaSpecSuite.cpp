@@ -180,6 +180,7 @@ namespace UE::DreamNarrative::Tests::Spec
 	{
 		FDnaTestWorld World(Test);
 		World.Ledger().SetTrace(Trace);
+		World.EnableStages();
 		if (!CompileTestFile(World, Relative))
 		{
 			return false;
