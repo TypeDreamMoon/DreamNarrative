@@ -7,6 +7,12 @@
 //
 // It watches through the story's and the ledger's own notifications and puts itself in front of
 // the ledger's draws, passing each one on unchanged: the game plays exactly as it would unrecorded.
+//
+// A test step says everything it opens before the next step begins, so what a dialogue shows is
+// written under the step that opened it -- a dialogue an event opened under the step that raised the
+// event, even when it waited its turn -- and a line shown again after a pause is written once. What
+// the timing of the game decided (a dialogue cut off by a later step, a draw made while two channels
+// talked) can come out differently in the replay.
 
 #pragma once
 
@@ -42,17 +48,20 @@ public:
 	virtual void BeginDestroy() override;
 
 private:
-	/** One thing the player or the game did, written down when the next begins (its draws come with it). */
+	/** One thing the player or the game did, with what it opened and the draws made meanwhile. */
 	struct FStep
 	{
 		FString Header;
-		/** Lines under the header, each with its depth below it. */
+		/** Lines under the header, each with its depth below it: what main showed and what was chosen there. */
 		TArray<TPair<int32, FString>> Children;
+		/** The same for each other channel, in the order they first spoke. */
+		TArray<TPair<FName, TArray<TPair<int32, FString>>>> Channels;
 		TArray<float> Draws;
 	};
 
 	void HandleTalk(FName Character);
 	void HandleStart(FName Node);
+	void HandleEvent(const FDnaEventPayload& Event, EDnaWriteSource Source);
 	void HandleFactWritten(FName Fact, const FDnaValue& Value, EDnaWriteSource Source);
 	void HandleJump(FName Chapter);
 	void HandleQuestRequested(EDnaQuestRequest What, FName Quest, EDnaWriteSource Who);
@@ -69,12 +78,18 @@ private:
 	UFUNCTION()
 	void HandleEnded(UDreamNarrativeDialogueRunner* InRunner);
 
-	/** Writes the open step down and opens Step; an empty header opens none. */
-	void NextStep(FStep&& Step);
-	void NextStep(const FString& Header);
-	void Flush();
+	void AddStep(FStep&& Step);
+	void AddStep(const FString& Header);
+	/**
+	 * The step a draw made now is written under: the earliest one a dialogue still running belongs
+	 * to (the replay runs that dialogue there), else the latest; never one before an earlier draw's,
+	 * so the replay hands the draws out in the order they were made.
+	 */
+	int32 DrawStep();
+	/** Where the lines Runner shows are written: its step, its channel's block there. Null for a dialogue not written down. */
+	TArray<TPair<int32, FString>>* LinesOf(const UDreamNarrativeDialogueRunner* InRunner);
+	void Unwatch(UDreamNarrativeDialogueRunner* InRunner);
 	void Detach();
-	void ReleaseRunner();
 
 	FString Name;
 
@@ -84,18 +99,19 @@ private:
 	UPROPERTY()
 	TObjectPtr<UDreamNarrativeLedger> Ledger;
 
-	/** The dialogue being written down. */
+	/** Every dialogue being written down, and the step it belongs to. */
 	UPROPERTY()
-	TObjectPtr<UDreamNarrativeDialogueRunner> Runner;
+	TMap<TObjectPtr<UDreamNarrativeDialogueRunner>, int32> Watched;
+
+	int32 LastDrawStep = INDEX_NONE;
+	/** For each event, the step it was last raised in. */
+	TMap<FName, int32> EventSteps;
 
 	/** The ledger as it stood when recording began. */
 	FDnaLedgerSnapshot StartSnapshot;
 	TMap<FName, FDnaValue> StartSession;
 
-	TArray<FString> Body;
-	TOptional<FStep> Open;
-	/** Game writes made while a dialogue ran: written down after it. */
-	TArray<FStep> WrittenDuringDialogue;
+	TArray<FStep> Steps;
 
 	IDnaRandomSource* PassOn = nullptr;
 	FDelegateHandle TalkHandle;
@@ -103,4 +119,5 @@ private:
 	FDelegateHandle WriteHandle;
 	FDelegateHandle JumpHandle;
 	FDelegateHandle QuestHandle;
+	FDelegateHandle EventHandle;
 };

@@ -288,4 +288,57 @@ bool FDnaRecordsDrawsTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRecordsEventsAndChannelsTest, "DreamNarrative.Replay.RecordsEventsAndChannels", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+
+bool FDnaRecordsEventsAndChannelsTest::RunTest(const FString& Parameters)
+{
+	using namespace UE::DreamNarrative::Tests;
+
+	TArray<FDnaTestSource> Story;
+	if (!ReadPluginSources(*this, { TEXT("Tests/Corpus/Validate/Samples/automata.dna") }, Story))
+	{
+		return false;
+	}
+
+	// The game spots an enemy and Pod starts its report; the player talks to 9S over it, which holds
+	// the report still until the talk is over.
+	FDnaTestWorld Played(*this);
+	if (!Played.Compile(Story))
+	{
+		return false;
+	}
+	Played.Story().StartRecording(TEXT("会合时Pod在报告"));
+	FDnaEventPayload Spotted;
+	Spotted.Event = TEXT("发现敌人");
+	Spotted.Set(TEXT("类型"), FDnaValue::FromTag(TEXT("小型")));
+	Played.Ledger().RaiseEvent(Spotted);
+	Played.Talk(TEXT("九S"), { TEXT("你来得正好。") });
+	const FString Recorded = Played.Story().StopRecording();
+
+	// The report is written under the event that opened it, whole, though it finished after the talk.
+	for (const TCHAR* Expected : {
+		TEXT("  emit 发现敌人(类型 = 小型, 数量 = 1)\n    channel 侦察\n      波德: 报告:前方有 1 个敌性反应。\n      波德: 建议:保持移动。\n  talk 九S\n    九S: 2B?你也被派到这里了。"),
+		TEXT("    - 你来得正好。"), TEXT("  expect 已会合") })
+	{
+		TestTrue(FString::Printf(TEXT("the recording has \"%s\""), Expected), Recorded.Contains(Expected));
+	}
+	int32 Reports = 0;
+	for (int32 At = Recorded.Find(TEXT("报告:前方有")); At != INDEX_NONE; At = Recorded.Find(TEXT("报告:前方有"), ESearchCase::CaseSensitive, ESearchDir::FromStart, At + 1))
+	{
+		++Reports;
+	}
+	TestEqual(TEXT("the line shown again after the talk is written once"), Reports, 1);
+	TestFalse(TEXT("what the story raised itself is not a step"), Recorded.Contains(TEXT("emit 作战目标")));
+
+	FDnaTestWorld Replayed(*this);
+	TArray<FDnaTestSource> Sources = Story;
+	Sources.Add({ TEXT("Recorded.dna"), Recorded });
+	if (Replayed.Compile(Sources))
+	{
+		const TArray<FString> Failures = Replay::RunCollecting(Replayed, TEXT("会合时Pod在报告"), TEXT("Recorded.dna"));
+		TestEqual(TEXT("the recording plays back"), FString::Join(Failures, TEXT("\n")), FString());
+	}
+	return !HasAnyErrors();
+}
+
 #endif

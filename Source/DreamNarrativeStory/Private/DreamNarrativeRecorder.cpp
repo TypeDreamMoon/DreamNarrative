@@ -63,6 +63,17 @@ namespace
 		}
 	}
 
+	/** `emit 名(参数 = 值, ...)` as a step writes it. */
+	FString EmitText(const FDnaEventPayload& Event)
+	{
+		TArray<FString> Args;
+		for (const FDnaEventArg& Arg : Event.Args)
+		{
+			Args.Add(FString::Printf(TEXT("%s = %s"), *Arg.Name.ToString(), *ValueText(Arg.Value)));
+		}
+		return TEXT("emit ") + Event.Event.ToString() + (Args.Num() > 0 ? TEXT("(") + FString::Join(Args, TEXT(", ")) + TEXT(")") : FString());
+	}
+
 	FString ExpectText(const FString& Fact, const FDnaValue& Value)
 	{
 		if (Value.Type == EDnaFactType::Bool)
@@ -79,9 +90,9 @@ void UDreamNarrativeRecorder::Begin(UDreamNarrativeStory* InStory, const FString
 {
 	Detach();
 	Name = InName;
-	Body.Reset();
-	Open.Reset();
-	WrittenDuringDialogue.Reset();
+	Steps.Reset();
+	EventSteps.Reset();
+	LastDrawStep = INDEX_NONE;
 	UDreamNarrativeLedger* InLedger = InStory ? InStory->GetLedger() : nullptr;
 	if (!InLedger)
 	{
@@ -110,6 +121,7 @@ void UDreamNarrativeRecorder::Begin(UDreamNarrativeStory* InStory, const FString
 	WriteHandle = Ledger->OnFactWritten.AddUObject(this, &UDreamNarrativeRecorder::HandleFactWritten);
 	JumpHandle = Ledger->OnJumpRequested.AddUObject(this, &UDreamNarrativeRecorder::HandleJump);
 	QuestHandle = Story->OnQuestRequested.AddUObject(this, &UDreamNarrativeRecorder::HandleQuestRequested);
+	EventHandle = Story->OnEventHeard.AddUObject(this, &UDreamNarrativeRecorder::HandleEvent);
 	PassOn = Ledger->GetRandomSource();
 	Ledger->SetRandomSource(this);
 }
@@ -120,13 +132,13 @@ FString UDreamNarrativeRecorder::End()
 	{
 		return FString();
 	}
-	if (Runner)
+	// Stopped in the middle of a dialogue: what it showed so far is kept.
+	TArray<TObjectPtr<UDreamNarrativeDialogueRunner>> Running;
+	Watched.GetKeys(Running);
+	for (UDreamNarrativeDialogueRunner* Each : Running)
 	{
-		// Stopped in the middle of a dialogue: what it showed so far is kept.
-		ReleaseRunner();
-		Flush();
+		Unwatch(Each);
 	}
-	NextStep(FString());
 
 	TArray<FString> Out;
 	Out.Add(TEXT("// dn.record 录制;回放就是下面这个 test 块。剧情改了回放变红时,旁边会写出 .actual(现在看到的样子),"));
@@ -181,7 +193,28 @@ FString UDreamNarrativeRecorder::End()
 		Out.Append(GivenLines);
 	}
 
-	Out.Append(Body);
+	for (const FStep& Step : Steps)
+	{
+		if (Step.Draws.Num() > 0)
+		{
+			TArray<FString> Units;
+			for (const float Unit : Step.Draws) { Units.Add(FString::Printf(TEXT("%.9g"), Unit)); }
+			Out.Add(TEXT("  rolls ") + FString::Join(Units, TEXT(", ")));
+		}
+		Out.Add(TEXT("  ") + Step.Header);
+		for (const TPair<int32, FString>& Child : Step.Children)
+		{
+			Out.Add(FString::ChrN(2 + Child.Key * 2, TEXT(' ')) + Child.Value);
+		}
+		for (const TPair<FName, TArray<TPair<int32, FString>>>& Block : Step.Channels)
+		{
+			Out.Add(TEXT("    channel ") + Block.Key.ToString());
+			for (const TPair<int32, FString>& Child : Block.Value)
+			{
+				Out.Add(FString::ChrN(2 + Child.Key * 2, TEXT(' ')) + Child.Value);
+			}
+		}
+	}
 
 	// -- where it ended: every fact that changed, and the chapter
 	TMap<FName, FDnaValue> Before;
@@ -219,7 +252,7 @@ FString UDreamNarrativeRecorder::End()
 		Out.Add(TEXT("  expect chapter == ") + Ledger->GetChapter().ToString());
 		++Expects;
 	}
-	if (Body.Num() == 0 && Expects == 0)
+	if (Steps.Num() == 0 && Expects == 0)
 	{
 		// Nothing happened; a block needs a body, and a save round trip is a harmless one.
 		Out.Add(TEXT("  save"));
@@ -246,12 +279,18 @@ void UDreamNarrativeRecorder::BeginDestroy()
 
 void UDreamNarrativeRecorder::Detach()
 {
-	ReleaseRunner();
+	TArray<TObjectPtr<UDreamNarrativeDialogueRunner>> Running;
+	Watched.GetKeys(Running);
+	for (UDreamNarrativeDialogueRunner* Each : Running)
+	{
+		Unwatch(Each);
+	}
 	if (Story)
 	{
 		Story->OnTalkRequested.Remove(TalkHandle);
 		Story->OnStartRequested.Remove(StartHandle);
 		Story->OnQuestRequested.Remove(QuestHandle);
+		Story->OnEventHeard.Remove(EventHandle);
 		Story->OnDialogueStarted.RemoveDynamic(this, &UDreamNarrativeRecorder::HandleDialogueStarted);
 	}
 	if (Ledger)
@@ -268,81 +307,85 @@ void UDreamNarrativeRecorder::Detach()
 	PassOn = nullptr;
 }
 
-void UDreamNarrativeRecorder::ReleaseRunner()
+void UDreamNarrativeRecorder::Unwatch(UDreamNarrativeDialogueRunner* InRunner)
 {
-	if (Runner)
+	if (!InRunner)
 	{
-		Runner->OnLine.RemoveDynamic(this, &UDreamNarrativeRecorder::HandleLine);
-		Runner->OnChoiceMade.RemoveDynamic(this, &UDreamNarrativeRecorder::HandleChoice);
-		Runner->OnEnded.RemoveDynamic(this, &UDreamNarrativeRecorder::HandleEnded);
-		Runner = nullptr;
+		return;
 	}
+	InRunner->OnLine.RemoveDynamic(this, &UDreamNarrativeRecorder::HandleLine);
+	InRunner->OnChoiceMade.RemoveDynamic(this, &UDreamNarrativeRecorder::HandleChoice);
+	InRunner->OnEnded.RemoveDynamic(this, &UDreamNarrativeRecorder::HandleEnded);
+	Watched.Remove(InRunner);
 }
 
 // ---------------------------------------------------------------- steps
 
-void UDreamNarrativeRecorder::NextStep(FStep&& Step)
+void UDreamNarrativeRecorder::AddStep(FStep&& Step)
 {
-	if (Open.IsSet())
-	{
-		const FStep& Written = Open.GetValue();
-		if (Written.Draws.Num() > 0)
-		{
-			TArray<FString> Units;
-			for (const float Unit : Written.Draws) { Units.Add(FString::Printf(TEXT("%.9g"), Unit)); }
-			Body.Add(TEXT("  rolls ") + FString::Join(Units, TEXT(", ")));
-		}
-		Body.Add(TEXT("  ") + Written.Header);
-		for (const TPair<int32, FString>& Child : Written.Children)
-		{
-			Body.Add(FString::ChrN(2 + Child.Key * 2, TEXT(' ')) + Child.Value);
-		}
-		Open.Reset();
-	}
-	if (!Step.Header.IsEmpty())
-	{
-		Open = MoveTemp(Step);
-	}
+	Steps.Add(MoveTemp(Step));
 }
 
-void UDreamNarrativeRecorder::NextStep(const FString& Header)
+void UDreamNarrativeRecorder::AddStep(const FString& Header)
 {
 	FStep Step;
 	Step.Header = Header;
-	NextStep(MoveTemp(Step));
+	AddStep(MoveTemp(Step));
 }
 
-/** The game's writes made while a dialogue ran, each a step of its own after it. */
-void UDreamNarrativeRecorder::Flush()
+int32 UDreamNarrativeRecorder::DrawStep()
 {
-	TArray<FStep> Writes = MoveTemp(WrittenDuringDialogue);
-	WrittenDuringDialogue.Reset();
-	for (FStep& Write : Writes)
+	int32 Step = Steps.Num() - 1;
+	for (const TPair<TObjectPtr<UDreamNarrativeDialogueRunner>, int32>& Each : Watched)
 	{
-		NextStep(MoveTemp(Write));
+		Step = FMath::Min(Step, Each.Value);
 	}
+	LastDrawStep = FMath::Max(LastDrawStep, Step);
+	return LastDrawStep;
+}
+
+TArray<TPair<int32, FString>>* UDreamNarrativeRecorder::LinesOf(const UDreamNarrativeDialogueRunner* InRunner)
+{
+	const int32* Index = Watched.Find(InRunner);
+	if (!Index || !Steps.IsValidIndex(*Index))
+	{
+		return nullptr;
+	}
+	FStep& Step = Steps[*Index];
+	const FName Channel = InRunner->GetChannel();
+	if (Channel == ::DreamNarrative::MainChannelName())
+	{
+		return &Step.Children;
+	}
+	TPair<FName, TArray<TPair<int32, FString>>>* Block = Step.Channels.FindByPredicate([Channel](const TPair<FName, TArray<TPair<int32, FString>>>& Each) { return Each.Key == Channel; });
+	return &(Block ? *Block : Step.Channels.Emplace_GetRef(Channel, TArray<TPair<int32, FString>>())).Value;
 }
 
 void UDreamNarrativeRecorder::HandleTalk(FName Character)
 {
-	// A dialogue still running ends as this one starts; its step is over.
-	ReleaseRunner();
-	Flush();
-	NextStep(TEXT("talk ") + Character.ToString());
+	AddStep(TEXT("talk ") + Character.ToString());
 }
 
 void UDreamNarrativeRecorder::HandleStart(FName Node)
 {
-	ReleaseRunner();
-	Flush();
-	NextStep(TEXT("start ") + Node.ToString());
+	AddStep(TEXT("start ") + Node.ToString());
 }
 
 void UDreamNarrativeRecorder::HandleJump(FName Chapter)
 {
-	ReleaseRunner();
-	Flush();
-	NextStep(TEXT("jump ") + Chapter.ToString());
+	AddStep(TEXT("jump ") + Chapter.ToString());
+}
+
+void UDreamNarrativeRecorder::HandleEvent(const FDnaEventPayload& Event, EDnaWriteSource Source)
+{
+	// The story's own `emit` follows from the steps already written down; what it opens belongs where it was raised.
+	if (Source != EDnaWriteSource::Game)
+	{
+		EventSteps.Add(Event.Event, DrawStep());
+		return;
+	}
+	AddStep(EmitText(Event));
+	EventSteps.Add(Event.Event, Steps.Num() - 1);
 }
 
 void UDreamNarrativeRecorder::HandleQuestRequested(EDnaQuestRequest What, FName Quest, EDnaWriteSource Who)
@@ -352,14 +395,7 @@ void UDreamNarrativeRecorder::HandleQuestRequested(EDnaQuestRequest What, FName 
 	{
 		return;
 	}
-	FStep Step;
-	Step.Header = FString::Printf(TEXT("%s %s"), What == EDnaQuestRequest::Accept ? TEXT("accept") : What == EDnaQuestRequest::Complete ? TEXT("complete") : TEXT("fail"), *Quest.ToString());
-	if (Runner)
-	{
-		WrittenDuringDialogue.Add(MoveTemp(Step));
-		return;
-	}
-	NextStep(MoveTemp(Step));
+	AddStep(FString::Printf(TEXT("%s %s"), What == EDnaQuestRequest::Accept ? TEXT("accept") : What == EDnaQuestRequest::Complete ? TEXT("complete") : TEXT("fail"), *Quest.ToString()));
 }
 
 void UDreamNarrativeRecorder::HandleFactWritten(FName Fact, const FDnaValue& Value, EDnaWriteSource Source)
@@ -381,12 +417,7 @@ void UDreamNarrativeRecorder::HandleFactWritten(FName Fact, const FDnaValue& Val
 	{
 		Step.Header = FString::Printf(TEXT("set %s = %s"), *Fact.ToString(), *ValueText(Value));
 	}
-	if (Runner)
-	{
-		WrittenDuringDialogue.Add(MoveTemp(Step));
-		return;
-	}
-	NextStep(MoveTemp(Step));
+	AddStep(MoveTemp(Step));
 }
 
 void UDreamNarrativeRecorder::HandleDialogueStarted(UDreamNarrativeDialogueRunner* InRunner)
@@ -395,27 +426,41 @@ void UDreamNarrativeRecorder::HandleDialogueStarted(UDreamNarrativeDialogueRunne
 	{
 		return;
 	}
-	ReleaseRunner();
-	Runner = InRunner;
-	Runner->OnLine.AddDynamic(this, &UDreamNarrativeRecorder::HandleLine);
-	Runner->OnChoiceMade.AddDynamic(this, &UDreamNarrativeRecorder::HandleChoice);
-	Runner->OnEnded.AddDynamic(this, &UDreamNarrativeRecorder::HandleEnded);
+	// One an event opened belongs to the step that raised it, even when it waited its turn.
+	int32 Step = Steps.Num() - 1;
+	if (const FDnaEventPayload* Event = InRunner->GetEventScope())
+	{
+		if (const int32* Raised = EventSteps.Find(Event->Event))
+		{
+			Step = *Raised;
+		}
+	}
+	if (!Steps.IsValidIndex(Step))
+	{
+		return;
+	}
+	Watched.Add(InRunner, Step);
+	InRunner->OnLine.AddDynamic(this, &UDreamNarrativeRecorder::HandleLine);
+	InRunner->OnChoiceMade.AddDynamic(this, &UDreamNarrativeRecorder::HandleChoice);
+	InRunner->OnEnded.AddDynamic(this, &UDreamNarrativeRecorder::HandleEnded);
 }
 
 void UDreamNarrativeRecorder::HandleLine(UDreamNarrativeDialogueRunner* InRunner, const FDnaLineView& Line)
 {
-	if (InRunner != Runner || !Open.IsSet())
+	// Shown again after a pause: the replay, where nothing talks over it, shows it once.
+	TArray<TPair<int32, FString>>* Children = Line.bRepeat ? nullptr : LinesOf(InRunner);
+	if (!Children)
 	{
 		return;
 	}
+	const int32 Depth = InRunner->GetChannel() == ::DreamNarrative::MainChannelName() ? 1 : 2;
 	TArray<FString> Parts;
 	Line.Text.ToString().ParseIntoArray(Parts, TEXT("\n"), /*bCullEmpty=*/false);
 	bool bPlain = Parts.Num() > 0;
 	for (const FString& Part : Parts) { bPlain &= IsPlain(Part); }
-	TArray<TPair<int32, FString>>& Children = Open->Children;
 	if (!bPlain && !Line.Id.IsNone())
 	{
-		Children.Emplace(1, TEXT("#") + Line.Id.ToString());
+		Children->Emplace(Depth, TEXT("#") + Line.Id.ToString());
 		return;
 	}
 	FString Head;
@@ -434,16 +479,17 @@ void UDreamNarrativeRecorder::HandleLine(UDreamNarrativeDialogueRunner* InRunner
 		}
 		Head += TEXT(": ");
 	}
-	Children.Emplace(1, Head + (Parts.Num() > 0 ? Parts[0] : FString()));
+	Children->Emplace(Depth, Head + (Parts.Num() > 0 ? Parts[0] : FString()));
 	for (int32 Index = 1; Index < Parts.Num(); ++Index)
 	{
-		Children.Emplace(2, Parts[Index]);
+		Children->Emplace(Depth + 1, Parts[Index]);
 	}
 }
 
 void UDreamNarrativeRecorder::HandleChoice(UDreamNarrativeDialogueRunner* InRunner, const FDnaChoiceView& Choice)
 {
-	if (InRunner != Runner || !Open.IsSet())
+	TArray<TPair<int32, FString>>* Children = LinesOf(InRunner);
+	if (!Children)
 	{
 		return;
 	}
@@ -454,26 +500,22 @@ void UDreamNarrativeRecorder::HandleChoice(UDreamNarrativeDialogueRunner* InRunn
 		Same += Offered.Label.ToString() == Label ? 1 : 0;
 	}
 	const bool bByLabel = Same <= 1 && IsPlain(Label) && !Label.Contains(TEXT("\n"));
-	Open->Children.Emplace(1, TEXT("- ") + (bByLabel ? Label : TEXT("#") + Choice.Id.ToString()));
+	const int32 Depth = InRunner->GetChannel() == ::DreamNarrative::MainChannelName() ? 1 : 2;
+	Children->Emplace(Depth, TEXT("- ") + (bByLabel ? Label : TEXT("#") + Choice.Id.ToString()));
 }
 
 void UDreamNarrativeRecorder::HandleEnded(UDreamNarrativeDialogueRunner* InRunner)
 {
-	if (InRunner != Runner)
-	{
-		return;
-	}
-	// The step stays open until the next begins: draws made as the dialogue wraps up belong to it.
-	ReleaseRunner();
-	Flush();
+	Unwatch(InRunner);
 }
 
 float UDreamNarrativeRecorder::NextUnit(FRandomStream& Stream)
 {
 	const float Unit = PassOn ? PassOn->NextUnit(Stream) : Stream.GetFraction();
-	if (Open.IsSet())
+	const int32 Step = DrawStep();
+	if (Steps.IsValidIndex(Step))
 	{
-		Open->Draws.Add(Unit);
+		Steps[Step].Draws.Add(Unit);
 	}
 	return Unit;
 }
