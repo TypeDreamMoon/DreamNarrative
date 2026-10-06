@@ -49,3 +49,25 @@ dialogue 甲_过场 for 甲
 dialogue 闲话_一 on 闲着 channel 闲话
   乙: 今天天气不错。
   乙: 适合散步。
+
+// 能力系统那边:收到 Ability.Finisher 的 GameplayEvent 就在它的化身上演这一段,事件的目标绑成 target;任务完成时
+// 发 Quest.Done 的 GameplayEvent 回去。
+
+fact 狼: int extern
+
+stage 处决
+  duration 1.0s
+  gameplay: DreamNarrativeTest.Ability.Finisher
+  shots
+    特写     local (150, 0, 60) of target look target fov 35
+  camera
+    0.0s     blend -> 特写 0.2s
+    1.0s     blend back 0.2s
+  ui
+    0.0s..1.0s   hide hud
+  game
+    0.0s..1.0s   input lock
+
+quest 猎狼
+  gameplay: DreamNarrativeTest.Quest.Done
+  objective 狼 >= 1

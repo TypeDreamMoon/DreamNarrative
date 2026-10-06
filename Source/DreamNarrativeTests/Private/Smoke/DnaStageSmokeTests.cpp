@@ -6,8 +6,19 @@
 // gone -- the world is read back and must be what it was before the stage began.
 
 #include "Misc/AutomationTest.h"
+#include "Smoke/DnaTestStageAbility.h"
+
+FName UDnaTestStageAbility::StageToPlay;
+TWeakObjectPtr<AActor> UDnaTestStageAbility::StageTarget;
+EDnaStageEnd UDnaTestStageAbility::LastEnd = EDnaStageEnd::Finished;
+int32 UDnaTestStageAbility::Ends = 0;
 
 #if WITH_DEV_AUTOMATION_TESTS
+
+#include "AbilitySystemComponent.h"
+#include "DreamNarrativeGASBridge.h"
+#include "DreamNarrativeLedger.h"
+#include "GameplayTagContainer.h"
 
 #include "Camera/CameraActor.h"
 #include "Camera/PlayerCameraManager.h"
@@ -430,6 +441,86 @@ bool FDnaStageSmokeStoryTest::RunTest(const FString& Parameters)
 	Session.World().BeginTearingDown();
 	TestEqual(TEXT("the level going ends the stage"), Ended, EDnaStageEnd::LevelChange);
 	TestEqual(TEXT("and the dialogue goes on"), Runner->GetCurrentLine().Text.ToString(), FString(TEXT("就这样。")));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaStageSmokeAbilityTest, "DreamNarrative.Smoke.InProcess.AbilitiesAndStages", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+
+bool FDnaStageSmokeAbilityTest::RunTest(const FString& Parameters)
+{
+	using namespace UE::DreamNarrative::Tests::StageSmoke;
+
+	FStageGame Session(*this);
+	if (!TestTrue(TEXT("the game is rigged"), Session.IsValid()))
+	{
+		return false;
+	}
+	// The tags are ones the test host registers (Tools/TestHost/Template/Config/Tags).
+	const FGameplayTag Finisher = FGameplayTag::RequestGameplayTag(TEXT("DreamNarrativeTest.Ability.Finisher"), false);
+	const FGameplayTag Done = FGameplayTag::RequestGameplayTag(TEXT("DreamNarrativeTest.Quest.Done"), false);
+	if (!TestTrue(TEXT("the host registers the tags"), Finisher.IsValid() && Done.IsValid()))
+	{
+		return false;
+	}
+	FRig& Rig = Session.Rig;
+	UDreamNarrativeGASBridge* Bridge = Session.Game->GetGameInstance()->GetSubsystem<UDreamNarrativeGASBridge>();
+	UAbilitySystemComponent* System = NewObject<UAbilitySystemComponent>(Rig.Pawn);
+	System->RegisterComponent();
+	System->InitAbilityActorInfo(Rig.Pawn, Rig.Pawn);
+	Bridge->WatchAbilitySystem(System, /*bMirrorTags=*/false);
+	const FWorldState Before = Read(Session.World(), Rig);
+
+	// -- a gameplay event a stage maps plays it on the system's avatar, the event's target bound
+	FGameplayEventData Payload;
+	Payload.Target = Rig.Boss;
+	System->HandleGameplayEvent(Finisher, &Payload);
+	UDreamNarrativeStageDirector* Director = Rig.Pawn->FindComponentByClass<UDreamNarrativeStageDirector>();
+	if (!TestNotNull(TEXT("a director on the avatar"), Director))
+	{
+		return false;
+	}
+	Director->bManualAdvance = true;
+	TestEqual(TEXT("playing the finisher"), Director->GetStageName(), FName(TEXT("处决")));
+	TestTrue(TEXT("its target bound"), Director->ResolveActor(TEXT("target")) == Rig.Boss);
+	TestTrue(TEXT("the player held"), Rig.Controller->IsMoveInputIgnored());
+	AdvanceTo(*Director, 1.3f);
+	TestFalse(TEXT("over"), Director->IsPlaying());
+	Session.Same(TEXT("the world after the event's stage"), Before);
+
+	// -- a completed quest sends its gameplay event to the watched systems
+	int32 Heard = 0;
+	System->GenericGameplayEventCallbacks.FindOrAdd(Done).AddLambda([&Heard](const FGameplayEventData*) { ++Heard; });
+	UDreamNarrativeStory* Story = Session.Game->GetStory();
+	TestTrue(TEXT("take the quest on"), Story->AcceptQuest(TEXT("猎狼")));
+	TestEqual(TEXT("nothing sent yet"), Heard, 0);
+	Story->GetLedger()->SetFact(TEXT("狼"), FDnaValue::FromInt(1), EDnaWriteSource::Game);
+	TestEqual(TEXT("completed"), Story->GetQuestStateOf(TEXT("猎狼")), EDnaQuestState::Completed);
+	TestEqual(TEXT("and the event sent once"), Heard, 1);
+
+	// -- an ability plays the stage and ends with it
+	UDnaTestStageAbility::StageToPlay = TEXT("处决");
+	UDnaTestStageAbility::StageTarget = Rig.Boss;
+	UDnaTestStageAbility::Ends = 0;
+	const FGameplayAbilitySpecHandle Ability = System->GiveAbility(FGameplayAbilitySpec(UDnaTestStageAbility::StaticClass()));
+	TestTrue(TEXT("the ability activates"), System->TryActivateAbility(Ability));
+	TestEqual(TEXT("and plays the stage"), Director->GetStageName(), FName(TEXT("处决")));
+	AdvanceTo(*Director, 1.3f);
+	const FGameplayAbilitySpec* Spec = System->FindAbilitySpecFromHandle(Ability);
+	TestEqual(TEXT("the task heard the stage end"), UDnaTestStageAbility::Ends, 1);
+	TestEqual(TEXT("at its end"), UDnaTestStageAbility::LastEnd, EDnaStageEnd::Finished);
+	TestTrue(TEXT("and the ability ended"), Spec && !Spec->IsActive());
+	Session.Same(TEXT("the world after the ability's stage"), Before);
+
+	// -- the ability cancelled: the stage goes with it
+	TestTrue(TEXT("again"), System->TryActivateAbility(Ability));
+	AdvanceTo(*Director, 0.4f);
+	TestTrue(TEXT("playing"), Director->IsPlaying());
+	System->CancelAbilityHandle(Ability);
+	TestFalse(TEXT("cancelling the ability stops its stage"), Director->IsPlaying());
+	Session.Same(TEXT("the world after the cancelled ability"), Before);
+
+	Bridge->UnwatchAbilitySystem(System);
+	UDnaTestStageAbility::StageTarget.Reset();
 	return !HasAnyErrors();
 }
 
