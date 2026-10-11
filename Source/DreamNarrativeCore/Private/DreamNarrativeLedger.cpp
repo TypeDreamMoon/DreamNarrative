@@ -245,22 +245,27 @@ void UDreamNarrativeLedger::EndBatch()
 
 void UDreamNarrativeLedger::Commit()
 {
-	if (bCommitting || DirtyFacts.Num() == 0)
+	if (bCommitting || (DirtyFacts.Num() == 0 && !bWorldStateDirty))
 	{
 		return;
 	}
 	// Observers may write facts of their own; those land in a fresh batch after this one.
 	bCommitting = true;
+	bWorldStateDirty = false;
 	TArray<FName> Changed = MoveTemp(DirtyFacts);
 	DirtyFacts.Reset();
-	if (Trace)
+	if (Changed.Num() > 0)
 	{
-		Trace->OnEvent(Changed.Num() > 1 ? TEXT("ledger.batch.several") : TEXT("ledger.batch.one"));
+		if (Trace) { Trace->OnEvent(Changed.Num() > 1 ? TEXT("ledger.batch.several") : TEXT("ledger.batch.one")); }
+		OnBatchCommitted.Broadcast(Changed);
+		CheckAdvanceRules();
 	}
-	OnBatchCommitted.Broadcast(Changed);
-	CheckAdvanceRules();
+	else
+	{
+		OnWorldStateChanged.Broadcast();
+	}
 	bCommitting = false;
-	if (DirtyFacts.Num() > 0 && BatchDepth == 0)
+	if ((DirtyFacts.Num() > 0 || bWorldStateDirty) && BatchDepth == 0)
 	{
 		Commit();
 	}
@@ -295,6 +300,8 @@ bool UDreamNarrativeLedger::SetChapter(FName Chapter, bool bLeaveCheckpoint)
 		}
 	}
 	OnChapterChanged.Broadcast(Old, Name);
+	bWorldStateDirty = true;
+	if (BatchDepth == 0) { Commit(); }
 	return true;
 }
 
@@ -421,6 +428,7 @@ bool UDreamNarrativeLedger::JumpToChapter(FName Chapter)
 		return false;
 	}
 
+	TGuardValue<bool> SuppressAdvance(bSuppressAdvance, true);
 	OnJumpRequested.Broadcast(Target);
 
 	// Walk the `after` chain back to the first chapter, then apply forwards.
@@ -459,7 +467,7 @@ bool UDreamNarrativeLedger::JumpToChapter(FName Chapter)
 
 void UDreamNarrativeLedger::CheckAdvanceRules()
 {
-	if (CurrentChapter.IsNone())
+	if (CurrentChapter.IsNone() || bApplyingSnapshot || bSuppressAdvance)
 	{
 		return;
 	}
@@ -488,17 +496,19 @@ void UDreamNarrativeLedger::CheckAdvanceRules()
 
 int32 UDreamNarrativeLedger::GetVisited(FName Dialogue) const
 {
-	const int32* Count = VisitCounts.Find(Dialogue);
+	const int32* Count = VisitCounts.Find(Resolve(Dialogue));
 	return Count ? *Count : 0;
 }
 
 void UDreamNarrativeLedger::MarkVisited(FName Dialogue)
 {
-	++VisitCounts.FindOrAdd(Dialogue);
+	SetVisited(Dialogue, GetVisited(Dialogue) + 1);
 }
 
 void UDreamNarrativeLedger::SetVisited(FName Dialogue, int32 Count)
 {
+	Dialogue = Resolve(Dialogue);
+	if (GetVisited(Dialogue) == FMath::Max(0, Count)) { return; }
 	if (Count > 0)
 	{
 		VisitCounts.Add(Dialogue, Count);
@@ -507,6 +517,8 @@ void UDreamNarrativeLedger::SetVisited(FName Dialogue, int32 Count)
 	{
 		VisitCounts.Remove(Dialogue);
 	}
+	bWorldStateDirty = true;
+	if (BatchDepth == 0) { Commit(); }
 }
 
 void UDreamNarrativeLedger::EmitEvent(FName Event)
@@ -616,6 +628,7 @@ IDnaClock& UDreamNarrativeLedger::GetClock()
 
 void UDreamNarrativeLedger::StartTimer(FName Timer, double Seconds)
 {
+	Timer = Resolve(Timer);
 	CancelTimer(Timer);
 	if (Trace)
 	{
@@ -634,6 +647,7 @@ void UDreamNarrativeLedger::StartTimer(FName Timer, double Seconds)
 
 void UDreamNarrativeLedger::CancelTimer(FName Timer)
 {
+	Timer = Resolve(Timer);
 	if (FDnaClockHandle* Handle = Timers.Find(Timer))
 	{
 		if (Clock.IsValid())
@@ -646,7 +660,7 @@ void UDreamNarrativeLedger::CancelTimer(FName Timer)
 
 double UDreamNarrativeLedger::GetTimerRemaining(FName Timer) const
 {
-	const FDnaClockHandle* Handle = Timers.Find(Timer);
+	const FDnaClockHandle* Handle = Timers.Find(Resolve(Timer));
 	return Handle && Clock.IsValid() ? Clock->GetRemaining(*Handle) : -1.0;
 }
 
@@ -736,11 +750,42 @@ void UDreamNarrativeLedger::ApplyProfileSnapshot(const FDnaProfileSnapshot& Snap
 			SetFact(Name, Entry.Value, EDnaWriteSource::Narrative);
 		}
 	}
+	OnSnapshotRestored.Broadcast();
 	OnSnapshotApplied.Broadcast();
 }
 
-void UDreamNarrativeLedger::ApplySnapshot(const FDnaLedgerSnapshot& Snapshot)
+void UDreamNarrativeLedger::ApplySnapshot(const FDnaLedgerSnapshot& InSnapshot)
 {
+	FDnaLedgerSnapshot Snapshot = InSnapshot;
+	// Canonical entries win if an old save contains both the old and current spelling.
+	auto RemapKeys = [this](auto& Map)
+	{
+		auto Before = MoveTemp(Map);
+		Map.Reset();
+		for (const auto& Pair : Before)
+		{
+			if (Resolve(Pair.Key) == Pair.Key) { Map.Add(Pair.Key, Pair.Value); }
+		}
+		for (const auto& Pair : Before)
+		{
+			const FName Key = Resolve(Pair.Key);
+			if (!Map.Contains(Key)) { Map.Add(Key, Pair.Value); }
+		}
+	};
+	auto RemapChoices = [this](TArray<FName>& Choices)
+	{
+		for (FName& Choice : Choices) { Choice = Resolve(Choice); }
+	};
+	RemapKeys(Snapshot.Visited);
+	RemapKeys(Snapshot.Timers);
+	RemapChoices(Snapshot.ChosenOnce);
+	for (FDnaChapterCheckpoint& Point : Snapshot.Checkpoints)
+	{
+		Point.Chapter = Resolve(Point.Chapter);
+		RemapKeys(Point.Visited);
+		RemapKeys(Point.Timers);
+		RemapChoices(Point.ChosenOnce);
+	}
 	if (Trace)
 	{
 		Trace->OnEvent(TEXT("ledger.snapshot.apply"));
@@ -794,6 +839,7 @@ void UDreamNarrativeLedger::ApplySnapshot(const FDnaLedgerSnapshot& Snapshot)
 	{
 		StartTimer(Pair.Key, Pair.Value);
 	}
+	OnSnapshotRestored.Broadcast();
 	OnSnapshotApplied.Broadcast();
 }
 

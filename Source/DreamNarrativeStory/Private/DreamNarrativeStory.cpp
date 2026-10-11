@@ -51,7 +51,7 @@ void UDreamNarrativeStory::RegisterScript(UDreamNarrativeScript* Script)
 	{
 		return;
 	}
-	Ledger->RegisterScript(Script);
+	if (!bRegisteringScripts) { Ledger->RegisterScript(Script); }
 	Scripts.AddUnique(Script);
 
 	if (const UDnaQuestSection* Quests = Script->FindSection<UDnaQuestSection>())
@@ -97,6 +97,22 @@ void UDreamNarrativeStory::RegisterScript(UDreamNarrativeScript* Script)
 		for (int32 Index = 0; Index < Dialogue->Nodes.Num(); ++Index)
 		{
 			const FDnaDialogueNodeData& Node = Dialogue->Nodes[Index];
+			Ledger->RegisterRedirect(Node.WasName, Node.Name);
+			if (!Node.WasName.IsNone())
+			{
+				const FString Prefix = Node.Name.ToString() + TEXT(".");
+				for (const FDnaChoiceGroupData& Group : Node.ChoiceGroups)
+				{
+					for (const FDnaChoiceData& Choice : Group.Options)
+					{
+						const FString Id = Choice.Id.ToString();
+						if (!Choice.bExplicitId && Id.StartsWith(Prefix))
+						{
+							Ledger->RegisterRedirect(FName(*(Node.WasName.ToString() + TEXT(".") + Id.Mid(Prefix.Len()))), Choice.Id);
+						}
+					}
+				}
+			}
 			FNodeRef& Ref = NodeIndex.FindOrAdd(Node.Name);
 			Ref.Section = Dialogue;
 			Ref.NodeIndex = Index;
@@ -113,7 +129,22 @@ void UDreamNarrativeStory::RegisterScript(UDreamNarrativeScript* Script)
 
 	// A hidden quest that can start already does, rather than at the first write -- including one whose
 	// condition reads facts only this script declares.
-	if (!Ledger->IsApplyingSnapshot())
+	if (!bRegisteringScripts && !Ledger->IsApplyingSnapshot())
+	{
+		CheckQuests();
+		CheckArchives();
+	}
+}
+
+void UDreamNarrativeStory::RegisterScripts(const TArray<UDreamNarrativeScript*>& InScripts)
+{
+	if (!Ledger) { return; }
+	{
+		TGuardValue<bool> Registering(bRegisteringScripts, true);
+		for (UDreamNarrativeScript* Script : InScripts) { Ledger->RegisterScript(Script); }
+		for (UDreamNarrativeScript* Script : InScripts) { RegisterScript(Script); }
+	}
+	if (!bRegisteringScripts && !Ledger->IsApplyingSnapshot())
 	{
 		CheckQuests();
 		CheckArchives();
@@ -138,15 +169,16 @@ int32 UDreamNarrativeStory::LoadAllScripts()
 	Filter.bRecursivePaths = true;
 	Registry.GetAssets(Filter, Assets);
 
-	int32 Count = 0;
+	TArray<UDreamNarrativeScript*> Loaded;
 	for (const FAssetData& Asset : Assets)
 	{
 		if (UDreamNarrativeScript* Script = Cast<UDreamNarrativeScript>(Asset.GetAsset()))
 		{
-			RegisterScript(Script);
-			++Count;
+			Loaded.Add(Script);
 		}
 	}
+	RegisterScripts(Loaded);
+	const int32 Count = Loaded.Num();
 	UE_LOG(LogDreamNarrativeStory, Log, TEXT("Registered %d narrative script(s) from %s"), Count, *Directory);
 	return Count;
 }

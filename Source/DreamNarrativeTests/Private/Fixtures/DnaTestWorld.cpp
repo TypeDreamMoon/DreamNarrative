@@ -321,8 +321,8 @@ namespace UE::DreamNarrative::Tests
 		for (UDreamNarrativeScript* Script : Generated)
 		{
 			Scripts.Add(Script);
-			StoryObject->RegisterScript(Script);
 		}
+		StoryObject->RegisterScripts(Generated);
 		return bOk;
 	}
 

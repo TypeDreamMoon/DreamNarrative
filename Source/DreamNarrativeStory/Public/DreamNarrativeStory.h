@@ -136,6 +136,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Story")
 	void RegisterScript(UDreamNarrativeScript* Script);
 
+	/** Registers a whole program before evaluating initial quests/archives. Use for multiple assets. */
+	void RegisterScripts(const TArray<UDreamNarrativeScript*>& InScripts);
+
 	/** Loads and registers every script asset under the configured asset directory. */
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Story")
 	int32 LoadAllScripts();
@@ -356,6 +359,7 @@ private:
 	/** For quests still Accepted: what their objectives read when they were taken on. */
 	TMap<FName, TArray<FDnaValue>> Baselines;
 	FDelegateHandle CommitHandle;
+	FDelegateHandle WorldStateHandle;
 	FDelegateHandle TimerHandle;
 	FDelegateHandle SnapshotHandle;
 	FDelegateHandle ApplyingHandle;
@@ -388,6 +392,8 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UDreamNarrativeLedger> Ledger;
+
+	bool bRegisteringScripts = false;
 
 	UPROPERTY()
 	TArray<TObjectPtr<UDreamNarrativeScript>> Scripts;

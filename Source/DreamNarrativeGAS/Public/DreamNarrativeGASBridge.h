@@ -77,6 +77,7 @@ private:
 		TArray<TPair<FGameplayTag, FDelegateHandle>> Tags;
 	};
 
+	void RefreshSessionMirrors();
 	void Bind(FWatch& Watch);
 	void Unbind(FWatch& Watch);
 	void HandleScriptRegistered(UDreamNarrativeScript* Script);
@@ -97,5 +98,6 @@ private:
 
 	TArray<FWatch> Watches;
 	FDelegateHandle ScriptHandle;
+	FDelegateHandle SnapshotHandle;
 	TSet<FName> WarnedTags;
 };

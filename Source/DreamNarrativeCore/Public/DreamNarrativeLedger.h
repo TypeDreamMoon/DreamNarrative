@@ -281,10 +281,13 @@ public:
 	void SetVisited(FName Dialogue, int32 Count);
 
 	UFUNCTION(BlueprintPure, Category = "Narrative|Dialogue")
-	bool WasChosenOnce(FName LineId) const { return ChosenOnce.Contains(LineId); }
+	bool WasChosenOnce(FName LineId) const { return ChosenOnce.Contains(Resolve(LineId)); }
 
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Dialogue")
-	void MarkChosenOnce(FName LineId) { ChosenOnce.Add(LineId); }
+	void MarkChosenOnce(FName LineId) { ChosenOnce.Add(Resolve(LineId)); }
+
+	/** Section modules supply redirects for their persistent ids without Core depending on those modules. */
+	void RegisterRedirect(FName Old, FName Current) { if (!Old.IsNone() && Old != Current) { Redirects.Add(Old, Current); } }
 
 	// ---------------------------------------------------------------- events
 
@@ -408,6 +411,9 @@ public:
 	/** Fires after a batch commits with the facts that changed in it. Observers subscribe here. */
 	FDnaBatchCommittedSignature OnBatchCommitted;
 
+	/** Chapter/visit changes with no fact writes, coalesced at the end of a batch. */
+	FSimpleMulticastDelegate OnWorldStateChanged;
+
 	/** A script's declarations are in: what reads them (the GAS bridge) looks again. */
 	FDnaScriptRegisteredSignature OnScriptRegistered;
 
@@ -431,6 +437,9 @@ public:
 
 	/** Fires once a snapshot is in place: what observers kept about the ledger before it is stale now. */
 	FDnaSnapshotAppliedSignature OnSnapshotApplied;
+
+	/** Restored values are in place, before observers capture baselines; external session mirrors refresh here. */
+	FDnaSnapshotAppliedSignature OnSnapshotRestored;
 
 	/** True while a snapshot goes in: the batches it commits restore a story, nothing happens in it. */
 	bool IsApplyingSnapshot() const { return bApplyingSnapshot; }
@@ -468,6 +477,8 @@ private:
 	TArray<FName> DirtyFacts;
 	bool bCommitting = false;
 	bool bApplyingSnapshot = false;
+	bool bSuppressAdvance = false;
+	bool bWorldStateDirty = false;
 
 	IDnaQuestStateProvider* QuestStateProvider = nullptr;
 	IDnaStageHost* StageHost = nullptr;

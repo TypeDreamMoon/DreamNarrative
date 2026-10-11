@@ -23,6 +23,7 @@ void UDreamNarrativeGASBridge::InitializeStandalone(UDreamNarrativeLedger* InLed
 	if (Ledger)
 	{
 		ScriptHandle = Ledger->OnScriptRegistered.AddUObject(this, &UDreamNarrativeGASBridge::HandleScriptRegistered);
+		SnapshotHandle = Ledger->OnSnapshotRestored.AddUObject(this, &UDreamNarrativeGASBridge::RefreshSessionMirrors);
 	}
 	if (Story)
 	{
@@ -40,12 +41,14 @@ void UDreamNarrativeGASBridge::Deinitialize()
 	if (Ledger)
 	{
 		Ledger->OnScriptRegistered.Remove(ScriptHandle);
+		Ledger->OnSnapshotRestored.Remove(SnapshotHandle);
 	}
 	if (Story)
 	{
 		Story->OnQuestStateChanged.RemoveDynamic(this, &UDreamNarrativeGASBridge::HandleQuestStateChanged);
 	}
 	ScriptHandle.Reset();
+	SnapshotHandle.Reset();
 	Super::Deinitialize();
 }
 
@@ -80,6 +83,26 @@ void UDreamNarrativeGASBridge::UnwatchAbilitySystem(UAbilitySystemComponent* Abi
 	{
 		Unbind(Watches[Index]);
 		Watches.RemoveAt(Index);
+	}
+}
+
+void UDreamNarrativeGASBridge::RefreshSessionMirrors()
+{
+	if (!Ledger) { return; }
+	UDreamNarrativeLedger::FBatchScope Batch(*Ledger);
+	TArray<FName> Facts;
+	Ledger->GetFactNames(Facts);
+	for (const FWatch& Watch : Watches)
+	{
+		UAbilitySystemComponent* System = Watch.System.Get();
+		if (!System || !Watch.bMirrorTags) { continue; }
+		for (FName Fact : Facts)
+		{
+			const FDnaFactDecl* Decl = Ledger->FindFactDecl(Fact);
+			if (!Decl || !Decl->bSession || Decl->Owner != EDnaFactOwner::Extern) { continue; }
+			const FGameplayTag Tag = ResolveTag(Decl->GameplayTag);
+			if (Tag.IsValid()) { WriteTagCount(Fact, System->GetTagCount(Tag)); }
+		}
 	}
 }
 

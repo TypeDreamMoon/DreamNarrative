@@ -127,6 +127,7 @@ void UDreamNarrativeStory::WatchLedger()
 {
 	UnwatchLedger();
 	CommitHandle = Ledger->OnBatchCommitted.AddUObject(this, &UDreamNarrativeStory::HandleBatchCommitted);
+	WorldStateHandle = Ledger->OnWorldStateChanged.AddWeakLambda(this, [this]() { HandleBatchCommitted({}); });
 	TimerHandle = Ledger->OnTimerFired.AddUObject(this, &UDreamNarrativeStory::HandleTimerFired);
 	SnapshotHandle = Ledger->OnSnapshotApplied.AddUObject(this, &UDreamNarrativeStory::HandleSnapshotApplied);
 	ApplyingHandle = Ledger->OnSnapshotApplying.AddUObject(this, &UDreamNarrativeStory::HandleSnapshotApplying);
@@ -140,6 +141,7 @@ void UDreamNarrativeStory::UnwatchLedger()
 	if (Ledger)
 	{
 		Ledger->OnBatchCommitted.Remove(CommitHandle);
+		Ledger->OnWorldStateChanged.Remove(WorldStateHandle);
 		Ledger->OnTimerFired.Remove(TimerHandle);
 		Ledger->OnSnapshotApplied.Remove(SnapshotHandle);
 		Ledger->OnSnapshotApplying.Remove(ApplyingHandle);
@@ -148,6 +150,7 @@ void UDreamNarrativeStory::UnwatchLedger()
 		Ledger->OnStageActivity.Remove(StageHandle);
 	}
 	CommitHandle.Reset();
+	WorldStateHandle.Reset();
 	TimerHandle.Reset();
 	SnapshotHandle.Reset();
 	ApplyingHandle.Reset();
@@ -166,7 +169,7 @@ void UDreamNarrativeStory::HandleSnapshotApplying()
 void UDreamNarrativeStory::HandleBatchCommitted(const TArray<FName>& Changed)
 {
 	// A load puts a story back; nothing in it progresses on the way.
-	if (Ledger->IsApplyingSnapshot())
+	if (bRegisteringScripts || Ledger->IsApplyingSnapshot())
 	{
 		return;
 	}
