@@ -1,6 +1,7 @@
 // Copyright DreamMoon. All Rights Reserved.
 
 #include "DreamNarrativeStageDirector.h"
+#include "DreamNarrativeLedger.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "AssetRegistry/ARFilter.h"
@@ -73,17 +74,22 @@ UDreamNarrativeStageDirector::UDreamNarrativeStageDirector()
 
 uint32 UDreamNarrativeStageDirector::Play(const FDnaStageData& InStage, float LineSeconds)
 {
+	if (bEnding) { return 0; }
 	if (InStage.bLineRelative && LineSeconds <= 0.f)
 	{
 		UE_LOG(LogDreamNarrativeStage, Warning, TEXT("Stage %s follows a line; it plays only with the line it is attached to"), *InStage.Name.ToString());
 		return 0;
 	}
+	const FDnaStageData RequestedStage = InStage;
+	const uint32 Request = ++PlayRequestSerial;
 	if (bPlaying)
 	{
 		End(EDnaStageEnd::Replaced);
 	}
+	// An end listener may have started a newer request. It owns the director now.
+	if (Request != PlayRequestSerial) { return 0; }
 
-	Stage = InStage;
+	Stage = RequestedStage;
 	UnitSeconds = Stage.bLineRelative ? LineSeconds : 1.f;
 	Seconds = 0.f;
 	NextCue = 0;
@@ -105,6 +111,18 @@ uint32 UDreamNarrativeStageDirector::Play(const FDnaStageData& InStage, float Li
 	}
 	UE_LOG(LogDreamNarrativeStage, Verbose, TEXT("Stage %s starts on %s"), *Stage.Name.ToString(), *GetNameSafe(GetOwner()));
 
+	if (const UWorld* World = GetWorld())
+	{
+		if (const UGameInstance* Instance = World->GetGameInstance())
+		{
+			ActivityLedger = Instance->GetSubsystem<UDreamNarrativeLedger>();
+			if (UDreamNarrativeLedger* Ledger = ActivityLedger.Get())
+			{
+				Ledger->OnStageActivity.Broadcast(Stage.Name, true, Stage.bLineRelative);
+			}
+		}
+	}
+	if (!bPlaying || PlayNumber != ThisPlay) { return ThisPlay; }
 	OnStageStarted.Broadcast(Stage.Name);
 	if (!bPlaying || PlayNumber != ThisPlay)
 	{
@@ -167,7 +185,7 @@ void UDreamNarrativeStageDirector::Advance(float DeltaSeconds)
 		return;
 	}
 	ApplyPose(DreamNarrative::SampleDnaStage(Stage, Unit, UnitSeconds));
-	if (Seconds >= EndSeconds && DeltaSeconds > 0.f)
+	if (bPlaying && PlayNumber == ThisPlay && Seconds >= EndSeconds && DeltaSeconds > 0.f)
 	{
 		End(EDnaStageEnd::Finished);
 	}
@@ -193,6 +211,10 @@ void UDreamNarrativeStageDirector::End(EDnaStageEnd Reason)
 	bEnding = false;
 	const FName Name = Stage.Name;
 	const uint32 Number = PlayNumber;
+	const bool bOnLine = Stage.bLineRelative;
+	UDreamNarrativeLedger* Ledger = ActivityLedger.Get();
+	ActivityLedger.Reset();
+	if (Ledger) { Ledger->OnStageActivity.Broadcast(Name, false, bOnLine); }
 	OnStageEnded.Broadcast(Name, Reason);
 	OnPlayEnded.Broadcast(Number, Reason);
 }
@@ -216,6 +238,8 @@ TArray<FString> UDreamNarrativeStageDirector::DescribeTouched() const
 
 void UDreamNarrativeStageDirector::ApplyPose(const FDnaStagePose& NewPose)
 {
+	if (!bPlaying || bEnding) { return; }
+	const uint32 ThisPlay = PlayNumber;
 	Pose = NewPose;
 	ApplyCamera(NewPose.Camera);
 	ApplyLight(NewPose);
@@ -241,6 +265,7 @@ void UDreamNarrativeStageDirector::ApplyPose(const FDnaStagePose& NewPose)
 		}
 		bHudHidden = NewPose.bHudHidden;
 		OnHudVisibility.Broadcast(!bHudHidden);
+		if (!bPlaying || bEnding || PlayNumber != ThisPlay) { return; }
 	}
 
 	if (!NewPose.Text.EqualTo(ShownText) || NewPose.Text.IsEmpty() != ShownText.IsEmpty())
@@ -251,6 +276,7 @@ void UDreamNarrativeStageDirector::ApplyPose(const FDnaStagePose& NewPose)
 		}
 		ShownText = NewPose.Text;
 		OnText.Broadcast(ShownText, NewPose.TextStyle);
+		if (!bPlaying || bEnding || PlayNumber != ThisPlay) { return; }
 	}
 
 	ApplyGame(NewPose);
@@ -512,16 +538,12 @@ void UDreamNarrativeStageDirector::ApplyGame(const FDnaStagePose& NewPose)
 	if (!FMath::IsNearlyEqual(NewPose.TimeDilation, AppliedDilation))
 	{
 		UWorld* World = GetWorld();
-		AWorldSettings* Settings = World ? World->GetWorldSettings() : nullptr;
-		if (Settings)
+		UDreamNarrativeStageWatchdog* Watchdog = World ? World->GetSubsystem<UDreamNarrativeStageWatchdog>() : nullptr;
+		if (Watchdog)
 		{
-			if (!DilatedWorld.IsValid())
-			{
-				Touch(ESlot::Time);
-				DilatedWorld = Settings;
-				OriginalDilation = Settings->TimeDilation;
-			}
-			Settings->SetTimeDilation(OriginalDilation * NewPose.TimeDilation);
+			Touch(ESlot::Time);
+			DilatedWorld = World->GetWorldSettings();
+			Watchdog->SetTimeDilation(this, NewPose.TimeDilation);
 			AppliedDilation = NewPose.TimeDilation;
 		}
 	}
@@ -799,7 +821,10 @@ void UDreamNarrativeStageDirector::UnwindSlot(ESlot Slot)
 	case ESlot::Time:
 		if (AWorldSettings* Settings = DilatedWorld.Get())
 		{
-			Settings->SetTimeDilation(OriginalDilation);
+			if (UDreamNarrativeStageWatchdog* Watchdog = Settings->GetWorld()->GetSubsystem<UDreamNarrativeStageWatchdog>())
+			{
+				Watchdog->ReleaseTimeDilation(this);
+			}
 		}
 		DilatedWorld.Reset();
 		AppliedDilation = 1.f;

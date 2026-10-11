@@ -64,6 +64,7 @@ private:
 	{
 		FName Stage;
 		bool bOnLine = false;
+		bool bActivityReported = false;
 		TWeakObjectPtr<UDreamNarrativeStageDirector> Director;
 		uint32 PlayNumber = 0;
 		/** For a stage with nowhere to show: when it is over, on the ledger's clock. */

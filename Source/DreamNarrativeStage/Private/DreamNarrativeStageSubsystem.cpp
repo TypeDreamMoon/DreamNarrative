@@ -179,6 +179,7 @@ uint64 UDreamNarrativeStageSubsystem::PlayStage(const FDnaStageRequest& Request,
 	}
 	else
 	{
+		Plays[Ticket].bActivityReported = true;
 		// Nobody to show it to: it takes its time all the same.
 		const double Seconds = (Data->Duration + Data->GetTail()) * (bOnLine ? Request.LineSeconds : 1.0);
 		Plays[Ticket].Timer = Ledger->GetClock().Schedule(Seconds, FSimpleDelegate::CreateWeakLambda(this, [this, Ticket]()
@@ -191,7 +192,8 @@ uint64 UDreamNarrativeStageSubsystem::PlayStage(const FDnaStageRequest& Request,
 		}));
 	}
 	UE_LOG(LogDreamNarrativeStage, Verbose, TEXT("Stage %s plays for %s"), *StageName.ToString(), Request.Channel.IsNone() ? TEXT("the game") : *Request.Channel.ToString());
-	Ledger->OnStageActivity.Broadcast(StageName, true, bOnLine);
+	const FPlay* Active = Plays.Find(Ticket);
+	if (Active && Active->bActivityReported) { Ledger->OnStageActivity.Broadcast(StageName, true, bOnLine); }
 	return Ticket;
 }
 
@@ -260,7 +262,7 @@ void UDreamNarrativeStageSubsystem::Finish(uint64 Ticket, EDnaStageEnd Reason)
 	if (Ledger)
 	{
 		Ledger->GetClock().Cancel(Play.Timer);
-		Ledger->OnStageActivity.Broadcast(Play.Stage, false, Play.bOnLine);
+		if (Play.bActivityReported) { Ledger->OnStageActivity.Broadcast(Play.Stage, false, Play.bOnLine); }
 	}
 	Play.OnFinished.ExecuteIfBound(Reason);
 }

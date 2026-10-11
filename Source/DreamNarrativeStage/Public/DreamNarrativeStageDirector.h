@@ -21,6 +21,7 @@
 #include "DreamNarrativeStagePose.h"
 #include "DreamNarrativeStageDirector.generated.h"
 
+class UDreamNarrativeLedger;
 class ACameraActor;
 class AHUD;
 class ALevelSequenceActor;
@@ -55,7 +56,7 @@ public:
 	/**
 	 * Plays a stage from its start. LineSeconds stretches a line-relative stage over a line that long.
 	 * A stage already playing here ends first (Replaced). Returns the play's number, which
-	 * OnPlayEnded reports; 0 when the stage cannot play (a line-relative one without a line).
+	 * OnPlayEnded reports; 0 when invalid, unwinding, or superseded by a newer Play in an end callback.
 	 */
 	uint32 Play(const FDnaStageData& Stage, float LineSeconds = 0.f);
 
@@ -178,6 +179,8 @@ private:
 	bool bPlaying = false;
 	bool bEnding = false;
 	uint32 PlayNumber = 0;
+	uint32 PlayRequestSerial = 0;
+	TWeakObjectPtr<UDreamNarrativeLedger> ActivityLedger;
 	/** Seconds since start, and the seconds one unit of the stage is (the line's length for a line-relative stage). */
 	float Seconds = 0.f;
 	float UnitSeconds = 1.f;
@@ -221,7 +224,6 @@ private:
 	TWeakObjectPtr<APlayerController> InputController;
 	bool bInputLocked = false;
 	TWeakObjectPtr<AWorldSettings> DilatedWorld;
-	float OriginalDilation = 1.f;
 	float AppliedDilation = 1.f;
 	bool bDamageWindow = false;
 

@@ -40,7 +40,24 @@ void UAbilityTask_PlayNarrativeStage::Activate()
 	{
 		OnAvatar->BindActor(TEXT("target"), Target.Get());
 	}
+	bStarting = true;
 	PlayNumber = OnAvatar->Play(*Data);
+	bStarting = false;
+	if (bDestroyed)
+	{
+		if (PlayNumber != 0 && OnAvatar->GetPlayNumber() == PlayNumber) { OnAvatar->Stop(); }
+		PlayNumber = 0;
+		StartupEnds.Reset();
+		return;
+	}
+	EDnaStageEnd StartupReason;
+	const bool bEndedDuringStartup = StartupEnds.RemoveAndCopyValue(PlayNumber, StartupReason);
+	StartupEnds.Reset();
+	if (bEndedDuringStartup)
+	{
+		HandlePlayEnded(PlayNumber, StartupReason);
+		return;
+	}
 	if (PlayNumber == 0)
 	{
 		if (ShouldBroadcastAbilityTaskDelegates())
@@ -53,6 +70,11 @@ void UAbilityTask_PlayNarrativeStage::Activate()
 
 void UAbilityTask_PlayNarrativeStage::HandlePlayEnded(uint32 Play, EDnaStageEnd Reason)
 {
+	if (bStarting)
+	{
+		StartupEnds.Add(Play, Reason);
+		return;
+	}
 	if (Play != PlayNumber)
 	{
 		return;
@@ -67,6 +89,7 @@ void UAbilityTask_PlayNarrativeStage::HandlePlayEnded(uint32 Play, EDnaStageEnd 
 
 void UAbilityTask_PlayNarrativeStage::OnDestroy(bool bInOwnerFinished)
 {
+	bDestroyed = true;
 	if (UDreamNarrativeStageDirector* OnAvatar = Director.Get())
 	{
 		OnAvatar->OnPlayEnded.Remove(EndedHandle);

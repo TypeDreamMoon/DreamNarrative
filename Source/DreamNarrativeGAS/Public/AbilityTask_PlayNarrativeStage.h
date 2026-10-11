@@ -48,5 +48,8 @@ private:
 	TWeakObjectPtr<AActor> Target;
 	TWeakObjectPtr<UDreamNarrativeStageDirector> Director;
 	uint32 PlayNumber = 0;
+	bool bStarting = false;
+	bool bDestroyed = false;
+	TMap<uint32, EDnaStageEnd> StartupEnds;
 	FDelegateHandle EndedHandle;
 };
