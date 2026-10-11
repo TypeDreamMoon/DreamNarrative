@@ -63,6 +63,8 @@ UDreamNarrativeStageDirector::UDreamNarrativeStageDirector()
 
 uint32 UDreamNarrativeStageDirector::Play(const FDnaStageData& InStage, float LineSeconds)
 {
+	const TWeakObjectPtr<UDreamNarrativeLedger> Reporting = NextActivityLedger;
+	NextActivityLedger.Reset();
 	if (bEnding) { return 0; }
 	if (InStage.bLineRelative && LineSeconds <= 0.f)
 	{
@@ -100,16 +102,16 @@ uint32 UDreamNarrativeStageDirector::Play(const FDnaStageData& InStage, float Li
 	}
 	UE_LOG(LogDreamNarrativeStage, Verbose, TEXT("Stage %s starts on %s"), *Stage.Name.ToString(), *GetNameSafe(GetOwner()));
 
-	if (const UWorld* World = GetWorld())
+	ActivityLedger = Reporting;
+	if (!ActivityLedger.IsValid())
 	{
-		if (const UGameInstance* Instance = World->GetGameInstance())
-		{
-			ActivityLedger = Instance->GetSubsystem<UDreamNarrativeLedger>();
-			if (UDreamNarrativeLedger* Ledger = ActivityLedger.Get())
-			{
-				Ledger->OnStageActivity.Broadcast(Stage.Name, true, Stage.bLineRelative);
-			}
-		}
+		const UWorld* World = GetWorld();
+		const UGameInstance* Instance = World ? World->GetGameInstance() : nullptr;
+		ActivityLedger = Instance ? Instance->GetSubsystem<UDreamNarrativeLedger>() : nullptr;
+	}
+	if (UDreamNarrativeLedger* Ledger = ActivityLedger.Get())
+	{
+		Ledger->OnStageActivity.Broadcast(Stage.Name, true, Stage.bLineRelative);
 	}
 	if (!bPlaying || PlayNumber != ThisPlay) { return ThisPlay; }
 	OnStageStarted.Broadcast(Stage.Name);
@@ -124,6 +126,11 @@ uint32 UDreamNarrativeStageDirector::Play(const FDnaStageData& InStage, float Li
 		ApplyPose(DreamNarrative::SampleDnaStage(Stage, 0.f, UnitSeconds));
 	}
 	return ThisPlay;
+}
+
+void UDreamNarrativeStageDirector::ReportActivityTo(UDreamNarrativeLedger* Ledger)
+{
+	NextActivityLedger = Ledger;
 }
 
 bool UDreamNarrativeStageDirector::PlayStage(FName StageName)

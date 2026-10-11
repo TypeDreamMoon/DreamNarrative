@@ -160,6 +160,7 @@ uint64 UDreamNarrativeStageSubsystem::PlayStage(const FDnaStageRequest& Request,
 		}
 		Plays[Ticket].Director = Director;
 		// Playing may end what played there before (Replaced): the map can change under this call.
+		Director->ReportActivityTo(Ledger);
 		const uint32 Number = Director->Play(*Data, static_cast<float>(Request.LineSeconds));
 		FPlay* Play = Plays.Find(Ticket);
 		if (Number == 0)

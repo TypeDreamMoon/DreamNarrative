@@ -61,6 +61,12 @@ public:
 	 */
 	uint32 Play(const FDnaStageData& Stage, float LineSeconds = 0.f);
 
+	/**
+	 * The ledger the next Play tells about the stage (the channels that pause for stages listen there).
+	 * Unsaid, it is the game instance's; a host with a ledger of its own -- a tool, a test -- says so first.
+	 */
+	void ReportActivityTo(UDreamNarrativeLedger* Ledger);
+
 	/** Plays a stage a registered script declares, by name. */
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Stage")
 	bool PlayStage(FName Stage);
@@ -186,6 +192,7 @@ private:
 	uint32 PlayNumber = 0;
 	uint32 PlayRequestSerial = 0;
 	TWeakObjectPtr<UDreamNarrativeLedger> ActivityLedger;
+	TWeakObjectPtr<UDreamNarrativeLedger> NextActivityLedger;
 	/** Seconds since start, and the seconds one unit of the stage is (the line's length for a line-relative stage). */
 	float Seconds = 0.f;
 	float UnitSeconds = 1.f;

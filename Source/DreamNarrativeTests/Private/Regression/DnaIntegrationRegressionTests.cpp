@@ -138,7 +138,34 @@ bool FDnaRegressionGasStagePause::RunTest(const FString& Parameters)
 	Game.GetStory()->StopAllDialogue();
 	return !HasAnyErrors();
 }
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRegressionStagingPrefix, "DreamNarrative.Regression.Integration.StagingPrefixCollision", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRegressionStandaloneStageActivity, "DreamNarrative.Regression.Integration.HostLedgerHearsStages", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FDnaRegressionStandaloneStageActivity::RunTest(const FString& Parameters)
+{
+	// A ledger of its own, as a tool or a test keeps, and a director in a game whose game instance
+	// keeps another: told which one to report to, the director reports there.
+	FDnaTestWorld World(*this);
+	if (!World.CompileText(TEXT(
+		"character Speaker\nchannel Radio\n  advance: auto\n  stage: pause\n"
+		"dialogue Broadcast for Speaker channel Radio\n  Speaker: First line. for 1s\n  Speaker: Second line. for 1s\n"
+		"stage Long\n  duration 5.0s\n"))) { return false; }
+	const UDnaStageSection* Section = World.GetScripts().Num() > 0 ? World.GetScripts()[0]->FindSection<UDnaStageSection>() : nullptr;
+	const FDnaStageData* Long = Section ? Section->FindStage(TEXT("Long")) : nullptr;
+	if (!TestNotNull(TEXT("stage compiled"), Long)) { return false; }
+	FDnaStandaloneGame Game;
+	UDreamNarrativeStageDirector* Director = UDreamNarrativeStageDirector::FindOrAddDirector(Game.GetWorld()->SpawnActor<AActor>());
+	Director->bManualAdvance = true;
+	UDreamNarrativeDialogueRunner* Runner = World.Story().TalkTo(TEXT("Speaker"));
+	if (!TestNotNull(TEXT("radio is talking"), Runner)) { return false; }
+	Director->ReportActivityTo(&World.Ledger());
+	TestTrue(TEXT("the stage plays"), Director->Play(*Long) != 0);
+	TestTrue(TEXT("the ledger it was told of hears of the stage"), Runner->IsPaused());
+	Director->Stop();
+	TestFalse(TEXT("and of its end"), Runner->IsPaused());
+	World.Story().StopAllDialogue();
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRegressionStagingPrefix,"DreamNarrative.Regression.Integration.StagingPrefixCollision", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FDnaRegressionStagingPrefix::RunTest(const FString& Parameters)
 {
 	using namespace UE::DreamNarrative::Lang;
