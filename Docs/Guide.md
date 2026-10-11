@@ -155,8 +155,12 @@ stage 灯亮
   死了、关卡走了,碰过的东西都会放回原样。
 - 谁来演:Stage 子系统把对话的 `play`、台词的 `@`、任务的 `play` 放到导演组件上——最后开始的那个,或者第一个本地
   玩家控制器上自动加的一个。没有玩家控制器时,演出在账本时钟上走完它的时长,剧情照样等。
-- 多个导演同时改时间缩放:各自的倍率相乘,谁先结束都留着别人的倍率,最后一个结束时还原。两次变化之间不碰世界时间,
-  游戏自己也可以改。导演的结束回调里再 `Play`:新的那次优先,被取代的外层请求返回 0。
+- 几个导演同时演:时间倍率、太阳和天光的比例相乘,HUD 有一个演出藏着就藏着,镜头是最后接管的那个;谁先结束都
+  留着别人的,最后一个结束时还原。两次变化之间不碰这些状态,游戏自己也可以改。HUD 不是 AHUD 的,听世界子系统
+  `UDreamNarrativeStageArbiter` 的 `OnHudVisibility`(所有演出合起来)。导演的结束回调里再 `Play`:新的那次优先,
+  被取代的外层请求返回 0。
+- 资源:`montage`、`spawn`、`sequence play` 写的资源编译时就找(名字在 Stage Asset Roots 下找,路径直接认),找到的写成
+  路径并记进脚本资产,打包时一起带上;找不到是 DNS6001 警告——编辑器里也许还能演,包里多半没有。
 - 能力里演:`PlayNarrativeStage` 能力任务;或在演出里写 `gameplay: 标签`,GAS 桥收到这个事件就在化身上演。
 
 ## 4. 接进游戏
@@ -179,6 +183,9 @@ Story->GetLedger()->RaiseEvent(Storm);
   再评估隐藏任务和档案条件。`LoadAllScripts()` 就是这么做的;只有一个脚本时仍可用 `RegisterScript()`。
 - 声明过的频道各有自己的 runner:`Story->OnDialogueStarted` 拿到每一个。插件不带 UI,只发事件。
 - 存档:`Ledger->MakeSnapshot()` / `ApplySnapshot()`;profile 另有 `MakeProfileSnapshot()` / `ApplyProfileSnapshot()`。
+  比当前版本新的快照会被整份拒绝(返回 false)。
+- 打包:资产目录下的脚本自动加进 Cook,不用配 Primary Asset 或 Always Cook。`Tools/CookSmoke.ps1` 在测试宿主上做一遍
+  Cook、打包 Development / Shipping,并启动打出来的游戏检查。
 - 演出的 UI 部分:导演的 `OnText`(字幕、浮字)、`OnHudVisibility`、`OnDamageWindow`、`OnWarpTarget`(给 Motion Warping)。
 - GAS:`UDreamNarrativeGASBridge::WatchAbilitySystem(ASC)`;`event 名 gameplay 标签` 把 GameplayEvent 变成剧情事件,
   `fact 名: bool extern gameplay 标签` 跟着标签计数。
