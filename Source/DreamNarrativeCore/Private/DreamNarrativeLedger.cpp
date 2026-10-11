@@ -263,6 +263,8 @@ void UDreamNarrativeLedger::Commit()
 	else
 	{
 		OnWorldStateChanged.Broadcast();
+		// A rule can read `visited(...)` with no fact behind it.
+		CheckAdvanceRules();
 	}
 	bCommitting = false;
 	if ((DirtyFacts.Num() > 0 || bWorldStateDirty) && BatchDepth == 0)

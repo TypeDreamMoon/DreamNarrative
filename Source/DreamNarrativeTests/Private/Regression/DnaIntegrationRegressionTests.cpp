@@ -49,6 +49,20 @@ bool FDnaRegressionVisitObservers::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRegressionVisitAdvancesChapter, "DreamNarrative.Regression.Integration.VisitAdvancesChapter", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FDnaRegressionVisitAdvancesChapter::RunTest(const FString& Parameters)
+{
+	FDnaTestWorld World(*this);
+	if (!World.CompileText(TEXT(
+		"character Speaker\ndialogue Finale for Speaker\n  Speaker: Goodbye.\n"
+		"chapter Last\n  advance -> Epilogue if visited(Finale) >= 1\n"
+		"chapter Epilogue after Last\n"))) { return false; }
+	World.Ledger().SetChapter(TEXT("Last"));
+	if (!World.Talk(TEXT("Speaker"))) { return false; }
+	TestEqual(TEXT("a visit alone moves the chapter on"), World.Ledger().GetChapter(), FName(TEXT("Epilogue")));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRegressionMultiFileInitialization, "DreamNarrative.Regression.Integration.CrossFileInitialization", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FDnaRegressionMultiFileInitialization::RunTest(const FString& Parameters)
 {
