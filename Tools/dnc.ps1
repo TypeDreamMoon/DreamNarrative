@@ -144,13 +144,21 @@ function Find-Project([string]$Start) {
 function Resolve-EngineRoot([string]$UProject) {
     $association = (Get-Content -LiteralPath $UProject -Raw | ConvertFrom-Json).EngineAssociation
     if (-not $association) { throw "$UProject has no EngineAssociation." }
+    # A source build, as UnrealVersionSelector registers it. Strict mode throws on a missing property.
     $key = 'HKCU:\SOFTWARE\Epic Games\Unreal Engine\Builds'
     if (Test-Path $key) {
-        $value = (Get-ItemProperty -Path $key).$association
-        if ($value) { return $value }
+        $builds = Get-ItemProperty -Path $key
+        if ($builds.PSObject.Properties[$association]) { return $builds.$association }
     }
+    # An installed build: the launcher's registry key, or else its install list.
     $launcherKey = "HKLM:\SOFTWARE\EpicGames\Unreal Engine\$association"
     if (Test-Path $launcherKey) { return (Get-ItemProperty -Path $launcherKey).InstalledDirectory }
+    $installed = Join-Path $env:ProgramData 'Epic\UnrealEngineLauncher\LauncherInstalled.dat'
+    if (Test-Path -LiteralPath $installed) {
+        $entry = @((Get-Content -LiteralPath $installed -Raw | ConvertFrom-Json).InstallationList |
+            Where-Object { $_.AppName -eq "UE_$association" }) | Select-Object -First 1
+        if ($entry) { return $entry.InstallLocation }
+    }
     throw "EngineAssociation '$association' is not registered on this machine."
 }
 
