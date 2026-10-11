@@ -11,6 +11,10 @@
       vo-script  write the recording script (-Out, default Saved/DreamNarrative/VoiceScript.csv): every line,
               its speaker, text, context and voice; with the Voice column filled in it reads back as a voice table
       vo-status  how many lines of each character have a voice, and which lack one
+      loc-export  write every localizable text as CSV (-Out, default Saved/DreamNarrative/Translations.csv)
+              with who says it and where; with -Culture the target's translations fill the Translation column
+      loc-import  read a translated CSV (-File) into the localization target's archive for -Culture; gather
+              the target first, compile it in the Localization Dashboard after
       freeze  write `#id` onto every line and choice that has none, keeping the id it has now
               (all files, or -File's); do it before recording or translating
       check   the static checks (Tools/StaticChecks.ps1) over this repository
@@ -53,10 +57,11 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory, Position = 0)]
-    [ValidateSet('build', 'lint', 'dump', 'freeze', 'vo-script', 'vo-status', 'check', 'test')]
+    [ValidateSet('build', 'lint', 'dump', 'freeze', 'vo-script', 'vo-status', 'loc-export', 'loc-import', 'check', 'test')]
     [string]$Command,
 
     # build / lint / dump / freeze: one source file (absolute, or relative to the project directory).
+    # loc-import: the translated CSV.
     [string]$File,
 
     # build / lint / dump: source directory override (default: Project Settings > Dream Narrative).
@@ -65,8 +70,17 @@ param(
     # build: generate in memory without writing packages.
     [switch]$NoSave,
 
-    # vo-script: where the recording script goes (relative to the project directory).
-    [string]$Out = 'Saved/DreamNarrative/VoiceScript.csv',
+    # vo-script / loc-export: where the CSV goes (relative to the project directory).
+    [string]$Out,
+
+    # loc-export / loc-import: the culture of the translations (en, ja, ...).
+    [string]$Culture,
+
+    # loc-export / loc-import: the localization target, Content/Localization/<Target>.
+    [string]$Target = 'Game',
+
+    # loc-export / loc-import: the target's native culture, when its .locmeta does not say.
+    [string]$NativeCulture,
 
     # test: which tests.
     [ValidateSet('Quick', 'Explore', 'Smoke', 'All')]
@@ -241,17 +255,27 @@ function Invoke-Editor([string[]]$Arguments, [string[]]$KeepPatterns) {
     return $code
 }
 
-if ($Command -in 'build', 'lint', 'dump', 'freeze', 'vo-script', 'vo-status') {
+if ($Command -in 'build', 'lint', 'dump', 'freeze', 'vo-script', 'vo-status', 'loc-export', 'loc-import') {
     if (Get-EditorsOnProject $uproject) {
         Write-Warning "An editor has $uproject open. A build that writes assets will fight it over the packages."
     }
     $arguments = @('-run=DreamNarrative')
     if ($Command -in 'lint', 'dump') { $arguments += '-Lint' }
     if ($Command -eq 'freeze') { $arguments += '-FreezeIds' }
-    if ($Command -eq 'vo-script') { $arguments += "-VoScript=$Out" }
+    if ($Command -eq 'vo-script') { $arguments += "-VoScript=$(if ($Out) { $Out } else { 'Saved/DreamNarrative/VoiceScript.csv' })" }
     if ($Command -eq 'vo-status') { $arguments += '-VoStatus' }
+    if ($Command -eq 'loc-export') { $arguments += "-LocExport=$(if ($Out) { $Out } else { 'Saved/DreamNarrative/Translations.csv' })" }
+    if ($Command -eq 'loc-import') {
+        if (-not $File -or -not $Culture) { Write-Error 'loc-import wants the translated CSV (-File) and its culture (-Culture).'; exit 2 }
+        $arguments += "-LocImport=$File"
+    }
+    if ($Command -in 'loc-export', 'loc-import') {
+        $arguments += "-Target=$Target"
+        if ($Culture) { $arguments += "-Culture=$Culture" }
+        if ($NativeCulture) { $arguments += "-NativeCulture=$NativeCulture" }
+    }
     if ($Command -eq 'dump') { $arguments += '-Dump' }
-    if ($File) { $arguments += "-File=$File" }
+    if ($File -and $Command -ne 'loc-import') { $arguments += "-File=$File" }
     if ($Root) { $arguments += "-Root=$Root" }
     if ($Command -eq 'build' -and $NoSave) { $arguments += '-NoSave' }
     $keep = if ($Command -eq 'dump') { @('LogDreamNarrative', '^\d+: ', 'DNS\d{4}') } else { @('LogDreamNarrative', 'DNS\d{4}', 'Fatal', 'Assertion') }

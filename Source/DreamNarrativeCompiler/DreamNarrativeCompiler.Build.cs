@@ -40,6 +40,8 @@ public class DreamNarrativeCompiler : ModuleRules
 			{
 				"UnrealEd",
 				"DirectoryWatcher",
+				// Translations go into a localization target's archive.
+				"Localization",
 			});
 		}
 	}

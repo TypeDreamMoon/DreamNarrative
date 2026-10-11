@@ -32,6 +32,8 @@ public class DreamNarrativeTests : ModuleRules
 			"DreamNarrativeStage",
 			"DreamNarrativeCompiler",
 			"DreamNarrativeGAS",
+			// A localization target to import translations into.
+			"Localization",
 		});
 	}
 }

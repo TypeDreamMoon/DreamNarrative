@@ -284,6 +284,17 @@ test 零件齐了灯就亮
 `dnc.ps1 freeze`(编辑器关着):它把每行现在的 ID 原样写进源码,存档、翻译都不受影响;之后在项目设置里打开
 `Require Line Ids`,没有 `#id` 的行就会报 DNS6006。`#id` 可以带点(`#老周_初见.3`)。
 
+给译者的表:`dnc.ps1 loc-export [-Out 路径] [-Culture en] [-Target Game]` 把每一条可本地化文本写成 CSV(UTF-8 带 BOM),
+列是 `Namespace,Key,Source,Translation`,后面跟着给译者看的上下文:类别(台词 / 选项 / 其他文本)、说话人、所在对话、
+上一句、情绪标签、文件与行号。写了 `-Culture` 就把本地化目标里已有的译文填进 `Translation` 列。译好后:
+
+1. 在本地化面板里给目标(默认 `Game`)采集一次,脚本资产所在的 `Asset Directory` 要在采集范围里;
+2. `dnc.ps1 loc-import -File 译文.csv -Culture en`(编辑器关着):译文写进 `Content/Localization/Game/en/Game.archive`。
+   目标没采集到的 key、导出之后原文改过的行不会导入,逐条列出来;没填译文的行跳过;
+3. 回到本地化面板「Compile Text」。
+
+目标的母语从它的 `.locmeta` 读,还没编译过的目标用 `-NativeCulture` 指定。
+
 ## 8. VS Code
 
 `dreamnarrative-language-support` 扩展:高亮、大纲、跨文件跳转与悬停、片段;命令「Check the Project's .dna Sources」
