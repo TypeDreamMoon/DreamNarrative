@@ -32,8 +32,17 @@ namespace UE::DreamNarrative::Lang
 		bool IsDirty() const { return Text != SavedText; }
 		void MarkSaved() { SavedText = Text; }
 
-		/** Refuses saving if the disk text changed since Open or the last save. */
-		bool Save(FText& OutError);
+		/**
+		 * Writes the text. Refuses, keeping the edits, when the file on disk changed since Open or the
+		 * last save -- unless bOverwriteExternal, the user's explicit choice to replace that change.
+		 */
+		bool Save(FText& OutError, bool bOverwriteExternal = false);
+
+		/** True when the file on disk no longer holds what Open was given or the last save wrote. */
+		bool IsChangedOnDisk() const;
+
+		/** Drops every unsaved edit and the undo history and reads the file again. */
+		bool Revert(FText& OutError);
 
 		// -------------------------------------------------------------- operations
 

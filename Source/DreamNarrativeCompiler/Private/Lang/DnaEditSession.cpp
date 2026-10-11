@@ -110,20 +110,20 @@ namespace UE::DreamNarrative::Lang
 		Reparse();
 	}
 
-	bool FDnaEditSession::Save(FText& OutError)
+	bool FDnaEditSession::Save(FText& OutError, bool bOverwriteExternal)
 	{
 		if (!IsDirty()) { return true; }
 		TArray<uint8> Bytes;
-		if (!FFileHelper::LoadFileToArray(Bytes, *Path))
+		if (!FFileHelper::LoadFileToArray(Bytes, *Path) && !bOverwriteExternal)
 		{
 			OutError = FText::Format(LOCTEXT("ReadFailed", "Cannot read {0}; local edits were kept"), FText::FromString(Path));
 			return false;
 		}
 		FString DiskText;
 		FFileHelper::BufferToString(DiskText, Bytes.GetData(), Bytes.Num());
-		if (DiskText != SavedText)
+		if (DiskText != SavedText && !bOverwriteExternal)
 		{
-			OutError = FText::Format(LOCTEXT("SaveConflict", "{0} changed on disk. Reconcile external changes before saving; local edits were kept"), FText::FromString(Path));
+			OutError = FText::Format(LOCTEXT("SaveConflict", "{0} changed on disk. Discard the local edits or overwrite the file; local edits were kept"), FText::FromString(Path));
 			return false;
 		}
 		const bool bBom = Bytes.Num() >= 3 && Bytes[0] == 0xEF && Bytes[1] == 0xBB && Bytes[2] == 0xBF;
@@ -133,6 +133,24 @@ namespace UE::DreamNarrative::Lang
 			return false;
 		}
 		MarkSaved();
+		return true;
+	}
+
+	bool FDnaEditSession::IsChangedOnDisk() const
+	{
+		FString DiskText;
+		return !FFileHelper::LoadFileToString(DiskText, *Path) || DiskText != SavedText;
+	}
+
+	bool FDnaEditSession::Revert(FText& OutError)
+	{
+		FString DiskText;
+		if (!FFileHelper::LoadFileToString(DiskText, *Path))
+		{
+			OutError = FText::Format(LOCTEXT("RevertFailed", "Cannot read {0}; local edits were kept"), FText::FromString(Path));
+			return false;
+		}
+		Open(Path, DiskText);
 		return true;
 	}
 

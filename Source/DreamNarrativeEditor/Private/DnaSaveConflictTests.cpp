@@ -29,6 +29,16 @@ bool FDnaRegressionStoryConflict::RunTest(const FString& Parameters)
 	FString Actual;
 	FFileHelper::LoadFileToString(Actual, *Path);
 	TestTrue(TEXT("external writer's content must survive"), Actual.Contains(TEXT("External writer's line.")));
+	TestEqual(TEXT("the stale file is reported as conflicted"), Panel->GetConflictedFiles(), TArray<FString>{ Path });
+	TestTrue(TEXT("discarding the panel's edits"), Panel->DiscardEdits(Path, Error));
+	TestFalse(TEXT("nothing unsaved after discarding"), Panel->HasUnsavedEdits());
+	FFileHelper::LoadFileToString(Actual, *Path);
+	TestTrue(TEXT("discarding leaves the external change on disk"), Actual.Contains(TEXT("External writer's line.")));
+	TestTrue(TEXT("an edit after discarding builds on the external change"), Panel->EditCondition(TEXT("Intro"), TEXT("true"), Error));
+	Errors.Reset();
+	TestTrue(TEXT("and saves without conflict"), Panel->SaveAll(Errors));
+	FFileHelper::LoadFileToString(Actual, *Path);
+	TestTrue(TEXT("saved text keeps the external line"), Actual.Contains(TEXT("External writer's line.")));
 
 	return !HasAnyErrors();
 }
@@ -51,6 +61,12 @@ bool FDnaRegressionTimelineConflict::RunTest(const FString& Parameters)
 	FString Actual;
 	FFileHelper::LoadFileToString(Actual, *Path);
 	TestTrue(TEXT("external writer's content must survive"), Actual.Contains(TEXT("External writer's note.")));
+	TestEqual(TEXT("the stale file is reported as conflicted"), Panel->GetConflictedFiles(), TArray<FString>{ Path });
+	TestTrue(TEXT("overwriting is the user's explicit choice"), Panel->OverwriteDisk(Path, Error));
+	TestFalse(TEXT("nothing unsaved after overwriting"), Panel->HasUnsavedEdits());
+	FFileHelper::LoadFileToString(Actual, *Path);
+	TestFalse(TEXT("overwriting replaces the external change"), Actual.Contains(TEXT("External writer's note.")));
+	TestEqual(TEXT("overwriting writes the panel's text"), Actual, Panel->GetText());
 
 	return !HasAnyErrors();
 }

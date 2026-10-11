@@ -3,7 +3,10 @@
 #include "DreamNarrativeEditorSettings.h"
 #include "DreamNarrativeEditorModule.h"
 #include "HAL/PlatformProcess.h"
+#include "Misc/MessageDialog.h"
 #include "Misc/Paths.h"
+
+#define LOCTEXT_NAMESPACE "DreamNarrativeEditor"
 
 UDreamNarrativeEditorSettings::UDreamNarrativeEditorSettings()
 {
@@ -53,4 +56,23 @@ namespace UE::DreamNarrative::Editor
 		}
 		FPlatformProcess::CloseProc(Handle);
 	}
+
+	EDnaConflictChoice AskAboutConflicts(const TArray<FString>& Files)
+	{
+		const FText Message = FText::Format(LOCTEXT("ConflictPrompt",
+			"These files changed on disk since the panel read them, and the panel has unsaved edits to them:\n\n{0}\n\n"
+			"Yes: discard the panel's edits and read the files again.\n"
+			"No: overwrite the files with the panel's edits; the change on disk is lost.\n"
+			"Cancel: write nothing and keep both versions."),
+			FText::FromString(FString::Join(Files, TEXT("\n"))));
+		switch (FMessageDialog::Open(EAppMsgType::YesNoCancel, Message, LOCTEXT("ConflictTitle", "Source changed on disk")))
+		{
+		case EAppReturnType::Yes: return EDnaConflictChoice::Discard;
+		case EAppReturnType::No: return EDnaConflictChoice::Overwrite;
+		default: return EDnaConflictChoice::Keep;
+		}
+	}
 }
+
+#undef LOCTEXT_NAMESPACE
+

@@ -403,7 +403,7 @@ void SDnaStageTimeline::Construct(const FArguments& InArgs)
 			]
 			+ SHorizontalBox::Slot().AutoWidth().Padding(2.f, 0.f)
 			[
-				SNew(SButton).Text(LOCTEXT("Save", "Save")).IsEnabled_Lambda([this]() { return HasUnsavedEdits(); }).OnClicked_Lambda([this]() { SaveAll(); return FReply::Handled(); })
+				SNew(SButton).Text(LOCTEXT("Save", "Save")).IsEnabled_Lambda([this]() { return HasUnsavedEdits(); }).OnClicked_Lambda([this]() { if (!SaveAll()) { ResolveConflicts(); } return FReply::Handled(); })
 			]
 		]
 		+ SVerticalBox::Slot().AutoHeight().Padding(4.f, 0.f)
@@ -630,6 +630,58 @@ bool SDnaStageTimeline::SaveAll()
 		}
 	}
 	return bOk;
+}
+
+TArray<FString> SDnaStageTimeline::GetConflictedFiles() const
+{
+	TArray<FString> Out;
+	for (const TPair<FString, TSharedPtr<FDnaEditSession>>& Pair : Sessions)
+	{
+		if (Pair.Value->IsDirty() && Pair.Value->IsChangedOnDisk())
+		{
+			Out.Add(Pair.Key);
+		}
+	}
+	return Out;
+}
+
+bool SDnaStageTimeline::DiscardEdits(const FString& File, FText& OutError)
+{
+	const TSharedPtr<FDnaEditSession>* Session = Sessions.Find(File);
+	if (!Session || !(*Session)->Revert(OutError))
+	{
+		return false;
+	}
+	RefreshOptions();
+	Recompile();
+	return true;
+}
+
+bool SDnaStageTimeline::OverwriteDisk(const FString& File, FText& OutError)
+{
+	const TSharedPtr<FDnaEditSession>* Session = Sessions.Find(File);
+	return Session && (*Session)->Save(OutError, /*bOverwriteExternal=*/true);
+}
+
+void SDnaStageTimeline::ResolveConflicts()
+{
+	const TArray<FString> Conflicted = GetConflictedFiles();
+	if (Conflicted.Num() == 0)
+	{
+		return;
+	}
+	const UE::DreamNarrative::Editor::EDnaConflictChoice Choice = UE::DreamNarrative::Editor::AskAboutConflicts(Conflicted);
+	if (Choice == UE::DreamNarrative::Editor::EDnaConflictChoice::Keep)
+	{
+		return;
+	}
+	Diagnostics.Reset();
+	for (const FString& File : Conflicted)
+	{
+		FText Error;
+		const bool bOk = Choice == UE::DreamNarrative::Editor::EDnaConflictChoice::Discard ? DiscardEdits(File, Error) : OverwriteDisk(File, Error);
+		if (!bOk) { Diagnostics.Add(Error.ToString()); }
+	}
 }
 
 void SDnaStageTimeline::OpenLine(int32 Line) const

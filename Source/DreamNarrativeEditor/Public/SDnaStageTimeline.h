@@ -68,6 +68,12 @@ public:
 	bool Undo();
 	bool Redo();
 	bool SaveAll();
+	/** Files with unsaved edits whose text on disk changed since the timeline read or saved them. */
+	TArray<FString> GetConflictedFiles() const;
+	/** Drops a file's unsaved edits and undo history and reads it from disk again. */
+	bool DiscardEdits(const FString& File, FText& OutError);
+	/** Writes a file's edits over the change made on disk. */
+	bool OverwriteDisk(const FString& File, FText& OutError);
 
 	/** Flies the active level viewport through the stage's camera while scrubbing; off puts the viewport back. */
 	void SetPreviewInViewport(bool bOn);
@@ -90,6 +96,8 @@ private:
 	void Recompile();
 	void ApplyViewportPreview();
 	FText GetStatusText() const;
+	/** After a refused save: asks what to do with the files changed on disk, and does it. */
+	void ResolveConflicts();
 
 	TArray<FString> Files;
 	TMap<FString, TSharedPtr<UE::DreamNarrative::Lang::FDnaEditSession>> Sessions;

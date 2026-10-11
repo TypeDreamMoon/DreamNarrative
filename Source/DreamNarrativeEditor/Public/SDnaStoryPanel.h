@@ -49,6 +49,12 @@ public:
 	/** Writes every file with unsaved edits. False with the reasons when one could not be written. */
 	bool SaveAll(TArray<FString>& OutErrors);
 	bool HasUnsavedEdits() const;
+	/** Files with unsaved edits whose text on disk changed since the panel read or saved them. */
+	TArray<FString> GetConflictedFiles() const;
+	/** Drops a file's unsaved edits, and their undo steps, and reads it from disk again. */
+	bool DiscardEdits(const FString& File, FText& OutError);
+	/** Writes a file's edits over the change made on disk. */
+	bool OverwriteDisk(const FString& File, FText& OutError);
 
 private:
 	struct FItem
@@ -74,6 +80,8 @@ private:
 	void OnOpen(FItemPtr Item);
 	TSharedPtr<SWidget> MakeContextMenu();
 	void Report(const FText& Error);
+	/** After a refused save: asks what to do with the files changed on disk, and does it. */
+	void ResolveConflicts(TArray<FString>& Errors);
 
 	TArray<FString> Files;
 	bool bProjectFiles = true;

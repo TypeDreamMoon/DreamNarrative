@@ -133,7 +133,8 @@ void SDnaStoryPanel::Construct(const FArguments& InArgs)
 				SNew(SButton).Text(LOCTEXT("Save", "Save")).IsEnabled_Lambda([this]() { return HasUnsavedEdits(); }).OnClicked_Lambda([this]()
 				{
 					TArray<FString> Errors;
-					if (!SaveAll(Errors)) { Report(FText::FromString(FString::Join(Errors, TEXT("\n")))); }
+					if (!SaveAll(Errors)) { ResolveConflicts(Errors); }
+					if (Errors.Num() > 0) { Report(FText::FromString(FString::Join(Errors, TEXT("\n")))); }
 					return FReply::Handled();
 				})
 			]
@@ -468,6 +469,61 @@ bool SDnaStoryPanel::SaveAll(TArray<FString>& OutErrors)
 	}
 	Rebuild();
 	return OutErrors.Num() == 0;
+}
+
+TArray<FString> SDnaStoryPanel::GetConflictedFiles() const
+{
+	TArray<FString> Out;
+	for (const TPair<FString, TSharedPtr<FDnaEditSession>>& Pair : Sessions)
+	{
+		if (Pair.Value->IsDirty() && Pair.Value->IsChangedOnDisk())
+		{
+			Out.Add(Pair.Key);
+		}
+	}
+	return Out;
+}
+
+bool SDnaStoryPanel::DiscardEdits(const FString& File, FText& OutError)
+{
+	const TSharedPtr<FDnaEditSession>* Session = Sessions.Find(File);
+	if (!Session || !(*Session)->Revert(OutError))
+	{
+		return false;
+	}
+	UndoFiles.Remove(File);
+	RedoFiles.Remove(File);
+	Reload();
+	return true;
+}
+
+bool SDnaStoryPanel::OverwriteDisk(const FString& File, FText& OutError)
+{
+	const TSharedPtr<FDnaEditSession>* Session = Sessions.Find(File);
+	const bool bOk = Session && (*Session)->Save(OutError, /*bOverwriteExternal=*/true);
+	Rebuild();
+	return bOk;
+}
+
+void SDnaStoryPanel::ResolveConflicts(TArray<FString>& Errors)
+{
+	const TArray<FString> Conflicted = GetConflictedFiles();
+	if (Conflicted.Num() == 0)
+	{
+		return;
+	}
+	const UE::DreamNarrative::Editor::EDnaConflictChoice Choice = UE::DreamNarrative::Editor::AskAboutConflicts(Conflicted);
+	if (Choice == UE::DreamNarrative::Editor::EDnaConflictChoice::Keep)
+	{
+		return;
+	}
+	Errors.Reset();
+	for (const FString& File : Conflicted)
+	{
+		FText Error;
+		const bool bOk = Choice == UE::DreamNarrative::Editor::EDnaConflictChoice::Discard ? DiscardEdits(File, Error) : OverwriteDisk(File, Error);
+		if (!bOk) { Errors.Add(Error.ToString()); }
+	}
 }
 
 #undef LOCTEXT_NAMESPACE

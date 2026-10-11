@@ -35,4 +35,18 @@ namespace UE::DreamNarrative::Editor
 
 	/** SourceLink with File and Line filled in. */
 	DREAMNARRATIVEEDITOR_API FString MakeSourceLink(const FString& Template, const FString& File, int32 Line);
+
+	/** What to do with files changed on disk under a panel's unsaved edits. */
+	enum class EDnaConflictChoice : uint8
+	{
+		/** Write nothing; both versions stay as they are. */
+		Keep,
+		/** Drop the panel's edits and read the files again. */
+		Discard,
+		/** Write the panel's edits over the change on disk. */
+		Overwrite,
+	};
+
+	/** Asks the user about Files, which changed on disk while the panel held unsaved edits to them. */
+	DREAMNARRATIVEEDITOR_API EDnaConflictChoice AskAboutConflicts(const TArray<FString>& Files);
 }
