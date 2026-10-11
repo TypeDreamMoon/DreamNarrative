@@ -275,6 +275,8 @@ private:
 	FDnaEventPayload Event;
 
 	bool bPaused = false;
+	bool bChoosing = false;
+	uint32 ExecutionSerial = 0;
 	/** The line or choices on screen have been broadcast (a paused runner holds them back until it resumes). */
 	bool bShown = false;
 	int32 LinesShown = 0;

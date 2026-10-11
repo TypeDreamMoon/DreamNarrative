@@ -76,6 +76,7 @@ bool UDreamNarrativeDialogueRunner::Start(UDreamNarrativeStory* InStory, UDreamN
 	{
 		Abort();
 	}
+	++ExecutionSerial;
 	Story = InStory;
 	Ledger = InLedger;
 	Section = const_cast<UDnaDialogueSection*>(InSection);
@@ -216,6 +217,8 @@ FText UDreamNarrativeDialogueRunner::DisplayNameOf(FName Character) const
 
 void UDreamNarrativeDialogueRunner::Run()
 {
+	if (bPaused || State == EDnaRunnerState::Ended) { return; }
+	const uint32 RunningSerial = ExecutionSerial;
 	if (!Node || !Ledger)
 	{
 		Finish();
@@ -225,6 +228,7 @@ void UDreamNarrativeDialogueRunner::Run()
 
 	while (PC >= 0 && PC < Node->Code.Num())
 	{
+		if (bPaused || State == EDnaRunnerState::Ended || RunningSerial != ExecutionSerial) { CloseBatch(); return; }
 		IDnaTrace* Tracer = Ledger->GetTrace();
 		if (--StepBudget <= 0)
 		{
@@ -239,7 +243,7 @@ void UDreamNarrativeDialogueRunner::Run()
 		{
 			CloseBatch();
 			// Committing tells observers; one of them may have ended this dialogue.
-			if (State == EDnaRunnerState::Ended)
+			if (State == EDnaRunnerState::Ended || RunningSerial != ExecutionSerial || bPaused)
 			{
 				return;
 			}
@@ -413,6 +417,11 @@ void UDreamNarrativeDialogueRunner::Run()
 				if (Ticket != 0)
 				{
 					if (Tracer) { Tracer->OnEvent(TEXT("dialogue.play.staged")); }
+					if (StageSerial != Serial || State != EDnaRunnerState::PlayingStage)
+					{
+						Host->StopStage(Ticket);
+						return;
+					}
 					StageTicket = Ticket;
 					return;
 				}
@@ -442,7 +451,7 @@ void UDreamNarrativeDialogueRunner::Run()
 			Transcript.Add(FString::Printf(TEXT("[emit %s]"), *Raised.ToString()));
 			Ledger->RaiseEventAs(Raised, EDnaWriteSource::Narrative);
 			// What the event opened may have ended this dialogue.
-			if (State == EDnaRunnerState::Ended)
+			if (State == EDnaRunnerState::Ended || RunningSerial != ExecutionSerial || bPaused)
 			{
 				return;
 			}
@@ -612,8 +621,12 @@ void UDreamNarrativeDialogueRunner::Resume()
 	bPaused = false;
 	Transcript.Add(TEXT("[resume]"));
 	OnResumed.Broadcast(this);
+	if (bPaused || State == EDnaRunnerState::Ended) { return; }
 	switch (State)
 	{
+	case EDnaRunnerState::Idle:
+		Run();
+		break;
 	case EDnaRunnerState::ShowingLine:
 		ShowLine();
 		break;
@@ -635,14 +648,17 @@ void UDreamNarrativeDialogueRunner::Resume()
 
 bool UDreamNarrativeDialogueRunner::Choose(int32 Index)
 {
-	if (State != EDnaRunnerState::AwaitingChoice || bPaused || !CurrentOptionIndices.IsValidIndex(Index) || !Node)
+	if (State != EDnaRunnerState::AwaitingChoice || bPaused || bChoosing || !CurrentOptionIndices.IsValidIndex(Index) || !Node)
 	{
 		return false;
 	}
 	const FDnaChoiceGroupData& Group = Node->ChoiceGroups[CurrentGroup];
-	const FDnaChoiceData& Option = Group.Options[CurrentOptionIndices[Index]];
+	const FDnaChoiceData Option = Group.Options[CurrentOptionIndices[Index]];
+	const uint32 ChoosingSerial = ExecutionSerial;
+	TGuardValue<bool> Choosing(bChoosing, true);
 	Transcript.Add(FString::Printf(TEXT("[choose %s]"), *CurrentChoices[Index].Label.ToString()));
 	OnChoiceMade.Broadcast(this, CurrentChoices[Index]);
+	if (ExecutionSerial != ChoosingSerial || State != EDnaRunnerState::AwaitingChoice) { return true; }
 	if (IDnaTrace* Tracer = Ledger ? Ledger->GetTrace() : nullptr)
 	{
 		Tracer->OnEvent(Option.bOnce ? TEXT("dialogue.choice.once-taken") : TEXT("dialogue.choice.taken"));
@@ -731,11 +747,12 @@ void UDreamNarrativeDialogueRunner::Finish()
 		}
 	}
 	bPaused = false;
+	State = EDnaRunnerState::Ended;
+	++ExecutionSerial;
 	if (Ledger && !NodeName.IsNone())
 	{
 		Ledger->MarkVisited(NodeName);
 	}
-	State = EDnaRunnerState::Ended;
 	Transcript.Add(TEXT("[end]"));
 	OnEnded.Broadcast(this);
 }

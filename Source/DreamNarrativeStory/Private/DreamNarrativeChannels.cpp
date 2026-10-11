@@ -495,6 +495,8 @@ void UDreamNarrativeStory::StopAllDialogue()
 		for (const FDnaChannelQueueItem& Item : State.Queue) { Ending.Add(Item.Suspended); }
 		for (const FDnaChannelQueueItem& Item : State.Parked) { Ending.Add(Item.Suspended); }
 		State = FDnaChannelState();
+		const FDnaChannelData* Decl = ChannelDecls.Find(Pair.Key);
+		State.PauseCount = StagesPlaying > 0 && Decl && Decl->bPauseDuringStage ? 1 : 0;
 	}
 	// No channel holds them now, so ending them starts nothing.
 	for (UDreamNarrativeDialogueRunner* Runner : Ending)
@@ -528,6 +530,8 @@ void UDreamNarrativeStory::HandleEventRaised(const FDnaEventPayload& Event, EDna
 	}
 	for (const FName& Node : Picks)
 	{
+		const FDnaDialogueNodeData* Data = FindNode(Node);
+		if (!Data || IsEntrySpent(*Data, /*bForEvent=*/true)) { continue; }
 		Note(Ledger, TEXT("event.trigger"));
 		StartOnChannel(Node, &Event, /*bRequested=*/false);
 	}
