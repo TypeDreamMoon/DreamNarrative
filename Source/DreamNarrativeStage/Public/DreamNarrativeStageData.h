@@ -23,6 +23,7 @@ enum class EDnaStageTrack : uint8
 	Game,
 	Sequence,
 	Audio,
+	Blocking,
 };
 
 UENUM(BlueprintType)
@@ -102,6 +103,20 @@ enum class EDnaStageVerb : uint8
 	Sound,
 	/** `music 资源 [fade 时长]`: the music changes; when the stage lets go it goes back. */
 	Music,
+
+	// camera
+	/** `shake 资源 [scale n]`: a camera shake (a CameraShakeBase Blueprint) on the player's camera. */
+	Shake,
+
+	// blocking
+	/** `move 角色 -> 标记 [walk|run] [navigate]`: over its range, or at once at a point. */
+	Move,
+	/** `face 角色 -> 目标 [over 时长]`: turns to face a mark or an actor. */
+	Face,
+	/** `look 角色 at 目标`: looks at it through the range (the actor's animation does, through IDnaStageActor). */
+	Look,
+	/** `blocking back`, under `restore`: whoever the stage moved goes back to where they stood. */
+	BlockingBack,
 };
 
 /**
@@ -199,6 +214,14 @@ struct DREAMNARRATIVESTAGE_API FDnaStageEntry
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	FName Style;
 
+	/** Where a blocking entry goes or turns to: a mark of the stage, else an actor. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	FName Goal;
+
+	/** `move ... navigate`: the actor walks there on the navigation mesh rather than being carried. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	bool bNavigate = false;
+
 	UPROPERTY(VisibleAnywhere, Category = "Narrative")
 	int32 SourceLine = 0;
 };
@@ -229,6 +252,10 @@ struct DREAMNARRATIVESTAGE_API FDnaStageData
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	TArray<FDnaStageShot> Shots;
 
+	/** `marks`: places the blocking moves actors to, written as shots are (`look` is where one stands facing). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	TArray<FDnaStageShot> Marks;
+
 	/** Every track's entries, by start time (source order among equal starts). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	TArray<FDnaStageEntry> Entries;
@@ -241,6 +268,7 @@ struct DREAMNARRATIVESTAGE_API FDnaStageData
 	int32 SourceLine = 0;
 
 	const FDnaStageShot* FindShot(FName Shot) const { return Shots.FindByPredicate([Shot](const FDnaStageShot& Each) { return Each.Name == Shot; }); }
+	const FDnaStageShot* FindMark(FName Mark) const { return Marks.FindByPredicate([Mark](const FDnaStageShot& Each) { return Each.Name == Mark; }); }
 
 	/**
 	 * How long past its end the stage's blends, fades, ramps and pushes still run, in its unit: a

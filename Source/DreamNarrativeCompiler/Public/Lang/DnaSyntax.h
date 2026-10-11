@@ -83,6 +83,8 @@ namespace UE::DreamNarrative::Lang
 		/** `camera`, `light`, ... opening a block of entries. Name is the track. */
 		Track,
 		Shots,
+		/** `marks`: places for blocking, written as shots. */
+		Marks,
 		/** `名 args...` under `shots`. */
 		Shot,
 		Restore,

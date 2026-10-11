@@ -20,6 +20,7 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "DreamNarrativeStageArbiter.h"
 #include "Misc/Guid.h"
+#include "Lang/DnaProject.h"
 #include "Misc/ScopeExit.h"
 #include "Sound/SoundWave.h"
 #include "UObject/Package.h"
@@ -240,6 +241,82 @@ bool FDnaRegressionStageAudio::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the one on top ending goes back to the one beneath"), Probe->Take(), FString(TEXT("music BGM_A 0.5")));
 	First->Stop();
 	TestEqual(TEXT("cut short, a held sound stops too"), Probe->Take(), FString(TEXT("music game 1.0, stop")));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRegressionStageBlocking, "DreamNarrative.Regression.Stage.Blocking", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FDnaRegressionStageBlocking::RunTest(const FString& Parameters)
+{
+	FDnaTestWorld Definitions(*this);
+	if (!Definitions.CompileText(TEXT(
+		"stage 走位\n  duration 2.0s\n"
+		"  marks\n"
+		"    门口     local (500, 0, 0) look 乙\n"
+		"  blocking\n"
+		"    0.0s..1.0s   move 甲 -> 门口 run\n"
+		"    1.0s         face 甲 -> 乙 over 0.5s\n"
+		"    0.0s..1.5s   look 乙 at 甲\n"
+		"  restore\n"
+		"    blocking back\n"
+		"stage 留下\n  duration 1.0s\n"
+		"  blocking\n"
+		"    0.0s..1.0s   move 甲 -> 乙\n"))) { return false; }
+	FDnaStandaloneGame Game;
+	RegisterDefinitions(Game, Definitions);
+	ADnaStageBlockingActor* Walker = Game.GetWorld()->SpawnActor<ADnaStageBlockingActor>(FVector::ZeroVector, FRotator::ZeroRotator);
+	ADnaStageBlockingActor* Watcher = Game.GetWorld()->SpawnActor<ADnaStageBlockingActor>(FVector(500.0, 500.0, 0.0), FRotator::ZeroRotator);
+	Walker->Tags.Add(TEXT("甲"));
+	Watcher->Tags.Add(TEXT("乙"));
+	UDreamNarrativeStageDirector* Director = MakeDirector(Game);
+
+	TestTrue(TEXT("the stage plays"), Director->PlayStage(TEXT("走位")));
+	TestEqual(TEXT("the walker hears where to"), Walker->Take(), FString(TEXT("move (500,0,0) 1.0 run")));
+	TestEqual(TEXT("the watcher looks"), Watcher->Take(), FString(TEXT("look 甲")));
+	Director->Advance(0.5f);
+	TestEqual(TEXT("halfway there at half time"), Walker->GetActorLocation().X, 250.0, 1.0);
+	Director->Advance(0.5f);
+	TestEqual(TEXT("at the mark when the range ends"), Walker->GetActorLocation().X, 500.0, 0.1);
+	TestEqual(TEXT("facing as the mark says (toward 乙)"), Walker->GetActorRotation().Yaw, 90.0, 0.5);
+	TestEqual(TEXT("and hears it arrived"), Walker->Take(), FString(TEXT("arrived")));
+	Director->Advance(0.6f);
+	TestEqual(TEXT("the look ends with its range"), Watcher->Take(), FString(TEXT("look off")));
+	Director->Advance(1.0f);
+	TestFalse(TEXT("the stage is over"), Director->IsPlaying());
+	TestTrue(TEXT("`blocking back` puts the walker where it stood"), Walker->GetActorLocation().IsNearlyZero(0.1) && FMath::IsNearlyZero(Walker->GetActorRotation().Yaw, 0.1));
+
+	// Cut short with nothing to put back, an actor stays where the stage left it.
+	TestTrue(TEXT("the second stage plays"), Director->PlayStage(TEXT("留下")));
+	Walker->Take();
+	Director->Advance(0.5f);
+	Director->Stop();
+	TestEqual(TEXT("a move cut short ends where it is"), Walker->Take(), FString(TEXT("arrived")));
+	TestTrue(TEXT("and the walker stays partway"), Walker->GetActorLocation().X > 100.0 && Walker->GetActorLocation().X < 400.0);
+	TestEqual(TEXT("an actor goal is walked up to on the walker's own level"), Walker->GetActorLocation().Z, 0.0, 0.1);
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRegressionStageBlockingSyntax, "DreamNarrative.Regression.Stage.BlockingSyntax", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FDnaRegressionStageBlockingSyntax::RunTest(const FString& Parameters)
+{
+	using namespace UE::DreamNarrative::Lang;
+	auto Codes = [](const FString& Text)
+	{
+		const FString Path = TEXT("Blocking.dna");
+		const TMap<FString, FString> Texts = { { Path, Text } };
+		FDnaProgram Program;
+		FDnaDiagnosticSink Diagnostics;
+		LoadDnaProgram({ Path }, Program, Diagnostics, &Texts);
+		TArray<FString> Out;
+		for (const FDnaDiagnostic& Each : Diagnostics.GetDiagnostics()) { if (Each.Severity == EDnaSeverity::Error) { Out.Add(Each.Code); } }
+		return Out;
+	};
+	TestEqual(TEXT("blocking, marks and a shake compile"), Codes(TEXT(
+		"stage 好\n  duration 2.0s\n  marks\n    桌边  local (0, 100, 0) rot (0, 180, 0)\n"
+		"  camera\n    0.5s  shake /Script/Engine.CameraShakeBase scale 1.5\n"
+		"  blocking\n    0.0s..1.0s  move 甲 -> 桌边 walk navigate\n    1.0s  face 甲 -> 乙 over 0.3s\n    1.0s..2.0s  look 甲 at 乙\n")).Num(), 0);
+	TestEqual(TEXT("a shake is a moment"), Codes(TEXT("stage 坏\n  duration 2.0s\n  camera\n    0.0s..1.0s  shake /Game/S\n")), TArray<FString>{ TEXT("DNS7007") });
+	TestEqual(TEXT("`blocking back` belongs under restore"), Codes(TEXT("stage 坏\n  duration 2.0s\n  blocking\n    1.0s  back\n")), TArray<FString>{ TEXT("DNS7006") });
+	TestEqual(TEXT("a move names who and where"), Codes(TEXT("stage 坏\n  duration 2.0s\n  blocking\n    0.0s..1.0s  move 甲\n")), TArray<FString>{ TEXT("DNS7006") });
 	return !HasAnyErrors();
 }
 

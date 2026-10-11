@@ -17,6 +17,9 @@
 #include "Components/SpotLightComponent.h"
 #include "DreamNarrativeSettings.h"
 #include "DreamNarrativeStageArbiter.h"
+#include "DnaStageActor.h"
+#include "Blueprint/AIBlueprintHelperLibrary.h"
+#include "Camera/CameraShakeBase.h"
 #include "DreamNarrativeStageModule.h"
 #include "DreamNarrativeStageSubsystem.h"
 #include "DreamNarrativeStageWatchdog.h"
@@ -43,7 +46,7 @@ namespace
 	const TCHAR* SlotName(uint8 Slot)
 	{
 		static const TCHAR* Names[] = { TEXT("camera"), TEXT("light"), TEXT("key light"), TEXT("mask"), TEXT("vfx"), TEXT("hud"), TEXT("text"),
-			TEXT("anim"), TEXT("input"), TEXT("time"), TEXT("damage window"), TEXT("sequence"), TEXT("sound"), TEXT("music") };
+			TEXT("anim"), TEXT("input"), TEXT("time"), TEXT("damage window"), TEXT("sequence"), TEXT("sound"), TEXT("music"), TEXT("blocking"), TEXT("shake") };
 		return Slot < UE_ARRAY_COUNT(Names) ? Names[Slot] : TEXT("?");
 	}
 
@@ -128,6 +131,10 @@ uint32 UDreamNarrativeStageDirector::Play(const FDnaStageData& InStage, float Li
 	{
 		ApplyPose(DreamNarrative::SampleDnaStage(Stage, 0.f, UnitSeconds));
 	}
+	if (bPlaying && PlayNumber == ThisPlay)
+	{
+		ApplyBlocking(0.f);
+	}
 	return ThisPlay;
 }
 
@@ -184,6 +191,10 @@ void UDreamNarrativeStageDirector::Advance(float DeltaSeconds)
 		return;
 	}
 	ApplyPose(DreamNarrative::SampleDnaStage(Stage, Unit, UnitSeconds));
+	if (bPlaying && PlayNumber == ThisPlay)
+	{
+		ApplyBlocking(Unit);
+	}
 	if (bPlaying && PlayNumber == ThisPlay && Seconds >= EndSeconds && DeltaSeconds > 0.f)
 	{
 		End(EDnaStageEnd::Finished);
@@ -708,6 +719,20 @@ void UDreamNarrativeStageDirector::FireCue(int32 EntryIndex)
 		OnSound.Broadcast(Cue);
 		break;
 	}
+	case EDnaStageVerb::Shake:
+	{
+		APlayerController* Controller = GetController();
+		if (!Controller || !Controller->PlayerCameraManager || !Controller->IsLocalController()) { break; }
+		FString Path = Entry.Asset;
+		if (!Path.Contains(TEXT("."))) { Path += TEXT(".") + FPackageName::GetShortName(Path); }
+		// A Blueprint names its class with `_C`; a native class (`/Script/...`) is the class.
+		if (!Path.StartsWith(TEXT("/Script/")) && !Path.EndsWith(TEXT("_C"))) { Path += TEXT("_C"); }
+		UClass* Class = LoadClass<UCameraShakeBase>(nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet);
+		if (!WarnIfMissing(Entry, Class, TEXT("camera shake"))) { break; }
+		Touch(ESlot::Shake);
+		Shakes.Add(Controller->PlayerCameraManager->StartCameraShake(Class, Entry.Amount));
+		break;
+	}
 	case EDnaStageVerb::Music:
 	{
 		const TSoftObjectPtr<USoundBase> Music = SoundOf(Entry);
@@ -720,6 +745,137 @@ void UDreamNarrativeStageDirector::FireCue(int32 EntryIndex)
 	}
 	default:
 		break;
+	}
+}
+
+bool UDreamNarrativeStageDirector::FindGoal(const FDnaStageEntry& Entry, FTransform& OutGoal, AActor*& OutActor) const
+{
+	OutActor = nullptr;
+	if (const FDnaStageShot* Mark = Stage.FindMark(Entry.Goal))
+	{
+		const AActor* Anchor = Mark->Anchor.IsNone() ? nullptr : ResolveActor(Mark->Anchor);
+		const FTransform Frame = Anchor ? Anchor->GetActorTransform() : FTransform::Identity;
+		const FVector Place = Frame.TransformPosition(Mark->Offset);
+		FRotator Facing = FRotator::ZeroRotator;
+		if (Mark->bHasRotation) { Facing = Frame.TransformRotation(Mark->Rotation.Quaternion()).Rotator(); }
+		else if (const AActor* Look = Mark->LookAt.IsNone() ? nullptr : ResolveActor(Mark->LookAt)) { Facing = (Look->GetActorLocation() - Place).Rotation(); }
+		else { Facing = Frame.Rotator(); }
+		OutGoal = FTransform(FRotator(0.f, Facing.Yaw, 0.f), Place);
+		return true;
+	}
+	if (AActor* Actor = ResolveActor(Entry.Goal))
+	{
+		OutActor = Actor;
+		OutGoal = Actor->GetActorTransform();
+		return true;
+	}
+	return false;
+}
+
+void UDreamNarrativeStageDirector::ApplyBlocking(float Unit)
+{
+	const uint32 ThisPlay = PlayNumber;
+	// An actor the stage told something may stop or replace it; this pass is over then.
+	auto StillMine = [this, ThisPlay]() { return bPlaying && !bEnding && PlayNumber == ThisPlay; };
+	for (int32 Index = 0; Index < Stage.Entries.Num() && StillMine(); ++Index)
+	{
+		const FDnaStageEntry& Entry = Stage.Entries[Index];
+		if (Entry.Track != EDnaStageTrack::Blocking || Entry.Start > Unit)
+		{
+			continue;
+		}
+		if (Entry.Verb == EDnaStageVerb::Look)
+		{
+			const bool bHeld = !Entry.bRange || Unit < Entry.End;
+			if (bHeld && !Looks.Contains(Index))
+			{
+				AActor* Actor = ResolveActor(Entry.Target);
+				FTransform Goal;
+				AActor* GoalActor = nullptr;
+				if (!Actor || !FindGoal(Entry, Goal, GoalActor)) { Looks.Add(Index, nullptr); continue; }
+				Touch(ESlot::Blocking);
+				Looks.Add(Index, Actor);
+				if (Actor->Implements<UDnaStageActor>()) { IDnaStageActor::Execute_StageLookAt(Actor, GoalActor, Goal.GetLocation(), true); }
+			}
+			else if (!bHeld && Looks.Contains(Index))
+			{
+				AActor* Actor = Looks.FindAndRemoveChecked(Index).Get();
+				if (Actor && Actor->Implements<UDnaStageActor>()) { IDnaStageActor::Execute_StageLookAt(Actor, nullptr, FVector::ZeroVector, false); }
+			}
+			continue;
+		}
+		if (Entry.Verb != EDnaStageVerb::Move && Entry.Verb != EDnaStageVerb::Face)
+		{
+			continue;
+		}
+		FMove& Move = Moves.FindOrAdd(Index);
+		if (Move.bDone)
+		{
+			continue;
+		}
+		const bool bMove = Entry.Verb == EDnaStageVerb::Move;
+		const float Length = bMove ? Entry.End - Entry.Start : (Entry.bRange ? Entry.End - Entry.Start : Entry.Over);
+		if (!Move.bStarted)
+		{
+			AActor* Actor = ResolveActor(Entry.Target);
+			FTransform Goal;
+			AActor* GoalActor = nullptr;
+			if (!Actor || !FindGoal(Entry, Goal, GoalActor))
+			{
+				UE_LOG(LogDreamNarrativeStage, Warning, TEXT("Stage %s, line %d: nobody called %s, or nowhere called %s"), *Stage.Name.ToString(), Entry.SourceLine, *Entry.Target.ToString(), *Entry.Goal.ToString());
+				Move.bDone = true;
+				continue;
+			}
+			Touch(ESlot::Blocking);
+			if (!BlockingOrigins.Contains(Actor)) { BlockingOrigins.Add(Actor, Actor->GetActorTransform()); }
+			Move.Actor = Actor;
+			Move.bStarted = true;
+			Move.From = Actor->GetActorTransform();
+			const FVector From = Move.From.GetLocation();
+			if (bMove)
+			{
+				// Facing as the mark says; an actor as the goal is walked up to, facing the way of the walk.
+				const FVector To = Goal.GetLocation();
+				const FRotator Facing = GoalActor ? FRotator(0.f, (To - From).Rotation().Yaw, 0.f) : Goal.Rotator();
+				Move.To = FTransform(Facing, FVector(To.X, To.Y, GoalActor ? From.Z : To.Z), Move.From.GetScale3D());
+			}
+			else
+			{
+				const FVector Toward = Goal.GetLocation() - From;
+				Move.To = FTransform(FRotator(0.f, Toward.IsNearlyZero() ? Move.From.Rotator().Yaw : Toward.Rotation().Yaw, 0.f), From, Move.From.GetScale3D());
+			}
+			if (bMove && Actor->Implements<UDnaStageActor>())
+			{
+				IDnaStageActor::Execute_StageMoveStarted(Actor, Move.To.GetLocation(), FMath::Max(0.f, Length) * UnitSeconds, Entry.bFlag);
+				if (!StillMine()) { return; }
+			}
+			// On the navigation mesh, the actor's own movement takes it there; the stage only asks.
+			if (bMove && Entry.bNavigate)
+			{
+				if (APawn* Pawn = Cast<APawn>(Actor); Pawn && Pawn->GetController())
+				{
+					UAIBlueprintHelperLibrary::SimpleMoveToLocation(Pawn->GetController(), Move.To.GetLocation());
+					Move.bDone = true;
+					continue;
+				}
+			}
+		}
+		AActor* Actor = Move.Actor.Get();
+		if (!Actor)
+		{
+			Move.bDone = true;
+			continue;
+		}
+		const float Alpha = Length > 0.f ? FMath::Clamp((Unit - Entry.Start) / Length, 0.f, 1.f) : 1.f;
+		const float Eased = FMath::InterpEaseInOut(0.f, 1.f, Alpha, 2.f);
+		const FVector Place = FMath::Lerp(Move.From.GetLocation(), Move.To.GetLocation(), Eased);
+		const FQuat Turn = FQuat::Slerp(Move.From.GetRotation(), Move.To.GetRotation(), Eased);
+		Actor->SetActorLocationAndRotation(Place, Turn);
+		if (Alpha >= 1.f)
+		{
+			Move.bDone = true;
+			if (bMove && Actor->Implements<UDnaStageActor>()) { IDnaStageActor::Execute_StageMoveFinished(Actor); }
+		}
 	}
 }
 
@@ -885,6 +1041,43 @@ void UDreamNarrativeStageDirector::UnwindSlot(ESlot Slot)
 		if (UDreamNarrativeStageArbiter* Arbiter = GetArbiter()) { Arbiter->ReleaseMusic(this); }
 		RangeMusic = INDEX_NONE;
 		break;
+	case ESlot::Shake:
+	{
+		APlayerController* Controller = GetController();
+		for (const TWeakObjectPtr<UCameraShakeBase>& Shake : Shakes)
+		{
+			if (UCameraShakeBase* Instance = Shake.Get(); Instance && Controller && Controller->PlayerCameraManager) { Controller->PlayerCameraManager->StopCameraShake(Instance, /*bImmediately=*/true); }
+		}
+		Shakes.Reset();
+		break;
+	}
+	case ESlot::Blocking:
+	{
+		// Looks end; moves cut short stop where they are, unless the stage puts everyone back.
+		for (const TPair<int32, TWeakObjectPtr<AActor>>& Look : Looks)
+		{
+			AActor* Actor = Look.Value.Get();
+			if (Actor && Actor->Implements<UDnaStageActor>()) { IDnaStageActor::Execute_StageLookAt(Actor, nullptr, FVector::ZeroVector, false); }
+		}
+		Looks.Reset();
+		for (const TPair<int32, FMove>& Move : Moves)
+		{
+			AActor* Actor = Move.Value.Actor.Get();
+			const bool bWalking = Stage.Entries.IsValidIndex(Move.Key) && Stage.Entries[Move.Key].Verb == EDnaStageVerb::Move;
+			if (Actor && bWalking && Move.Value.bStarted && !Move.Value.bDone && Actor->Implements<UDnaStageActor>()) { IDnaStageActor::Execute_StageMoveFinished(Actor); }
+		}
+		const bool bBack = Stage.Restore.ContainsByPredicate([](const FDnaStageEntry& Each) { return Each.Verb == EDnaStageVerb::BlockingBack; });
+		if (bBack && !bTearingDown)
+		{
+			for (const TPair<TWeakObjectPtr<AActor>, FTransform>& Origin : BlockingOrigins)
+			{
+				if (AActor* Actor = Origin.Key.Get()) { Actor->SetActorTransform(Origin.Value); }
+			}
+		}
+		Moves.Reset();
+		BlockingOrigins.Reset();
+		break;
+	}
 	case ESlot::Sequence:
 		for (const TWeakObjectPtr<ALevelSequenceActor>& Weak : Sequences)
 		{

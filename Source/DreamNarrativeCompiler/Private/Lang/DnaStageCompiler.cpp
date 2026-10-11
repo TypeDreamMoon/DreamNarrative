@@ -15,7 +15,7 @@ namespace UE::DreamNarrative::Lang
 			static const TPair<const TCHAR*, EDnaStageTrack> Tracks[] = {
 				{ TEXT("camera"), EDnaStageTrack::Camera }, { TEXT("light"), EDnaStageTrack::Light }, { TEXT("mask"), EDnaStageTrack::Mask },
 				{ TEXT("vfx"), EDnaStageTrack::Vfx }, { TEXT("ui"), EDnaStageTrack::Ui }, { TEXT("anim"), EDnaStageTrack::Anim },
-				{ TEXT("game"), EDnaStageTrack::Game }, { TEXT("sequence"), EDnaStageTrack::Sequence }, { TEXT("audio"), EDnaStageTrack::Audio },
+				{ TEXT("game"), EDnaStageTrack::Game }, { TEXT("sequence"), EDnaStageTrack::Sequence }, { TEXT("audio"), EDnaStageTrack::Audio }, { TEXT("blocking"), EDnaStageTrack::Blocking },
 			};
 			for (const TPair<const TCHAR*, EDnaStageTrack>& Track : Tracks)
 			{
@@ -174,13 +174,13 @@ namespace UE::DreamNarrative::Lang
 				// -- shots before the entries that cut to them
 				for (const FDnaLineNode* Line : Lines)
 				{
-					if (Line->Kind == EDnaLineKind::Shots)
+					if (Line->Kind == EDnaLineKind::Shots || Line->Kind == EDnaLineKind::Marks)
 					{
 						TArray<FDnaLineNode*> Shots;
 						Line->GetContentChildren(Shots);
 						for (const FDnaLineNode* Shot : Shots)
 						{
-							if (Shot->Kind == EDnaLineKind::Shot) { ReadShot(*Shot); }
+							if (Shot->Kind == EDnaLineKind::Shot) { ReadShot(*Shot, Line->Kind == EDnaLineKind::Marks ? Out.Marks : Out.Shots); }
 						}
 					}
 				}
@@ -257,12 +257,12 @@ namespace UE::DreamNarrative::Lang
 				Fail(TEXT("DNS7006"), Line.Raw.Span, FText::Format(LOCTEXT("StageProperty", "'{0}' is not a stage property; a stage has base and gameplay"), FText::FromString(Key)));
 			}
 
-			void ReadShot(const FDnaLineNode& Line)
+			void ReadShot(const FDnaLineNode& Line, TArray<FDnaStageShot>& Into)
 			{
 				FDnaStageShot Shot;
 				Shot.Name = FName(*Line.Payload.Name);
 				Shot.SourceLine = Line.LineNumber();
-				if (Out.FindShot(Shot.Name))
+				if (Into.ContainsByPredicate([&Shot](const FDnaStageShot& Each) { return Each.Name == Shot.Name; }))
 				{
 					Fail(TEXT("DNS7006"), Line.Raw.Span, FText::Format(LOCTEXT("ShotTwice", "The stage already has a shot called '{0}'"), FText::FromString(Line.Payload.Name)));
 					return;
@@ -309,7 +309,7 @@ namespace UE::DreamNarrative::Lang
 					Fail(TEXT("DNS7006"), Line.Raw.Span, LOCTEXT("ShotNoLocal", "A shot needs `local (x, y, z)`: where the camera is, in the space of the actor it is placed by"));
 					return;
 				}
-				Out.Shots.Add(Shot);
+				Into.Add(Shot);
 			}
 
 			/** A span (a blend, a fade, a ramp) in the stage's unit. Missing is 0 unless bRequired. */
@@ -348,6 +348,18 @@ namespace UE::DreamNarrative::Lang
 				switch (Track)
 				{
 				case EDnaStageTrack::Camera:
+					if (Verb == TEXT("shake"))
+					{
+						if (!Args.Path(Entry.Asset)) { return BadArgs(Line, TEXT("shake /Game/路径/BP_震动 [scale 1.5]")); }
+						Entry.Verb = EDnaStageVerb::Shake;
+						Entry.Amount = 1.f;
+						if (Args.Word(TEXT("scale")))
+						{
+							if (!Args.Number(Number) || Number <= 0.0) { return BadArgs(Line, TEXT("shake /Game/路径/BP_震动 [scale 1.5]")); }
+							Entry.Amount = static_cast<float>(Number);
+						}
+						return true;
+					}
 					if (Verb == TEXT("blend"))
 					{
 						if (Args.Word(TEXT("from")))
@@ -567,6 +579,38 @@ namespace UE::DreamNarrative::Lang
 					}
 					break;
 
+				case EDnaStageTrack::Blocking:
+					if (Verb == TEXT("move") || Verb == TEXT("face"))
+					{
+						const bool bMove = Verb == TEXT("move");
+						const TCHAR* Form = bMove ? TEXT("move 角色 -> 标记 [walk|run] [navigate]") : TEXT("face 角色 -> 目标 [over 时长]");
+						FString Goal;
+						if (!Args.Name(Name) || !Args.Is(EDnaTokenKind::Arrow) || !Args.Name(Goal)) { return BadArgs(Line, Form); }
+						Entry.Verb = bMove ? EDnaStageVerb::Move : EDnaStageVerb::Face;
+						Entry.Target = FName(*Name);
+						Entry.Goal = FName(*Goal);
+						while (!Args.AtEnd())
+						{
+							if (bMove && Args.Word(TEXT("walk"))) { Entry.bFlag = false; }
+							else if (bMove && Args.Word(TEXT("run"))) { Entry.bFlag = true; }
+							else if (bMove && Args.Word(TEXT("navigate"))) { Entry.bNavigate = true; }
+							else if (!bMove && Args.Word(TEXT("over"))) { if (!ReadSpan(Args, Line, Entry.Over, true)) { return false; } }
+							else { return BadArgs(Line, Form); }
+						}
+						return true;
+					}
+					if (Verb == TEXT("look"))
+					{
+						FString Goal;
+						if (!Args.Name(Name) || !Args.Word(TEXT("at")) || !Args.Name(Goal)) { return BadArgs(Line, TEXT("look 角色 at 目标")); }
+						Entry.Verb = EDnaStageVerb::Look;
+						Entry.Target = FName(*Name);
+						Entry.Goal = FName(*Goal);
+						return true;
+					}
+					if (Verb == TEXT("back")) { Entry.Verb = EDnaStageVerb::BlockingBack; return true; }
+					break;
+
 				case EDnaStageTrack::Sequence:
 					if (Verb == TEXT("play"))
 					{
@@ -627,6 +671,11 @@ namespace UE::DreamNarrative::Lang
 				{
 					return;
 				}
+				if (Entry.Verb == EDnaStageVerb::BlockingBack)
+				{
+					Fail(TEXT("DNS7006"), Line.Raw.Span, LOCTEXT("BackOnlyRestore", "`blocking back` belongs under `restore`: it is what the stage does as it ends"));
+					return;
+				}
 
 				// -- a range where one is needed, a point where one is
 				bool bPointOnly = false, bRangeOnly = false;
@@ -635,7 +684,7 @@ namespace UE::DreamNarrative::Lang
 				case EDnaStageVerb::BlendFromGame: case EDnaStageVerb::BlendBack: case EDnaStageVerb::Cut: case EDnaStageVerb::BlendTo:
 				case EDnaStageVerb::Whip: case EDnaStageVerb::Push: case EDnaStageVerb::RampDark: case EDnaStageVerb::RestoreLight:
 				case EDnaStageVerb::StopVfx: case EDnaStageVerb::ShowHud: case EDnaStageVerb::ClearText: case EDnaStageVerb::Montage:
-				case EDnaStageVerb::PlaySequence:
+				case EDnaStageVerb::PlaySequence: case EDnaStageVerb::Shake:
 					bPointOnly = true;
 					break;
 				case EDnaStageVerb::Distort: case EDnaStageVerb::Exposure: case EDnaStageVerb::Streaks:
@@ -684,11 +733,11 @@ namespace UE::DreamNarrative::Lang
 				}
 				const bool bPutsBack = Entry.Verb == EDnaStageVerb::BlendBack || Entry.Verb == EDnaStageVerb::RestoreLight
 					|| (Entry.Verb == EDnaStageVerb::KeyLight && !Entry.bFlag) || Entry.Verb == EDnaStageVerb::ShowHud
-					|| Entry.Verb == EDnaStageVerb::ClearText || Entry.Verb == EDnaStageVerb::StopVfx;
+					|| Entry.Verb == EDnaStageVerb::ClearText || Entry.Verb == EDnaStageVerb::StopVfx || Entry.Verb == EDnaStageVerb::BlockingBack;
 				if (!bPutsBack)
 				{
 					Fail(TEXT("DNS7006"), Line.Raw.Span, LOCTEXT("RestoreOnly",
-						"`restore` holds what puts the world back: camera blend back, light restore, light key 角色 off, ui show hud, ui clear, vfx stop"));
+						"`restore` holds what puts the world back: camera blend back, light restore, light key 角色 off, ui show hud, ui clear, vfx stop, blocking back"));
 					return;
 				}
 				Restores.Add(MoveTemp(Read));

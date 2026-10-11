@@ -56,7 +56,7 @@ namespace UE::DreamNarrative::Lang
 		bool IsTrackName(const FString& Word)
 		{
 			return Word == TEXT("camera") || Word == TEXT("light") || Word == TEXT("mask") || Word == TEXT("vfx")
-				|| Word == TEXT("ui") || Word == TEXT("anim") || Word == TEXT("game") || Word == TEXT("sequence") || Word == TEXT("audio");
+				|| Word == TEXT("ui") || Word == TEXT("anim") || Word == TEXT("game") || Word == TEXT("sequence") || Word == TEXT("audio") || Word == TEXT("blocking");
 		}
 
 		bool IsDeclarationWord(const FString& Word)
@@ -1654,14 +1654,14 @@ namespace UE::DreamNarrative::Lang
 					ClassifyChildren(Node, EContext::Track);
 					return;
 				}
-				if (Word == TEXT("shots") || Word == TEXT("restore"))
+				if (Word == TEXT("shots") || Word == TEXT("marks") || Word == TEXT("restore"))
 				{
-					Node.Kind = Word == TEXT("shots") ? EDnaLineKind::Shots : EDnaLineKind::Restore;
+					Node.Kind = Word == TEXT("shots") ? EDnaLineKind::Shots : Word == TEXT("marks") ? EDnaLineKind::Marks : EDnaLineKind::Restore;
 					TArray<FDnaToken> Tokens;
 					Tokenize(Node, 0, Tokens);
 					ExpectEnd(Tokens, 1);
 					RequireBody(Node);
-					ClassifyChildren(Node, Word == TEXT("shots") ? EContext::Shots : EContext::Restore);
+					ClassifyChildren(Node, Word == TEXT("restore") ? EContext::Restore : EContext::Shots);
 					return;
 				}
 				if (TryParseProperty(Node))

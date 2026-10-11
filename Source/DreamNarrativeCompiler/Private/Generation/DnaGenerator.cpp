@@ -52,6 +52,7 @@ namespace UE::DreamNarrative::Lang
 			case EDnaStageVerb::PlaySequence: return FTopLevelAssetPath(TEXT("/Script/LevelSequence"), TEXT("LevelSequence"));
 			case EDnaStageVerb::Sound:
 			case EDnaStageVerb::Music: return FTopLevelAssetPath(TEXT("/Script/Engine"), TEXT("SoundBase"));
+			case EDnaStageVerb::Shake: return FTopLevelAssetPath(TEXT("/Script/Engine"), TEXT("Blueprint"));
 			default: return FTopLevelAssetPath();
 			}
 		}
@@ -128,7 +129,8 @@ namespace UE::DreamNarrative::Lang
 		void ResolveStageAsset(FDnaStageEntry& Entry, const FString& Stage, bool bReport, TArray<FSoftObjectPath>& OutReferences, FDnaDiagnosticSink& Diagnostics)
 		{
 			const FTopLevelAssetPath Class = StageAssetClass(Entry.Verb);
-			if (!Class.IsValid() || Entry.Asset.IsEmpty())
+			// A native class (`/Script/...`) is no asset to find or cook.
+			if (!Class.IsValid() || Entry.Asset.IsEmpty() || Entry.Asset.StartsWith(TEXT("/Script/")))
 			{
 				return;
 			}

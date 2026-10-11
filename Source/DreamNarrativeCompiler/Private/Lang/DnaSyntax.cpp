@@ -48,6 +48,7 @@ namespace UE::DreamNarrative::Lang
 		case EDnaLineKind::Duration: return TEXT("Duration");
 		case EDnaLineKind::Track: return TEXT("Track");
 		case EDnaLineKind::Shots: return TEXT("Shots");
+		case EDnaLineKind::Marks: return TEXT("Marks");
 		case EDnaLineKind::Shot: return TEXT("Shot");
 		case EDnaLineKind::Restore: return TEXT("Restore");
 		case EDnaLineKind::RestoreEntry: return TEXT("RestoreEntry");
@@ -124,6 +125,7 @@ namespace UE::DreamNarrative::Lang
 		case EDnaLineKind::Choice:
 		case EDnaLineKind::Track:
 		case EDnaLineKind::Shots:
+		case EDnaLineKind::Marks:
 		case EDnaLineKind::Restore:
 		case EDnaLineKind::Test:
 		case EDnaLineKind::Explore:

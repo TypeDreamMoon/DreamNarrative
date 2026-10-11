@@ -30,7 +30,7 @@ using namespace UE::DreamNarrative::Lang;
 
 namespace
 {
-	constexpr int32 NumTracks = static_cast<int32>(EDnaStageTrack::Audio) + 1;
+	constexpr int32 NumTracks = static_cast<int32>(EDnaStageTrack::Blocking) + 1;
 	constexpr int32 NumRows = NumTracks + 1;  // the tracks and the restore block
 	constexpr float RowHeight = 22.f;
 	constexpr float RulerHeight = 18.f;
@@ -56,6 +56,7 @@ namespace
 		case EDnaStageTrack::Game: return FLinearColor(0.54f, 0.40f, 0.36f);
 		case EDnaStageTrack::Sequence: return FLinearColor(0.36f, 0.46f, 0.56f);
 		case EDnaStageTrack::Audio: return FLinearColor(0.50f, 0.40f, 0.50f);
+		case EDnaStageTrack::Blocking: return FLinearColor(0.44f, 0.48f, 0.40f);
 		}
 		return FLinearColor::Gray;
 	}

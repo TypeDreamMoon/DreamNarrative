@@ -167,6 +167,20 @@ stage 灯亮
   - `0.0s music /Game/BGM/回忆 [fade 1.0s]`:音乐是全世界一份,仲裁器的 `OnMusic(音乐, 淡入淡出)` 说现在该放哪首——后开始的
     演出盖住先开始的,它结束时回到下面那个演出的音乐,最后一个结束时 `音乐` 为空,意思是回到游戏自己的音乐。写成范围的
     音乐只放这一段。
+- 走位(`blocking` 轨)把角色带到 `marks` 里的标记上(写法和机位一样,`look 角色` 是站定后面朝谁):
+  ```
+  marks
+    门口     local (500, 0, 0) of 灯塔 look 老周
+  blocking
+    0.0s..2.0s   move 守夜人 -> 门口 run        // 一个范围内走过去;写一个时刻就是瞬移;加 navigate 走导航网格
+    2.0s         face 守夜人 -> 老周 over 0.3s  // 转身面向标记或角色
+    0.0s..3.0s   look 老周 at 守夜人           // 注视,范围结束就松开
+  restore
+    blocking back                              // 演完把被挪过的角色放回原处;不写就留在走到的地方
+  ```
+  位置和朝向由导演按时间插值;脚怎么迈、头怎么转是角色自己的事:actor 实现 `IDnaStageActor`(C++ 或蓝图)就能收到
+  `StageMoveStarted`、`StageMoveFinished`、`StageLookAt`。目标不是标记时就当角色名找 actor。
+- 镜头震动:camera 轨里 `0.5s shake /Game/镜头/BP_震动 [scale 1.5]`(一个 CameraShakeBase 蓝图),演出结束时一并停掉。
 - 能力里演:`PlayNarrativeStage` 能力任务;或在演出里写 `gameplay: 标签`,GAS 桥收到这个事件就在化身上演。
 
 ## 4. 接进游戏

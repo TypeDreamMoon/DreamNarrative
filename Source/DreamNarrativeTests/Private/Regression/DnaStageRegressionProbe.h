@@ -2,6 +2,8 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "DreamNarrativeStageDirector.h"
+#include "DnaStageActor.h"
+#include "GameFramework/Actor.h"
 #include "DnaStageRegressionProbe.generated.h"
 
 UCLASS()
@@ -34,6 +36,34 @@ public:
 	void HearMusic(TSoftObjectPtr<USoundBase> Music, float FadeSeconds)
 	{
 		Heard.Add(FString::Printf(TEXT("music %s %.1f"), Music.IsNull() ? TEXT("game") : *Music.GetAssetName(), FadeSeconds));
+	}
+
+	FString Take()
+	{
+		const FString Out = FString::Join(Heard, TEXT(", "));
+		Heard.Reset();
+		return Out;
+	}
+};
+
+/** An actor that hears what the blocking does to it: `move (500,0,0) run`, `arrived`, `look 乙`, `look off`. */
+UCLASS()
+class ADnaStageBlockingActor : public AActor, public IDnaStageActor
+{
+	GENERATED_BODY()
+public:
+	ADnaStageBlockingActor() { RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root")); }
+
+	TArray<FString> Heard;
+
+	virtual void StageMoveStarted_Implementation(FVector Destination, float Seconds, bool bRun) override
+	{
+		Heard.Add(FString::Printf(TEXT("move (%.0f,%.0f,%.0f) %.1f%s"), Destination.X, Destination.Y, Destination.Z, Seconds, bRun ? TEXT(" run") : TEXT("")));
+	}
+	virtual void StageMoveFinished_Implementation() override { Heard.Add(TEXT("arrived")); }
+	virtual void StageLookAt_Implementation(AActor* Target, FVector Location, bool bLooking) override
+	{
+		Heard.Add(bLooking ? FString::Printf(TEXT("look %s"), Target ? *Target->Tags[0].ToString() : TEXT("place")) : FString(TEXT("look off")));
 	}
 
 	FString Take()

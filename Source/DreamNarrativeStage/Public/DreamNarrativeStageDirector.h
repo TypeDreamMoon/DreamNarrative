@@ -38,6 +38,7 @@ class UMaterialInstanceDynamic;
 class UNiagaraComponent;
 class UPostProcessComponent;
 class USoundBase;
+class UCameraShakeBase;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDnaStageStartedSignature, FName, Stage);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDnaStageEndedSignature, FName, Stage, EDnaStageEnd, Reason);
@@ -196,7 +197,7 @@ protected:
 
 private:
 	/** The parts of the world a stage touches, each noted with how it was before. */
-	enum class ESlot : uint8 { Camera, Light, KeyLight, Mask, Vfx, Hud, Text, Anim, Input, Time, Damage, Sequence, Sound, Music };
+	enum class ESlot : uint8 { Camera, Light, KeyLight, Mask, Vfx, Hud, Text, Anim, Input, Time, Damage, Sequence, Sound, Music, Blocking, Shake };
 
 	void Touch(ESlot Slot);
 	void ApplyPose(const FDnaStagePose& NewPose);
@@ -206,6 +207,10 @@ private:
 	void ApplyGame(const FDnaStagePose& NewPose);
 	void FireCuesUpTo(float Unit);
 	void FireCue(int32 EntryIndex);
+	/** Moves, turns and points the actors the blocking track names, as the stage stands at Unit. */
+	void ApplyBlocking(float Unit);
+	/** Where a blocking entry's goal is: a mark of the stage (its place and facing), else an actor's place. */
+	bool FindGoal(const FDnaStageEntry& Entry, FTransform& OutGoal, AActor*& OutActor) const;
 	/** Puts back everything touched, newest first; what is left of a graceful ending goes at once too. */
 	void Unwind();
 	void UnwindSlot(ESlot Slot);
@@ -272,6 +277,23 @@ private:
 	int32 NextSoundHandle = 0;
 	/** The entry whose range the music lasts for; INDEX_NONE when it lasts the stage. */
 	int32 RangeMusic = INDEX_NONE;
+	TArray<TWeakObjectPtr<UCameraShakeBase>> Shakes;
+
+	// blocking
+	struct FMove
+	{
+		TWeakObjectPtr<AActor> Actor;
+		FTransform From;
+		FTransform To;
+		bool bStarted = false;
+		bool bDone = false;
+	};
+	/** By entry: the moves and turns begun. */
+	TMap<int32, FMove> Moves;
+	/** Where each actor the blocking touched stood first, for `blocking back`. */
+	TMap<TWeakObjectPtr<AActor>, FTransform> BlockingOrigins;
+	/** By entry: the looks held now, and who looks. */
+	TMap<int32, TWeakObjectPtr<AActor>> Looks;
 
 	// ui
 	TWeakObjectPtr<AHUD> Hud;
