@@ -186,4 +186,23 @@ bool FDnaRegressionStagingPrefix::RunTest(const FString& Parameters)
 	TestTrue(TEXT("both staged dialogues still compile"), After.CompileText(Session.GetText()));
 	return !HasAnyErrors();
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRegressionStagingKeepsPlayed, "DreamNarrative.Regression.Integration.StagingKeepsPlayedStage", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FDnaRegressionStagingKeepsPlayed::RunTest(const FString& Parameters)
+{
+	using namespace UE::DreamNarrative::Lang;
+	// A stage with Intro's generated name, made into one of its own and played by another dialogue.
+	const FString Played = GetDnaStagingPrefix(TEXT("Intro")) + TEXT("Speaker");
+	const FString Source = TEXT("character Speaker\nstage ") + Played + TEXT("\n  duration 1.0s\n")
+		TEXT("dialogue Other for Speaker\n  play ") + Played + TEXT("\n  Speaker: Again.\n")
+		TEXT("dialogue Intro for Speaker\n  Speaker: First.\n");
+	FDnaTestWorld Before(*this);
+	if (!Before.CompileText(Source)) { return false; }
+	FDnaEditSession Session;
+	Session.Open(TEXT("PlayedStage.dna"), Source);
+	FText Error;
+	TestFalse(TEXT("staging Intro refuses to take a stage another dialogue plays"), StageDnaDialogue(Session, TEXT("Intro"), 1, Error));
+	TestEqual(TEXT("the file is left as it was"), Session.GetText(), Source);
+	return !HasAnyErrors();
+}
 #endif

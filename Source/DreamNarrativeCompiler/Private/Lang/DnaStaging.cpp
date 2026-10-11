@@ -34,6 +34,24 @@ namespace UE::DreamNarrative::Lang
 			}
 		}
 
+		/** Whether anything under Node plays Stage or hangs it on a line. */
+		bool RefersToStage(const FDnaLineNode& Node, const FString& Stage)
+		{
+			for (const FDnaLineNodePtr& Child : Node.Children)
+			{
+				if (!Child.IsValid())
+				{
+					continue;
+				}
+				const FDnaLinePayload& P = Child->Payload;
+				if (P.Modifiers.Stage == Stage || (Child->Kind == EDnaLineKind::Command && P.Command == EDnaCommandKind::Play && P.Name == Stage) || RefersToStage(*Child, Stage))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
 		/** The lines of one generated stage, each at its level under the file's indentation. */
 		TArray<TPair<int32, FString>> MakeStage(const FString& Name, const FString& Speaker, const FString& Listener, FRandomStream& Stream)
 		{
@@ -87,18 +105,20 @@ namespace UE::DreamNarrative::Lang
 			return false;
 		}
 		const FString Prefix = GetDnaStagingPrefix(Dialogue);
-		// A longer dialogue name can share this prefix. Its stages belong to that dialogue.
+		// A longer dialogue name can share this prefix: its stages belong to that dialogue. A stage played
+		// or hung on a line anywhere else in the file -- another dialogue, a quest -- is not this one's alone.
 		auto OwnsStage = [&](const FString& Name)
 		{
 			if (!Name.StartsWith(Prefix)) { return false; }
 			for (const FDnaLineNodePtr& Other : Session.GetDocument().Roots)
 			{
-				if (!Other.IsValid() || Other.Get() == Root || Other->Kind != EDnaLineKind::Dialogue) { continue; }
-				const FString OtherPrefix = GetDnaStagingPrefix(Other->Payload.Name);
-				if (OtherPrefix.Len() > Prefix.Len() && Name.StartsWith(OtherPrefix)) { return false; }
-				TArray<FSpoken> OtherLines;
-				CollectSpeech(*Other, OtherLines);
-				if (OtherLines.ContainsByPredicate([&](const FSpoken& Line) { return Line.Node->Payload.Modifiers.Stage == Name; })) { return false; }
+				if (!Other.IsValid() || Other.Get() == Root || Other->Kind == EDnaLineKind::Stage) { continue; }
+				if (Other->Kind == EDnaLineKind::Dialogue)
+				{
+					const FString OtherPrefix = GetDnaStagingPrefix(Other->Payload.Name);
+					if (OtherPrefix.Len() > Prefix.Len() && Name.StartsWith(OtherPrefix)) { return false; }
+				}
+				if (RefersToStage(*Other, Name)) { return false; }
 			}
 			return true;
 		};
