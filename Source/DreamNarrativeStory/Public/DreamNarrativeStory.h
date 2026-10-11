@@ -137,6 +137,7 @@ public:
 	void RegisterScript(UDreamNarrativeScript* Script);
 
 	/** Registers a whole program before evaluating initial quests/archives. Use for multiple assets. */
+	UFUNCTION(BlueprintCallable, Category = "Narrative|Story")
 	void RegisterScripts(const TArray<UDreamNarrativeScript*>& InScripts);
 
 	/** Loads and registers every script asset under the configured asset directory. */

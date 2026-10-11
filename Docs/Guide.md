@@ -175,7 +175,8 @@ FDnaEventPayload Storm; Storm.Event = TEXT("风暴逼近"); Storm.Set(TEXT("等�
 Story->GetLedger()->RaiseEvent(Storm);
 ```
 
-- 手动加载多个脚本时，先收集资产，再调用 `Story->RegisterScripts(Scripts)`；它会先注册所有 fact 默认值，再评估隐藏任务和档案条件。`LoadAllScripts()` 已使用此流程，单个独立脚本仍可用 `RegisterScript()`。
+- 手动加载多个脚本:先收齐资产,再调 `Story->RegisterScripts(Scripts)`(蓝图也能调)。它先注册全部 fact 默认值,
+  再评估隐藏任务和档案条件。`LoadAllScripts()` 就是这么做的;只有一个脚本时仍可用 `RegisterScript()`。
 - 声明过的频道各有自己的 runner:`Story->OnDialogueStarted` 拿到每一个。插件不带 UI,只发事件。
 - 存档:`Ledger->MakeSnapshot()` / `ApplySnapshot()`;profile 另有 `MakeProfileSnapshot()` / `ApplyProfileSnapshot()`。
 - 演出的 UI 部分:导演的 `OnText`(字幕、浮字)、`OnHudVisibility`、`OnDamageWindow`、`OnWarpTarget`(给 Motion Warping)。
