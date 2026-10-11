@@ -110,7 +110,16 @@ void UDreamNarrativeStageWatchdog::Tick(float DeltaTime)
 	{
 		return;
 	}
-	UpdateTimeDilation();
+	// A director gone without letting go takes its scale with it. Otherwise the world's time is left
+	// alone between changes: the game may set it too.
+	for (const TPair<TWeakObjectPtr<UDreamNarrativeStageDirector>, float>& Pair : TimeScales)
+	{
+		if (!Pair.Key.IsValid())
+		{
+			UpdateTimeDilation();
+			break;
+		}
+	}
 	const float Grace = UDreamNarrativeSettings::Get()->StageWatchdogSeconds;
 	for (UDreamNarrativeStageDirector* Director : GetPlaying())
 	{

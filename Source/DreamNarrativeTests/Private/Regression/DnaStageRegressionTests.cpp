@@ -135,6 +135,16 @@ bool FDnaRegressionOverlappingTime::RunTest(const FString& Parameters)
 	B->Stop();
 	A->Stop();
 	TestEqual(TEXT("reverse end order also restores original world time"), Settings->TimeDilation, Before, 1e-5f);
+	// Between a stage's changes the world's time is the game's to set as well.
+	A->PlayStage(TEXT("SlowA"));
+	Settings->SetTimeDilation(0.3f);
+	if (UDreamNarrativeStageWatchdog* Watchdog = Game.GetWorld()->GetSubsystem<UDreamNarrativeStageWatchdog>())
+	{
+		Watchdog->Tick(0.016f);
+	}
+	TestEqual(TEXT("the watchdog leaves the game's own time change alone"), Settings->TimeDilation, 0.3f, 1e-5f);
+	A->Stop();
+	Settings->SetTimeDilation(Before);
 	return !HasAnyErrors();
 }
 
