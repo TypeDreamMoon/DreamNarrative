@@ -836,6 +836,36 @@ namespace UE::DreamNarrative::Lang
 
 	bool GenerateDnaProgram(const FDnaProgram& Program, const FDnaGenerateOptions& Options, FDnaGenerateResult& OutResult, FDnaDiagnosticSink& Diagnostics)
 	{
+		// Preflight every output before mutating assets; filenames are the legacy package keys.
+		if (!Options.bTransient)
+		{
+			TMap<FName, FString> SourcesByPackage;
+			for (const TSharedPtr<FDnaDocument>& Document : Program.Documents)
+			{
+				if (!Document.IsValid()) { continue; }
+				const FString PackageName = GetDnaPackageName(Document->Path, Options.AssetDirectory);
+				const FName PackageKey(*PackageName);
+				const FString* OtherSource = SourcesByPackage.Find(PackageKey);
+				FString ExistingSource;
+				if (!OtherSource)
+				{
+					const FString ObjectPath = PackageName + TEXT(".") + FPaths::GetBaseFilename(Document->Path);
+					UDreamNarrativeScript* Existing = FindObject<UDreamNarrativeScript>(nullptr, *ObjectPath);
+					if (!Existing && FPackageName::DoesPackageExist(PackageName))
+					{
+						Existing = LoadObject<UDreamNarrativeScript>(nullptr, *ObjectPath);
+					}
+					if (Existing) { ExistingSource = Existing->SourcePath; OtherSource = &ExistingSource; }
+				}
+				if (OtherSource && !FPaths::IsSamePath(*OtherSource, Document->Path))
+				{
+					return Diagnostics.Error(TEXT("DNS8001"), FDnaSpan(),
+						FText::Format(LOCTEXT("PackageCollision", "'{0}' and '{1}' map to the same asset '{2}'. Rename one source file; no assets were generated."),
+							FText::FromString(*OtherSource), FText::FromString(Document->Path), FText::FromString(PackageName)));
+				}
+				SourcesByPackage.Add(PackageKey, Document->Path);
+			}
+		}
 		bool bOk = true;
 		for (const TSharedPtr<FDnaDocument>& Document : Program.Documents)
 		{

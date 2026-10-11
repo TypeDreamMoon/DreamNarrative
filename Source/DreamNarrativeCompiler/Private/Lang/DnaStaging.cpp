@@ -87,12 +87,27 @@ namespace UE::DreamNarrative::Lang
 			return false;
 		}
 		const FString Prefix = GetDnaStagingPrefix(Dialogue);
+		// A longer dialogue name can share this prefix. Its stages belong to that dialogue.
+		auto OwnsStage = [&](const FString& Name)
+		{
+			if (!Name.StartsWith(Prefix)) { return false; }
+			for (const FDnaLineNodePtr& Other : Session.GetDocument().Roots)
+			{
+				if (!Other.IsValid() || Other.Get() == Root || Other->Kind != EDnaLineKind::Dialogue) { continue; }
+				const FString OtherPrefix = GetDnaStagingPrefix(Other->Payload.Name);
+				if (OtherPrefix.Len() > Prefix.Len() && Name.StartsWith(OtherPrefix)) { return false; }
+				TArray<FSpoken> OtherLines;
+				CollectSpeech(*Other, OtherLines);
+				if (OtherLines.ContainsByPredicate([&](const FSpoken& Line) { return Line.Node->Payload.Modifiers.Stage == Name; })) { return false; }
+			}
+			return true;
+		};
 		TArray<FSpoken> Spoken;
 		CollectSpeech(*Root, Spoken);
-		Spoken.RemoveAll([&Prefix](const FSpoken& Each)
+		Spoken.RemoveAll([&OwnsStage](const FSpoken& Each)
 		{
 			const FString& Own = Each.Node->Payload.Modifiers.Stage;
-			return !Own.IsEmpty() && !Own.StartsWith(Prefix);
+			return !Own.IsEmpty() && !OwnsStage(Own);
 		});
 		if (Spoken.Num() == 0)
 		{
@@ -123,6 +138,11 @@ namespace UE::DreamNarrative::Lang
 				continue;
 			}
 			const FString Name = Prefix + Each.Speaker + (Each.Listener.IsEmpty() ? FString() : TEXT("_对") + Each.Listener);
+			if (!OwnsStage(Name))
+			{
+				OutError = FText::Format(LOCTEXT("StageCollision", "Stage {0} belongs to another dialogue; rename the dialogue or bind a stage explicitly"), FText::FromString(Name));
+				return false;
+			}
 			StageOf.Add(Key, Name);
 			FRandomStream Stream(Seed * 7919 + static_cast<int32>(GetTypeHash(Key) & 0x7FFFFF));
 			Added.Append(MakeStage(Name, Each.Speaker, Each.Listener, Stream));
@@ -133,7 +153,7 @@ namespace UE::DreamNarrative::Lang
 		TArray<TPair<int32, int32>> Removed;
 		for (const FDnaLineNodePtr& Other : Session.GetDocument().Roots)
 		{
-			if (Other.IsValid() && Other->Kind == EDnaLineKind::Stage && Other->Payload.Name.StartsWith(Prefix))
+			if (Other.IsValid() && Other->Kind == EDnaLineKind::Stage && OwnsStage(Other->Payload.Name))
 			{
 				int32 First = 0;
 				int32 Last = 0;

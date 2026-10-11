@@ -622,16 +622,10 @@ bool SDnaStageTimeline::SaveAll()
 		{
 			continue;
 		}
-		// A file that had a byte order mark keeps it.
-		TArray<uint8> Bytes;
-		FFileHelper::LoadFileToArray(Bytes, *Pair.Key);
-		const bool bBom = Bytes.Num() >= 3 && Bytes[0] == 0xEF && Bytes[1] == 0xBB && Bytes[2] == 0xBF;
-		if (FFileHelper::SaveStringToFile(Session.GetText(), *Pair.Key, bBom ? FFileHelper::EEncodingOptions::ForceUTF8 : FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+		FText Error;
+		if (!Session.Save(Error))
 		{
-			Session.MarkSaved();
-		}
-		else
-		{
+			Diagnostics.Add(Error.ToString());
 			bOk = false;
 		}
 	}

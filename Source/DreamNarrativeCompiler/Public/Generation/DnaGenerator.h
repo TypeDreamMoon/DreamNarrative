@@ -35,7 +35,7 @@ namespace UE::DreamNarrative::Lang
 	 * with errors produces no asset.
 	 *
 	 *   DNS4006  a value that must be a constant (fact default, implied fact) is not one
-	 *   DNS8001  the package could not be created or saved
+	 *   DNS8001  conflicting source basenames, or the package could not be created or saved
 	 */
 	DREAMNARRATIVECOMPILER_API bool GenerateDnaProgram(const FDnaProgram& Program, const FDnaGenerateOptions& Options, FDnaGenerateResult& OutResult, FDnaDiagnosticSink& Diagnostics);
 

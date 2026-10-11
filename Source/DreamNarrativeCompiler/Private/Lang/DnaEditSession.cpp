@@ -4,6 +4,7 @@
 #include "Lang/DnaLexer.h"
 #include "Lang/DnaParser.h"
 #include "Lang/DnaPrinter.h"
+#include "Misc/FileHelper.h"
 
 #define LOCTEXT_NAMESPACE "DnaEditSession"
 
@@ -107,6 +108,32 @@ namespace UE::DreamNarrative::Lang
 		Undos.Reset();
 		Redos.Reset();
 		Reparse();
+	}
+
+	bool FDnaEditSession::Save(FText& OutError)
+	{
+		if (!IsDirty()) { return true; }
+		TArray<uint8> Bytes;
+		if (!FFileHelper::LoadFileToArray(Bytes, *Path))
+		{
+			OutError = FText::Format(LOCTEXT("ReadFailed", "Cannot read {0}; local edits were kept"), FText::FromString(Path));
+			return false;
+		}
+		FString DiskText;
+		FFileHelper::BufferToString(DiskText, Bytes.GetData(), Bytes.Num());
+		if (DiskText != SavedText)
+		{
+			OutError = FText::Format(LOCTEXT("SaveConflict", "{0} changed on disk. Reconcile external changes before saving; local edits were kept"), FText::FromString(Path));
+			return false;
+		}
+		const bool bBom = Bytes.Num() >= 3 && Bytes[0] == 0xEF && Bytes[1] == 0xBB && Bytes[2] == 0xBF;
+		if (!FFileHelper::SaveStringToFile(Text, *Path, bBom ? FFileHelper::EEncodingOptions::ForceUTF8 : FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+		{
+			OutError = FText::Format(LOCTEXT("WriteFailed", "Cannot save {0}; local edits were kept"), FText::FromString(Path));
+			return false;
+		}
+		MarkSaved();
+		return true;
 	}
 
 	void FDnaEditSession::Reparse()

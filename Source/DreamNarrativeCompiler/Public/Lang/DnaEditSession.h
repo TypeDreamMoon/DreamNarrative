@@ -32,6 +32,9 @@ namespace UE::DreamNarrative::Lang
 		bool IsDirty() const { return Text != SavedText; }
 		void MarkSaved() { SavedText = Text; }
 
+		/** Refuses saving if the disk text changed since Open or the last save. */
+		bool Save(FText& OutError);
+
 		// -------------------------------------------------------------- operations
 
 		/**
