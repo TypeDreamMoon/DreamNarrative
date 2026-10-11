@@ -305,7 +305,71 @@ bool FDnaRegressionStageBlocking::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRegressionStageBlockingSyntax, "DreamNarrative.Regression.Stage.BlockingSyntax", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRegressionStageBlockingSample, "DreamNarrative.Regression.Stage.BlockingSample", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FDnaRegressionStageBlockingSample::RunTest(const FString& Parameters)
+{
+	FDnaTestWorld Definitions(*this);
+	if (!Definitions.CompileText(TEXT(
+		"stage 换位\n  duration 3.0s\n"
+		"  marks\n"
+		"    门口     local (500, 0, 0) look 乙\n"
+		"    窗边     local (0, 300, 0) of 乙\n"
+		"  blocking\n"
+		"    0.0s..1.0s   move 甲 -> 门口\n"
+		"    0.5s..1.5s   move 乙 -> 窗边 run\n"
+		"    1.0s         face 甲 -> 乙 over 0.5s\n"
+		"    1.5s..2.5s   move 甲 -> 乙\n"
+		"    2.0s         face 乙 -> 甲\n"
+		"stage 寻路\n  duration 1.0s\n"
+		"  marks\n"
+		"    门口     local (500, 0, 0)\n"
+		"  blocking\n"
+		"    0.0s..1.0s   move 甲 -> 门口 navigate\n"))) { return false; }
+	FDnaStandaloneGame Game;
+	RegisterDefinitions(Game, Definitions);
+	ADnaStageBlockingActor* Walker = Game.GetWorld()->SpawnActor<ADnaStageBlockingActor>(FVector::ZeroVector, FRotator::ZeroRotator);
+	ADnaStageBlockingActor* Watcher = Game.GetWorld()->SpawnActor<ADnaStageBlockingActor>(FVector(500.0, 500.0, 0.0), FRotator::ZeroRotator);
+	Walker->Tags.Add(TEXT("甲"));
+	Watcher->Tags.Add(TEXT("乙"));
+	const TMap<const AActor*, FTransform> Origins = { { Walker, Walker->GetActorTransform() }, { Watcher, Watcher->GetActorTransform() } };
+	auto Resolve = [Walker, Watcher](FName Role) -> AActor* { return Role == TEXT("甲") ? Walker : Role == TEXT("乙") ? Watcher : nullptr; };
+	auto Origin = [&Origins](const AActor* Actor) { return Origins.FindRef(Actor); };
+
+	const UDreamNarrativeStageSubsystem* Stages = Game.GetWorld()->GetGameInstance()->GetSubsystem<UDreamNarrativeStageSubsystem>();
+	const FDnaStageData* Swap = Stages ? Stages->FindStage(TEXT("换位")) : nullptr;
+	const FDnaStageData* Navigated = Stages ? Stages->FindStage(TEXT("寻路")) : nullptr;
+	if (!TestNotNull(TEXT("the stages are registered"), Swap) || !TestNotNull(TEXT("both"), Navigated)) { return false; }
+
+	// The function on its own: half the time of the first leg is half its way (eased in and out).
+	const TMap<AActor*, FTransform> Early = DreamNarrative::SampleDnaStageBlocking(*Swap, 0.5f, Resolve, Origin);
+	TestEqual(TEXT("by 0.5s both legs have begun"), Early.Num(), 2);
+	TestEqual(TEXT("halfway to the door"), Early.FindRef(Walker).GetLocation().X, 250.0, 0.01);
+	TestTrue(TEXT("the watcher's just now: still where it stood"), Early.FindRef(Watcher).GetLocation().Equals(FVector(500.0, 500.0, 0.0), 0.01));
+	TestTrue(TEXT("a move left to the navigation mesh is the game's"), DreamNarrative::SampleDnaStageBlocking(*Navigated, 1.f, Resolve, Origin).IsEmpty());
+
+	// The director carries the actors through the same legs: frame by frame, they stand where the function says.
+	UDreamNarrativeStageDirector* Director = MakeDirector(Game);
+	TestTrue(TEXT("the stage plays"), Director->PlayStage(TEXT("换位")));
+	for (int32 Step = 0; Step <= 12; ++Step)
+	{
+		const float Time = Step * 0.25f;
+		if (Step > 0) { Director->Advance(0.25f); }
+		const TMap<AActor*, FTransform> Places = DreamNarrative::SampleDnaStageBlocking(*Swap, Time, Resolve, Origin);
+		for (AActor* Actor : { static_cast<AActor*>(Walker), static_cast<AActor*>(Watcher) })
+		{
+			const FTransform Expected = Places.Contains(Actor) ? Places[Actor] : Origins[Actor];
+			const FString Who = Actor == Walker ? TEXT("甲") : TEXT("乙");
+			TestTrue(*FString::Printf(TEXT("%s at %.2fs: %s, sampled %s"), *Who, Time, *Actor->GetActorLocation().ToString(), *Expected.GetLocation().ToString()),
+				Actor->GetActorLocation().Equals(Expected.GetLocation(), 0.05));
+			TestEqual(*FString::Printf(TEXT("%s facing at %.2fs"), *Who, Time), FRotator::NormalizeAxis(Actor->GetActorRotation().Yaw), FRotator::NormalizeAxis(Expected.Rotator().Yaw), 0.05);
+		}
+	}
+	TestFalse(TEXT("the stage is over"), Director->IsPlaying());
+	TestTrue(TEXT("the walker went up to the watcher, who had gone to the window"), Walker->GetActorLocation().Equals(FVector(500.0, 800.0, 0.0), 0.05));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRegressionStageBlockingSyntax,"DreamNarrative.Regression.Stage.BlockingSyntax", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FDnaRegressionStageBlockingSyntax::RunTest(const FString& Parameters)
 {
 	using namespace UE::DreamNarrative::Lang;

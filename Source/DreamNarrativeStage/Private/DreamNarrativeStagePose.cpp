@@ -52,6 +52,68 @@ namespace
 			}
 		}
 	}
+
+	/** The blocking's legs, each worked out once: where one starts depends on the legs before it. */
+	struct FBlockingSampler
+	{
+		struct FLeg
+		{
+			/** Null when the leg's actor or goal is not found. */
+			AActor* Actor = nullptr;
+			FTransform From;
+			FTransform To;
+		};
+
+		const FDnaStageData& Stage;
+		TFunctionRef<AActor*(FName)> Resolve;
+		TFunctionRef<FTransform(const AActor*)> Origin;
+		TMap<int32, FLeg> Legs;
+
+		/** Where Actor stands at Time, by the legs among the entries before Before. */
+		FTransform Where(const AActor* Actor, float Time, int32 Before)
+		{
+			for (int32 Index = FMath::Min(Before, Stage.Entries.Num()) - 1; Index >= 0; --Index)
+			{
+				const FDnaStageEntry& Entry = Stage.Entries[Index];
+				if (!DreamNarrative::IsDnaStageLeg(Entry) || Entry.Start > Time)
+				{
+					continue;
+				}
+				const FLeg Leg = LegOf(Index);
+				if (Leg.Actor != Actor)
+				{
+					continue;
+				}
+				const float Eased = DreamNarrative::GetDnaStageLegProgress(Entry, Time);
+				return FTransform(FQuat::Slerp(Leg.From.GetRotation(), Leg.To.GetRotation(), Eased),
+					FMath::Lerp(Leg.From.GetLocation(), Leg.To.GetLocation(), Eased), Leg.From.GetScale3D());
+			}
+			return Origin(Actor);
+		}
+
+		FLeg LegOf(int32 Index)
+		{
+			if (const FLeg* Known = Legs.Find(Index))
+			{
+				return *Known;
+			}
+			const FDnaStageEntry& Entry = Stage.Entries[Index];
+			FLeg Leg;
+			AActor* Actor = Resolve(Entry.Target);
+			FTransform Goal;
+			AActor* GoalActor = nullptr;
+			// Everyone stands where the legs before this one had them as it starts.
+			auto AtStart = [this, &Entry, Index](const AActor* Other) { return Where(Other, Entry.Start, Index); };
+			if (Actor && DreamNarrative::FindDnaStageGoal(Stage, Entry, Resolve, AtStart, Goal, GoalActor))
+			{
+				Leg.Actor = Actor;
+				Leg.From = Where(Actor, Entry.Start, Index);
+				Leg.To = DreamNarrative::GetDnaStageLegEnd(Entry, Leg.From, Goal, GoalActor);
+			}
+			Legs.Add(Index, Leg);
+			return Leg;
+		}
+	};
 }
 
 // ---------------------------------------------------------------- data
@@ -194,6 +256,90 @@ namespace DreamNarrative
 		default:
 			return false;
 		}
+	}
+
+	bool IsDnaStageLeg(const FDnaStageEntry& Entry)
+	{
+		return Entry.Track == EDnaStageTrack::Blocking
+			&& (Entry.Verb == EDnaStageVerb::Face || (Entry.Verb == EDnaStageVerb::Move && !Entry.bNavigate));
+	}
+
+	bool FindDnaStageGoal(const FDnaStageData& Stage, const FDnaStageEntry& Entry, TFunctionRef<AActor*(FName)> Resolve,
+		TFunctionRef<FTransform(const AActor*)> Where, FTransform& OutGoal, AActor*& OutActor)
+	{
+		OutActor = nullptr;
+		if (const FDnaStageShot* Mark = Stage.FindMark(Entry.Goal))
+		{
+			const AActor* Anchor = Mark->Anchor.IsNone() ? nullptr : Resolve(Mark->Anchor);
+			const FTransform Frame = Anchor ? Where(Anchor) : FTransform::Identity;
+			const FVector Place = Frame.TransformPosition(Mark->Offset);
+			FRotator Facing = Frame.Rotator();
+			if (Mark->bHasRotation) { Facing = Frame.TransformRotation(Mark->Rotation.Quaternion()).Rotator(); }
+			else if (const AActor* Look = Mark->LookAt.IsNone() ? nullptr : Resolve(Mark->LookAt)) { Facing = (Where(Look).GetLocation() - Place).Rotation(); }
+			OutGoal = FTransform(FRotator(0.f, Facing.Yaw, 0.f), Place);
+			return true;
+		}
+		if (AActor* Actor = Resolve(Entry.Goal))
+		{
+			OutActor = Actor;
+			OutGoal = Where(Actor);
+			return true;
+		}
+		return false;
+	}
+
+	FTransform GetDnaStageLegEnd(const FDnaStageEntry& Entry, const FTransform& From, const FTransform& Goal, const AActor* GoalActor)
+	{
+		const FVector Start = From.GetLocation();
+		if (Entry.Verb == EDnaStageVerb::Move)
+		{
+			const FVector To = Goal.GetLocation();
+			const FRotator Facing = GoalActor ? FRotator(0.f, (To - Start).Rotation().Yaw, 0.f) : Goal.Rotator();
+			return FTransform(Facing, FVector(To.X, To.Y, GoalActor ? Start.Z : To.Z), From.GetScale3D());
+		}
+		const FVector Toward = Goal.GetLocation() - Start;
+		return FTransform(FRotator(0.f, Toward.IsNearlyZero() ? From.Rotator().Yaw : Toward.Rotation().Yaw, 0.f), Start, From.GetScale3D());
+	}
+
+	float GetDnaStageLegLength(const FDnaStageEntry& Entry)
+	{
+		if (Entry.Verb == EDnaStageVerb::Move)
+		{
+			return Entry.bRange ? Entry.End - Entry.Start : 0.f;
+		}
+		return Entry.bRange ? Entry.End - Entry.Start : Entry.Over;
+	}
+
+	float GetDnaStageLegProgress(const FDnaStageEntry& Entry, float Time)
+	{
+		if (Time < Entry.Start)
+		{
+			return 0.f;
+		}
+		const float Length = GetDnaStageLegLength(Entry);
+		const float Alpha = Length > 0.f ? FMath::Clamp((Time - Entry.Start) / Length, 0.f, 1.f) : 1.f;
+		return FMath::InterpEaseInOut(0.f, 1.f, Alpha, 2.f);
+	}
+
+	TMap<AActor*, FTransform> SampleDnaStageBlocking(const FDnaStageData& Stage, float Time,
+		TFunctionRef<AActor*(FName)> Resolve, TFunctionRef<FTransform(const AActor*)> Origin)
+	{
+		FBlockingSampler Sampler{ Stage, Resolve, Origin };
+		TMap<AActor*, FTransform> Places;
+		for (int32 Index = 0; Index < Stage.Entries.Num(); ++Index)
+		{
+			const FDnaStageEntry& Entry = Stage.Entries[Index];
+			if (!IsDnaStageLeg(Entry) || Entry.Start > Time)
+			{
+				continue;
+			}
+			const FBlockingSampler::FLeg Leg = Sampler.LegOf(Index);
+			if (Leg.Actor && !Places.Contains(Leg.Actor))
+			{
+				Places.Add(Leg.Actor, Sampler.Where(Leg.Actor, Time, Stage.Entries.Num()));
+			}
+		}
+		return Places;
 	}
 
 	float GetDnaMaskEnvelope(const FDnaStageEntry& Entry, float Time)

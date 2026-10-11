@@ -75,7 +75,10 @@ public:
 	/** Writes a file's edits over the change made on disk. */
 	bool OverwriteDisk(const FString& File, FText& OutError);
 
-	/** Flies the active level viewport through the stage's camera while scrubbing; off puts the viewport back. */
+	/**
+	 * Flies the active level viewport through the stage's camera while scrubbing, and walks the level's actors
+	 * through its blocking; off puts the viewport and the actors back.
+	 */
 	void SetPreviewInViewport(bool bOn);
 
 	/** Opens the source of the entry on a line in the configured editor. */
@@ -95,6 +98,8 @@ private:
 	/** Compiles the selected stage from its session's text, after every edit. */
 	void Recompile();
 	void ApplyViewportPreview();
+	/** Puts the actors the preview moved back where they stood. */
+	void PutBackPreviewActors();
 	FText GetStatusText() const;
 	/** After a refused save: asks what to do with the files changed on disk, and does it. */
 	void ResolveConflicts();
@@ -117,6 +122,8 @@ private:
 	FVector ViewportStartLocation = FVector::ZeroVector;
 	FRotator ViewportStartRotation = FRotator::ZeroRotator;
 	float ViewportStartFov = 90.f;
+	/** Where the actors the preview has placed stood before it. */
+	TMap<TWeakObjectPtr<AActor>, FTransform> PreviewOrigins;
 
 	TSharedPtr<SDnaStageTrackArea> Area;
 	TSharedPtr<STextBlock> PoseText;

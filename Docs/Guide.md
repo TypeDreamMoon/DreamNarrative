@@ -180,7 +180,9 @@ stage 灯亮
     blocking back                              // 演完把被挪过的角色放回原处;不写就留在走到的地方
   ```
   位置和朝向由导演按时间插值;脚怎么迈、头怎么转是角色自己的事:actor 实现 `IDnaStageActor`(C++ 或蓝图)就能收到
-  `StageMoveStarted`、`StageMoveFinished`、`StageLookAt`。目标不是标记时就当角色名找 actor。
+  `StageMoveStarted`、`StageMoveFinished`、`StageLookAt`。目标不是标记时就当角色名找 actor。走位的位置是演出与时间的
+  纯函数(`SampleDnaStageBlocking`):时间轴勾上「Preview in viewport」后拖播放头,关卡里带角色名标签的 actor 跟着走,
+  取消勾选或换演出时放回原处。`navigate` 的走位交给导航,不进预览。
 - 镜头震动:camera 轨里 `0.5s shake /Game/镜头/BP_震动 [scale 1.5]`(一个 CameraShakeBase 蓝图),演出结束时一并停掉。
 - 能力里演:`PlayNarrativeStage` 能力任务;或在演出里写 `gameplay: 标签`,GAS 桥收到这个事件就在化身上演。
 

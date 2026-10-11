@@ -151,6 +151,40 @@ namespace DreamNarrative
 	/** True for the entries that happen once rather than holding a state: montage, spawn, stop, play. */
 	DREAMNARRATIVESTAGE_API bool IsDnaStageCue(const FDnaStageEntry& Entry);
 
+	/** True for the blocking entries the stage carries an actor through itself: turns, and moves not left to the navigation mesh. */
+	DREAMNARRATIVESTAGE_API bool IsDnaStageLeg(const FDnaStageEntry& Entry);
+
+	/**
+	 * Where a blocking entry's goal is: a mark of the stage -- its place, facing its own rotation, else toward
+	 * the actor it looks at, else as its anchor does -- or else the place of the actor Resolve finds for the
+	 * name, which is OutActor. Where tells where an actor stands.
+	 */
+	DREAMNARRATIVESTAGE_API bool FindDnaStageGoal(const FDnaStageData& Stage, const FDnaStageEntry& Entry, TFunctionRef<AActor*(FName)> Resolve,
+		TFunctionRef<FTransform(const AActor*)> Where, FTransform& OutGoal, AActor*& OutActor);
+
+	/**
+	 * Where a move or a turn that starts at From ends: a move at its goal, facing as a mark says (an actor as
+	 * the goal is walked up to on the walker's own level, facing the way of the walk); a turn where it stands,
+	 * toward the goal.
+	 */
+	DREAMNARRATIVESTAGE_API FTransform GetDnaStageLegEnd(const FDnaStageEntry& Entry, const FTransform& From, const FTransform& Goal, const AActor* GoalActor);
+
+	/** How long a move or a turn takes, in the stage's unit: a move its range (none: at once), a turn its range or its `over`. */
+	DREAMNARRATIVESTAGE_API float GetDnaStageLegLength(const FDnaStageEntry& Entry);
+
+	/** How far along a move or a turn is at Time, eased in and out: 0 before it starts, 1 once it is done. */
+	DREAMNARRATIVESTAGE_API float GetDnaStageLegProgress(const FDnaStageEntry& Entry, float Time);
+
+	/**
+	 * Where the blocking has put each actor it moved or turned by Time (the stage's unit). Origin is where an
+	 * actor stood before the stage moved it (for one it never moves, where it stands). Each move starts where
+	 * the ones before it left the actor and heads for where its goal was then. Moves left to the navigation
+	 * mesh are the game's and are not here, nor is anyone or anywhere not found. The director carries actors
+	 * through the same legs; a timeline's preview places the editor's actors with this.
+	 */
+	DREAMNARRATIVESTAGE_API TMap<AActor*, FTransform> SampleDnaStageBlocking(const FDnaStageData& Stage, float Time,
+		TFunctionRef<AActor*(FName)> Resolve, TFunctionRef<FTransform(const AActor*)> Origin);
+
 	/** Seconds a whip takes. */
 	constexpr float DnaWhipSeconds = 0.12f;
 }

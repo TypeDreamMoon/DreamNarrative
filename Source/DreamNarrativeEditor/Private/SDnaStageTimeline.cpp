@@ -389,7 +389,7 @@ void SDnaStageTimeline::Construct(const FArguments& InArgs)
 			+ SHorizontalBox::Slot().AutoWidth().Padding(0.f, 0.f, 6.f, 0.f)
 			[
 				SNew(SCheckBox)
-				.ToolTipText(LOCTEXT("ViewportTip", "Fly the level viewport through the stage's shots as the playhead moves"))
+				.ToolTipText(LOCTEXT("ViewportTip", "Fly the level viewport through the stage's shots, and walk the level's actors through its blocking, as the playhead moves"))
 				.IsChecked_Lambda([this]() { return bPreviewInViewport ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
 				.OnCheckStateChanged_Lambda([this](ECheckBoxState State) { SetPreviewInViewport(State == ECheckBoxState::Checked); })
 				[
@@ -490,6 +490,8 @@ bool SDnaStageTimeline::SelectStage(FName Stage)
 	{
 		if (Option->Name == Stage)
 		{
+			// Another stage's blocking starts from where everyone stood.
+			PutBackPreviewActors();
 			Selected = Option;
 			Playhead = 0.f;
 			Recompile();
@@ -750,15 +752,52 @@ void SDnaStageTimeline::SetPreviewInViewport(bool bOn)
 		Viewport->ViewFOV = ViewportStartFov;
 		Viewport->Invalidate();
 	}
-	bPreviewInViewport = bOn && Viewport;
+	if (!bOn)
+	{
+		PutBackPreviewActors();
+	}
+	// The actors walk with no viewport too; the camera needs one.
+	bPreviewInViewport = bOn;
 	ApplyViewportPreview();
 }
 
 void SDnaStageTimeline::ApplyViewportPreview()
 {
-	FLevelEditorViewportClient* Viewport = GIsEditor ? GCurrentLevelEditingViewportClient : nullptr;
 	const FDnaStageData* Stage = GetStage();
-	if (!bPreviewInViewport || !Viewport || !Stage || !bHaveViewportStart || !GEditor)
+	UWorld* World = GEditor ? GEditor->GetEditorWorldContext().World() : nullptr;
+	if (!bPreviewInViewport || !Stage || !World)
+	{
+		return;
+	}
+	// The editor world's actors stand in for the stage's roles by their tags, as in the game.
+	auto Resolve = [World](FName Role) -> AActor*
+	{
+		if (Role.IsNone()) { return nullptr; }
+		for (TActorIterator<AActor> It(World); It; ++It)
+		{
+			if (It->ActorHasTag(Role)) { return *It; }
+		}
+		return nullptr;
+	};
+
+	// The blocking places them as the director would, each from where it stood before the preview.
+	const TMap<AActor*, FTransform> Places = DreamNarrative::SampleDnaStageBlocking(*Stage, Playhead, Resolve, [this](const AActor* Actor) -> FTransform
+	{
+		const TWeakObjectPtr<AActor> Key(const_cast<AActor*>(Actor));
+		if (const FTransform* Known = PreviewOrigins.Find(Key)) { return *Known; }
+		return PreviewOrigins.Add(Key, Actor->GetActorTransform());
+	});
+	for (const TPair<TWeakObjectPtr<AActor>, FTransform>& Origin : PreviewOrigins)
+	{
+		if (AActor* Actor = Origin.Key.Get())
+		{
+			const FTransform* Place = Places.Find(Actor);
+			Actor->SetActorTransform(Place ? *Place : Origin.Value);
+		}
+	}
+
+	FLevelEditorViewportClient* Viewport = GIsEditor ? GCurrentLevelEditingViewportClient : nullptr;
+	if (!Viewport || !bHaveViewportStart)
 	{
 		return;
 	}
@@ -769,22 +808,24 @@ void SDnaStageTimeline::ApplyViewportPreview()
 	FMinimalViewInfo View = Start;
 	if (Pose.Camera.bActive)
 	{
-		UWorld* World = GEditor->GetEditorWorldContext().World();
-		// The editor world's actors stand in for the stage's roles by their tags, as in the game.
-		View = DreamNarrative::EvaluateDnaStageView(*Stage, Pose.Camera, Start, [World](FName Role) -> AActor*
-		{
-			if (!World || Role.IsNone()) { return nullptr; }
-			for (TActorIterator<AActor> It(World); It; ++It)
-			{
-				if (It->ActorHasTag(Role)) { return *It; }
-			}
-			return nullptr;
-		});
+		View = DreamNarrative::EvaluateDnaStageView(*Stage, Pose.Camera, Start, Resolve);
 	}
 	Viewport->SetViewLocation(View.Location);
 	Viewport->SetViewRotation(View.Rotation);
 	Viewport->ViewFOV = View.FOV;
 	Viewport->Invalidate();
+}
+
+void SDnaStageTimeline::PutBackPreviewActors()
+{
+	for (const TPair<TWeakObjectPtr<AActor>, FTransform>& Origin : PreviewOrigins)
+	{
+		if (AActor* Actor = Origin.Key.Get())
+		{
+			Actor->SetActorTransform(Origin.Value);
+		}
+	}
+	PreviewOrigins.Reset();
 }
 
 #undef LOCTEXT_NAMESPACE

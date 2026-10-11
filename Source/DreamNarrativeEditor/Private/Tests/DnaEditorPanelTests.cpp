@@ -8,11 +8,16 @@
 #include "DreamNarrativeEditorSettings.h"
 #include "DreamNarrativeLedger.h"
 #include "DreamNarrativeStory.h"
+#include "Editor.h"
 #include "Engine/GameInstance.h"
+#include "Engine/TargetPoint.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Generation/DnaGenerator.h"
+#include "HAL/FileManager.h"
 #include "Interfaces/IPluginManager.h"
 #include "Lang/DnaProject.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "SDnaDebugPanel.h"
 #include "SDnaStageTimeline.h"
 #include "SDnaStoryPanel.h"
@@ -100,6 +105,43 @@ bool FDnaEditorPanelsTest::RunTest(const FString& Parameters)
 			Timeline->Scrub(At);
 			TestTrue(*FString::Printf(TEXT("the pose at %.2f s"), At), Timeline->GetPreviewPose().NearlyEquals(DreamNarrative::SampleDnaStage(*Timeline->GetStage(), At)));
 		}
+	}
+
+	// -- the blocking: previewing walks the level's actors as the director would, and its end puts them back
+	if (UWorld* World = GEditor ? GEditor->GetEditorWorldContext().World() : nullptr)
+	{
+		const FString File = FPaths::ConvertRelativePathToFull(FPaths::AutomationTransientDir() / TEXT("DnaTimelineBlocking.dna"));
+		FFileHelper::SaveStringToFile(FString(TEXT(
+			"stage 走位预览\n  duration 2.0s\n"
+			"  marks\n"
+			"    门口     local (500, 0, 0)\n"
+			"  blocking\n"
+			"    0.0s..1.0s   move 预览甲 -> 门口\n"
+			"    1.0s         face 预览甲 -> 预览乙 over 0.5s\n")), *File, FFileHelper::EEncodingOptions::ForceUTF8);
+		ATargetPoint* Walker = World->SpawnActor<ATargetPoint>(FVector::ZeroVector, FRotator::ZeroRotator);
+		ATargetPoint* Watcher = World->SpawnActor<ATargetPoint>(FVector(500.0, 500.0, 0.0), FRotator::ZeroRotator);
+		if (TestTrue(TEXT("actors to walk"), Walker && Watcher))
+		{
+			Walker->GetRootComponent()->SetMobility(EComponentMobility::Movable);
+			Walker->Tags.Add(TEXT("预览甲"));
+			Watcher->Tags.Add(TEXT("预览乙"));
+			TSharedRef<SDnaStageTimeline> Walk = SNew(SDnaStageTimeline).Files({ File });
+			TestTrue(TEXT("pick the walk"), Walk->SelectStage(TEXT("走位预览")));
+			Walk->Scrub(0.5f);
+			TestTrue(TEXT("no preview, nothing moves"), Walker->GetActorLocation().IsNearlyZero(0.01));
+			Walk->SetPreviewInViewport(true);
+			TestEqual(TEXT("halfway at half time"), Walker->GetActorLocation().X, 250.0, 0.01);
+			Walk->Scrub(1.5f);
+			TestEqual(TEXT("at the door"), Walker->GetActorLocation().X, 500.0, 0.01);
+			TestEqual(TEXT("turned to the watcher"), Walker->GetActorRotation().Yaw, 90.0, 0.05);
+			Walk->Scrub(0.25f);
+			TestEqual(TEXT("scrubbing back walks it back"), Walker->GetActorLocation().X, 500.0 * FMath::InterpEaseInOut(0.f, 1.f, 0.25f, 2.f), 0.01);
+			Walk->SetPreviewInViewport(false);
+			TestTrue(TEXT("the preview's end puts it back"), Walker->GetActorLocation().IsNearlyZero(0.01) && FMath::IsNearlyZero(Walker->GetActorRotation().Yaw, 0.01));
+		}
+		if (Walker) { World->DestroyActor(Walker); }
+		if (Watcher) { World->DestroyActor(Watcher); }
+		IFileManager::Get().Delete(*File);
 	}
 
 	// -- the debugger: a story compiled here, its facts and the writes made to them

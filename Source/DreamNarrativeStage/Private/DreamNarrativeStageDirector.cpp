@@ -751,26 +751,9 @@ void UDreamNarrativeStageDirector::FireCue(int32 EntryIndex)
 
 bool UDreamNarrativeStageDirector::FindGoal(const FDnaStageEntry& Entry, FTransform& OutGoal, AActor*& OutActor) const
 {
-	OutActor = nullptr;
-	if (const FDnaStageShot* Mark = Stage.FindMark(Entry.Goal))
-	{
-		const AActor* Anchor = Mark->Anchor.IsNone() ? nullptr : ResolveActor(Mark->Anchor);
-		const FTransform Frame = Anchor ? Anchor->GetActorTransform() : FTransform::Identity;
-		const FVector Place = Frame.TransformPosition(Mark->Offset);
-		FRotator Facing = FRotator::ZeroRotator;
-		if (Mark->bHasRotation) { Facing = Frame.TransformRotation(Mark->Rotation.Quaternion()).Rotator(); }
-		else if (const AActor* Look = Mark->LookAt.IsNone() ? nullptr : ResolveActor(Mark->LookAt)) { Facing = (Look->GetActorLocation() - Place).Rotation(); }
-		else { Facing = Frame.Rotator(); }
-		OutGoal = FTransform(FRotator(0.f, Facing.Yaw, 0.f), Place);
-		return true;
-	}
-	if (AActor* Actor = ResolveActor(Entry.Goal))
-	{
-		OutActor = Actor;
-		OutGoal = Actor->GetActorTransform();
-		return true;
-	}
-	return false;
+	// The goal as the world stands now; the legs themselves are the ones a timeline's preview samples.
+	return DreamNarrative::FindDnaStageGoal(Stage, Entry, [this](FName Role) { return ResolveActor(Role); },
+		[](const AActor* Actor) { return Actor->GetActorTransform(); }, OutGoal, OutActor);
 }
 
 void UDreamNarrativeStageDirector::ApplyBlocking(float Unit)
@@ -815,7 +798,6 @@ void UDreamNarrativeStageDirector::ApplyBlocking(float Unit)
 			continue;
 		}
 		const bool bMove = Entry.Verb == EDnaStageVerb::Move;
-		const float Length = bMove ? Entry.End - Entry.Start : (Entry.bRange ? Entry.End - Entry.Start : Entry.Over);
 		if (!Move.bStarted)
 		{
 			AActor* Actor = ResolveActor(Entry.Target);
@@ -831,23 +813,12 @@ void UDreamNarrativeStageDirector::ApplyBlocking(float Unit)
 			if (!BlockingOrigins.Contains(Actor)) { BlockingOrigins.Add(Actor, Actor->GetActorTransform()); }
 			Move.Actor = Actor;
 			Move.bStarted = true;
+			// From where the actor is: a move the navigation mesh took, or the game, may have put it anywhere.
 			Move.From = Actor->GetActorTransform();
-			const FVector From = Move.From.GetLocation();
-			if (bMove)
-			{
-				// Facing as the mark says; an actor as the goal is walked up to, facing the way of the walk.
-				const FVector To = Goal.GetLocation();
-				const FRotator Facing = GoalActor ? FRotator(0.f, (To - From).Rotation().Yaw, 0.f) : Goal.Rotator();
-				Move.To = FTransform(Facing, FVector(To.X, To.Y, GoalActor ? From.Z : To.Z), Move.From.GetScale3D());
-			}
-			else
-			{
-				const FVector Toward = Goal.GetLocation() - From;
-				Move.To = FTransform(FRotator(0.f, Toward.IsNearlyZero() ? Move.From.Rotator().Yaw : Toward.Rotation().Yaw, 0.f), From, Move.From.GetScale3D());
-			}
+			Move.To = DreamNarrative::GetDnaStageLegEnd(Entry, Move.From, Goal, GoalActor);
 			if (bMove && Actor->Implements<UDnaStageActor>())
 			{
-				IDnaStageActor::Execute_StageMoveStarted(Actor, Move.To.GetLocation(), FMath::Max(0.f, Length) * UnitSeconds, Entry.bFlag);
+				IDnaStageActor::Execute_StageMoveStarted(Actor, Move.To.GetLocation(), DreamNarrative::GetDnaStageLegLength(Entry) * UnitSeconds, Entry.bFlag);
 				if (!StillMine()) { return; }
 			}
 			// On the navigation mesh, the actor's own movement takes it there; the stage only asks.
@@ -867,12 +838,11 @@ void UDreamNarrativeStageDirector::ApplyBlocking(float Unit)
 			Move.bDone = true;
 			continue;
 		}
-		const float Alpha = Length > 0.f ? FMath::Clamp((Unit - Entry.Start) / Length, 0.f, 1.f) : 1.f;
-		const float Eased = FMath::InterpEaseInOut(0.f, 1.f, Alpha, 2.f);
+		const float Eased = DreamNarrative::GetDnaStageLegProgress(Entry, Unit);
 		const FVector Place = FMath::Lerp(Move.From.GetLocation(), Move.To.GetLocation(), Eased);
 		const FQuat Turn = FQuat::Slerp(Move.From.GetRotation(), Move.To.GetRotation(), Eased);
 		Actor->SetActorLocationAndRotation(Place, Turn);
-		if (Alpha >= 1.f)
+		if (Eased >= 1.f)
 		{
 			Move.bDone = true;
 			if (bMove && Actor->Implements<UDnaStageActor>()) { IDnaStageActor::Execute_StageMoveFinished(Actor); }
