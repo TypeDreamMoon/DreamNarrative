@@ -13,5 +13,7 @@ public:
 	UFUNCTION()
 	void AbortWhenChosen(UDreamNarrativeDialogueRunner* Runner, const FDnaChoiceView& Choice) { Runner->Abort(); }
 	UFUNCTION()
+	void PauseWhenChosen(UDreamNarrativeDialogueRunner* Runner, const FDnaChoiceView& Choice) { Runner->Pause(); }
+	UFUNCTION()
 	void CountEnd(UDreamNarrativeDialogueRunner* Runner) { ++Ends; }
 };

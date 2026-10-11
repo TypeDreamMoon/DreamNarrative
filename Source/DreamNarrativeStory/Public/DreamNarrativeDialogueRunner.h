@@ -214,6 +214,8 @@ private:
 	/** Runs instructions until one yields or the node ends. */
 	void Run();
 	void Finish();
+	/** Takes a choice: its once mark, then on along its branch. */
+	void TakeChoice(const FDnaChoiceData& Option);
 	/** Commits the ledger batch a run of `set` instructions opened, if one is open. */
 	void CloseBatch();
 	bool EnterNode(FName Node);
@@ -276,6 +278,8 @@ private:
 
 	bool bPaused = false;
 	bool bChoosing = false;
+	/** A choice made while a listener of OnChoiceMade paused the dialogue: taken when it resumes. */
+	TOptional<FDnaChoiceData> PendingChoice;
 	uint32 ExecutionSerial = 0;
 	/** The line or choices on screen have been broadcast (a paused runner holds them back until it resumes). */
 	bool bShown = false;

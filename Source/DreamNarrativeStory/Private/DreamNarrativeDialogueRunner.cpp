@@ -77,6 +77,7 @@ bool UDreamNarrativeDialogueRunner::Start(UDreamNarrativeStory* InStory, UDreamN
 		Abort();
 	}
 	++ExecutionSerial;
+	PendingChoice.Reset();
 	Story = InStory;
 	Ledger = InLedger;
 	Section = const_cast<UDnaDialogueSection*>(InSection);
@@ -631,6 +632,14 @@ void UDreamNarrativeDialogueRunner::Resume()
 		ShowLine();
 		break;
 	case EDnaRunnerState::AwaitingChoice:
+		if (PendingChoice.IsSet())
+		{
+			// Chosen just before the pause: the choice is taken now.
+			const FDnaChoiceData Option = PendingChoice.GetValue();
+			PendingChoice.Reset();
+			TakeChoice(Option);
+			break;
+		}
 		bShown = true;
 		OnChoices.Broadcast(this, CurrentChoices);
 		break;
@@ -659,6 +668,18 @@ bool UDreamNarrativeDialogueRunner::Choose(int32 Index)
 	Transcript.Add(FString::Printf(TEXT("[choose %s]"), *CurrentChoices[Index].Label.ToString()));
 	OnChoiceMade.Broadcast(this, CurrentChoices[Index]);
 	if (ExecutionSerial != ChoosingSerial || State != EDnaRunnerState::AwaitingChoice) { return true; }
+	// Paused by a listener: nothing of the choice happens until the dialogue resumes.
+	if (bPaused)
+	{
+		PendingChoice = Option;
+		return true;
+	}
+	TakeChoice(Option);
+	return true;
+}
+
+void UDreamNarrativeDialogueRunner::TakeChoice(const FDnaChoiceData& Option)
+{
 	if (IDnaTrace* Tracer = Ledger ? Ledger->GetTrace() : nullptr)
 	{
 		Tracer->OnEvent(Option.bOnce ? TEXT("dialogue.choice.once-taken") : TEXT("dialogue.choice.taken"));
@@ -673,7 +694,6 @@ bool UDreamNarrativeDialogueRunner::Choose(int32 Index)
 	PC = Option.Target;
 	State = EDnaRunnerState::Idle;
 	Run();
-	return true;
 }
 
 void UDreamNarrativeDialogueRunner::NotifyStageFinished()
@@ -749,6 +769,7 @@ void UDreamNarrativeDialogueRunner::Finish()
 	bPaused = false;
 	State = EDnaRunnerState::Ended;
 	++ExecutionSerial;
+	PendingChoice.Reset();
 	if (Ledger && !NodeName.IsNone())
 	{
 		Ledger->MarkVisited(NodeName);

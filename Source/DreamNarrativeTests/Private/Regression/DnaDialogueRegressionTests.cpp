@@ -87,6 +87,27 @@ bool FDnaRegressionChoiceAbort::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRegressionChoicePause, "DreamNarrative.Regression.Dialogue.ChoiceCallbackPause", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FDnaRegressionChoicePause::RunTest(const FString& Parameters)
+{
+	FDnaTestWorld World(*this);
+	if (!World.CompileText(TEXT("character Speaker\nfact Applied: int\ndialogue Decision for Speaker\n  - Choose. once\n    set Applied += 1\n  - Leave.\n  Speaker: After.\n"))) { return false; }
+	UDreamNarrativeDialogueRunner* Runner = World.Story().StartDialogue(TEXT("Decision"));
+	if (!TestNotNull(TEXT("decision started"), Runner)) { return false; }
+	TStrongObjectPtr<UDnaDialogueRegressionProbe> Probe(NewObject<UDnaDialogueRegressionProbe>());
+	Runner->OnChoiceMade.AddDynamic(Probe.Get(), &UDnaDialogueRegressionProbe::PauseWhenChosen);
+	TestTrue(TEXT("the choice is accepted"), Runner->Choose(0));
+	Runner->OnChoiceMade.RemoveDynamic(Probe.Get(), &UDnaDialogueRegressionProbe::PauseWhenChosen);
+	TestTrue(TEXT("the listener paused the dialogue"), Runner->IsPaused());
+	TestEqual(TEXT("nothing of the branch runs while paused"), World.Ledger().GetFactAsInt(TEXT("Applied")), 0);
+	TestFalse(TEXT("the once mark waits too"), World.Ledger().WasChosenOnce(TEXT("Decision.c1")));
+	Runner->Resume();
+	TestEqual(TEXT("resuming takes the choice"), World.Ledger().GetFactAsInt(TEXT("Applied")), 1);
+	TestTrue(TEXT("and marks it once"), World.Ledger().WasChosenOnce(TEXT("Decision.c1")));
+	World.Story().StopAllDialogue();
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRegressionControls, "DreamNarrative.Regression.Dialogue.ControlPaths", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FDnaRegressionControls::RunTest(const FString& Parameters)
 {
