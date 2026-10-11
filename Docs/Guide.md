@@ -155,6 +155,7 @@ stage 灯亮
   死了、关卡走了,碰过的东西都会放回原样。
 - 谁来演:Stage 子系统把对话的 `play`、台词的 `@`、任务的 `play` 放到导演组件上——最后开始的那个,或者第一个本地
   玩家控制器上自动加的一个。没有玩家控制器时,演出在账本时钟上走完它的时长,剧情照样等。
+- 多个导演同时修改时间缩放时，各自的倍率相乘；任意结束顺序都会保留其他演出的倍率，最后一个结束时恢复原值。导演的结束回调中再次调用 `Play` 时，较新的调用优先，被取代的外层请求返回 0。
 - 能力里演:`PlayNarrativeStage` 能力任务;或在演出里写 `gameplay: 标签`,GAS 桥收到这个事件就在化身上演。
 
 ## 4. 接进游戏
@@ -173,6 +174,7 @@ FDnaEventPayload Storm; Storm.Event = TEXT("风暴逼近"); Storm.Set(TEXT("等�
 Story->GetLedger()->RaiseEvent(Storm);
 ```
 
+- 手动加载多个脚本时，先收集资产，再调用 `Story->RegisterScripts(Scripts)`；它会先注册所有 fact 默认值，再评估隐藏任务和档案条件。`LoadAllScripts()` 已使用此流程，单个独立脚本仍可用 `RegisterScript()`。
 - 声明过的频道各有自己的 runner:`Story->OnDialogueStarted` 拿到每一个。插件不带 UI,只发事件。
 - 存档:`Ledger->MakeSnapshot()` / `ApplySnapshot()`;profile 另有 `MakeProfileSnapshot()` / `ApplyProfileSnapshot()`。
 - 演出的 UI 部分:导演的 `OnText`(字幕、浮字)、`OnHudVisibility`、`OnDamageWindow`、`OnWarpTarget`(给 Motion Warping)。
