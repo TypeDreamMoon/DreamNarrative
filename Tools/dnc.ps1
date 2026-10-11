@@ -213,8 +213,9 @@ function Invoke-Editor([string[]]$Arguments, [string[]]$KeepPatterns) {
     Write-Verbose ("UnrealEditor-Cmd " + ($all -join ' '))
     $output = Invoke-Native $editorCmd $all
     $code = $LASTEXITCODE
+    # Written to the host: what the function returns is the exit code alone.
     if ($Raw) {
-        $output | ForEach-Object { Write-Output $_ }
+        $output | ForEach-Object { Write-Host $_ }
     }
     else {
         $seen = @{}
@@ -226,7 +227,7 @@ function Invoke-Editor([string[]]$Arguments, [string[]]$KeepPatterns) {
             $clean = ($text -replace '^\[[^\]]*\]\[\s*\d+\]', '' -replace '^LogInit: Display: ', '').Trim()
             if ($seen.ContainsKey($clean)) { continue }
             $seen[$clean] = $true
-            Write-Output $clean
+            Write-Host $clean
         }
     }
     return $code
