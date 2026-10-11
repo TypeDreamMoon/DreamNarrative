@@ -17,6 +17,10 @@
 #include "UObject/Package.h"
 #include "UObject/UObjectGlobals.h"
 
+#include "AssetRegistry/ARFilter.h"
+#include "AssetRegistry/AssetData.h"
+#include "AssetRegistry/IAssetRegistry.h"
+
 #if WITH_EDITOR
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "UObject/SavePackage.h"
@@ -35,6 +39,106 @@ namespace UE::DreamNarrative::Lang
 
 	namespace
 	{
+		/** The class of a stage verb's asset, as the asset registry names it; none for a verb without one. */
+		FTopLevelAssetPath StageAssetClass(EDnaStageVerb Verb)
+		{
+			switch (Verb)
+			{
+			case EDnaStageVerb::Montage: return FTopLevelAssetPath(TEXT("/Script/Engine"), TEXT("AnimMontage"));
+			case EDnaStageVerb::Spawn: return FTopLevelAssetPath(TEXT("/Script/Niagara"), TEXT("NiagaraSystem"));
+			case EDnaStageVerb::PlaySequence: return FTopLevelAssetPath(TEXT("/Script/LevelSequence"), TEXT("LevelSequence"));
+			default: return FTopLevelAssetPath();
+			}
+		}
+
+		/**
+		 * Finds a stage entry's asset now, so the script names it by path: a cook takes it along, and a
+		 * playing stage loads it without searching. A bare name is looked for under the stage asset roots;
+		 * one not found stays as written and is looked for again when the stage plays.
+		 */
+		void ResolveStageAsset(FDnaStageEntry& Entry, const FString& Stage, bool bReport, TArray<FSoftObjectPath>& OutReferences, FDnaDiagnosticSink& Diagnostics)
+		{
+			const FTopLevelAssetPath Class = StageAssetClass(Entry.Verb);
+			IAssetRegistry* Registry = IAssetRegistry::Get();
+			if (!Class.IsValid() || Entry.Asset.IsEmpty() || !Registry)
+			{
+				return;
+			}
+			// The editor discovers assets in the background: one still being discovered is left to be found
+			// when the stage plays. A commandlet (a build, a cook) discovers nothing by itself: the directories
+			// looked in are scanned first, once each.
+			if (Registry->IsLoadingAssets() && !IsRunningCommandlet())
+			{
+				return;
+			}
+			auto Scan = [Registry](const FString& Directory)
+			{
+				static TSet<FString> Scanned;
+				bool bAlready = false;
+				Scanned.Add(Directory, &bAlready);
+				if (IsRunningCommandlet() && !bAlready)
+				{
+					Registry->ScanPathsSynchronous({ Directory }, /*bForceRescan=*/false);
+				}
+			};
+			const UClass* ClassObject = FindObject<UClass>(Class);
+			auto IsWanted = [ClassObject, &Class](const FAssetData& Asset)
+			{
+				return ClassObject ? Asset.IsInstanceOf(ClassObject) : Asset.AssetClassPath == Class;
+			};
+			FDnaSpan Span;
+			Span.Line = FMath::Max(1, Entry.SourceLine);
+			TArray<FAssetData> Found;
+			if (Entry.Asset.StartsWith(TEXT("/")))
+			{
+				FString Path = Entry.Asset;
+				if (!Path.Contains(TEXT(".")))
+				{
+					Path += TEXT(".") + FPackageName::GetShortName(Path);
+				}
+				Scan(FPackageName::GetLongPackagePath(Path));
+				const FAssetData Asset = Registry->GetAssetByObjectPath(FSoftObjectPath(Path));
+				if (Asset.IsValid() && IsWanted(Asset)) { Found.Add(Asset); }
+			}
+			else
+			{
+				const FName Wanted(*Entry.Asset);
+				for (const FString& Root : UDreamNarrativeSettings::Get()->StageAssetRoots)
+				{
+					Scan(Root);
+					FARFilter Filter;
+					Filter.PackagePaths.Add(FName(*Root));
+					Filter.bRecursivePaths = true;
+					Filter.ClassPaths.Add(Class);
+					Filter.bRecursiveClasses = true;
+					TArray<FAssetData> Assets;
+					Registry->GetAssets(Filter, Assets);
+					for (const FAssetData& Asset : Assets)
+					{
+						if (Asset.AssetName == Wanted) { Found.AddUnique(Asset); }
+					}
+				}
+			}
+			if (Found.Num() == 0)
+			{
+				if (bReport)
+				{
+					Diagnostics.Warning(TEXT("DNS6001"), Span, FText::Format(LOCTEXT("StageAssetMissing",
+						"Stage {0} plays '{1}', which no asset of type {2} answers to under the stage asset roots; a cook will not take it along"),
+						FText::FromString(Stage), FText::FromString(Entry.Asset), FText::FromString(Class.GetAssetName().ToString())));
+				}
+				return;
+			}
+			if (Found.Num() > 1 && bReport)
+			{
+				Diagnostics.Warning(TEXT("DNS6002"), Span, FText::Format(LOCTEXT("StageAssetAmbiguous",
+					"Stage {0} plays '{1}', a name {2} assets answer to; it plays {3}. Write the path to choose"),
+					FText::FromString(Stage), FText::FromString(Entry.Asset), FText::AsNumber(Found.Num()), FText::FromString(Found[0].GetObjectPathString())));
+			}
+			Entry.Asset = Found[0].GetObjectPathString();
+			OutReferences.AddUnique(Found[0].GetSoftObjectPath());
+		}
+
 		/** A run of text parts becomes one FText pattern plus the expressions its placeholders take. */
 		struct FTextBuilder
 		{
@@ -529,6 +633,7 @@ namespace UE::DreamNarrative::Lang
 			Script->Events.Reset();
 			Script->Expressions.Reset();
 			Script->Sections.Reset();
+			Script->AssetReferences.Reset();
 			Script->SourcePath = Document.Path;
 			Script->SourceText = Document.Source.GetText();
 			Script->SourceHash = UDreamNarrativeScript::HashSource(Script->SourceText);
@@ -756,6 +861,7 @@ namespace UE::DreamNarrative::Lang
 						{
 							Entry.Text = MakeLocalizable(Namespace, FString::Printf(TEXT("stage.%s.text%d"), *Info->Name, TextIndex++), Entry.Text.ToString());
 						}
+						ResolveStageAsset(Entry, Info->Name, !Options.bTransient, Script->AssetReferences, Diagnostics);
 					}
 				}
 				Script->Sections.Add(Section);

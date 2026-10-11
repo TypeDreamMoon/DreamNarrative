@@ -106,6 +106,13 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Source")
 	int32 SchemaVersion = 1;
 
+	/**
+	 * The assets its stages play (montages, effects, level sequences), found when it was compiled. Held
+	 * as soft references: a cook takes them along with the script, and nothing loads before it plays.
+	 */
+	UPROPERTY(VisibleAnywhere, Category = "Source")
+	TArray<FSoftObjectPath> AssetReferences;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Declarations")
 	TArray<FDnaFactDecl> Facts;
 
