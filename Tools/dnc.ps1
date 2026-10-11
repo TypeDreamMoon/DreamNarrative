@@ -102,7 +102,7 @@ $MaxFilterLength = 12000
 $Presets = [ordered]@{
     Quick   = @{
         Filter   = 'StartsWith:DreamNarrative.Regression+StartsWith:DreamNarrative.Lang+StartsWith:DreamNarrative.Corpus+StartsWith:DreamNarrative.Ledger+StartsWith:DreamNarrative.Dialogue+StartsWith:DreamNarrative.Quest+StartsWith:DreamNarrative.GAS+StartsWith:DreamNarrative.Stage+StartsWith:DreamNarrative.Editor+StartsWith:DreamNarrative.Spec+StartsWith:DreamNarrative.Replay+StartsWith:DreamNarrative.Project+StartsWith:DreamNarrative.Smoke.InProcess'
-        MinTests = 239
+        MinTests = 248
         Timeout  = 10
         Game     = $false
     }
