@@ -8,6 +8,7 @@
 #include "DreamNarrativeQuest.h"
 #include "Fixtures/DnaTestWorld.h"
 #include "Generation/DnaGenerator.h"
+#include "Lang/DnaProject.h"
 #include "Misc/Guid.h"
 #include "Lang/DnaEditSession.h"
 #include "Misc/FileHelper.h"
@@ -126,6 +127,18 @@ bool FDnaRegressionSameBasename::RunTest(const FString& Parameters)
 	FDnaGenerateResult Rebuild;
 	FDnaDiagnosticSink RebuildDiagnostics;
 	TestTrue(TEXT("same source may rebuild its asset"), GenerateDnaProgram(First, Options, Rebuild, RebuildDiagnostics));
+
+	// An asset generated in another checkout, or from a file that moved away, is not a collision.
+	const FString Root = GetDnaSourceRoot();
+	TestTrue(TEXT("another checkout's source is stale"), IsStaleDnaSource(TEXT("Z:/ElsewhereCheckout/Narrative/Intro.dna"), Root / TEXT("ChapterB/Intro.dna")));
+	TestTrue(TEXT("a moved-away source is stale"), IsStaleDnaSource(Root / TEXT("Gone_") + FGuid::NewGuid().ToString(EGuidFormats::Digits) / TEXT("Intro.dna"), Root / TEXT("ChapterB/Intro.dna")));
+	TestFalse(TEXT("the same source is not stale"), IsStaleDnaSource(Root / TEXT("ChapterB/Intro.dna"), Root / TEXT("ChapterB/../ChapterB/Intro.dna")));
+	FirstScripts[0]->SourcePath = TEXT("Z:/ElsewhereCheckout/Narrative/ChapterA/Intro.dna");
+	FDnaGenerateResult Takeover;
+	FDnaDiagnosticSink TakeoverDiagnostics;
+	TestTrue(TEXT("a source from another checkout takes its asset over"), GenerateDnaProgram(Second, Options, Takeover, TakeoverDiagnostics));
+	TestEqual(TEXT("takeover records the new source"), FirstScripts[0]->SourcePath, Sources[1].Path);
+	TestTrue(TEXT("takeover rebuilds the content"), FirstScripts[0]->Facts.ContainsByPredicate([](const FDnaFactDecl& Decl) { return Decl.Name == TEXT("ChapterBFlag"); }));
 	return !HasAnyErrors();
 }
 

@@ -10,6 +10,7 @@
 #include "DreamNarrativeStageData.h"
 #include "Generation/DnaExprCompiler.h"
 #include "Lang/DnaLexer.h"
+#include "Lang/DnaProject.h"
 #include "Lang/DnaStageCompiler.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
@@ -834,6 +835,25 @@ namespace UE::DreamNarrative::Lang
 		return Compiler.CompileValueFor(Expr, Info ? Info->FindParam(Param) : nullptr);
 	}
 
+	bool IsStaleDnaSource(const FString& Recorded, const FString& Current)
+	{
+		if (FPaths::IsSamePath(Recorded, Current))
+		{
+			return false;
+		}
+		// Recorded paths are absolute. One relative to nothing (a test's) only ever names a file of this run.
+		if (FPaths::IsRelative(Recorded))
+		{
+			return false;
+		}
+		FString Root = GetDnaSourceRoot();
+		FPaths::NormalizeDirectoryName(Root);
+		FString Normalized = FPaths::ConvertRelativePathToFull(Recorded);
+		FPaths::NormalizeFilename(Normalized);
+		const bool bInTree = Normalized.StartsWith(Root + TEXT("/"), ESearchCase::IgnoreCase);
+		return !bInTree || !FPaths::FileExists(Normalized);
+	}
+
 	bool GenerateDnaProgram(const FDnaProgram& Program, const FDnaGenerateOptions& Options, FDnaGenerateResult& OutResult, FDnaDiagnosticSink& Diagnostics)
 	{
 		// Preflight every output before mutating assets; filenames are the legacy package keys.
@@ -856,6 +876,14 @@ namespace UE::DreamNarrative::Lang
 						Existing = LoadObject<UDreamNarrativeScript>(nullptr, *ObjectPath);
 					}
 					if (Existing) { ExistingSource = Existing->SourcePath; OtherSource = &ExistingSource; }
+				}
+				if (OtherSource && !OtherSource->IsEmpty() && !SourcesByPackage.Contains(PackageKey) && IsStaleDnaSource(*OtherSource, Document->Path))
+				{
+					// The asset came from this file in another checkout, or from a file that has since moved away.
+					Diagnostics.Warning(TEXT("DNS8001"), FDnaSpan(),
+						FText::Format(LOCTEXT("PackageTakeover", "'{0}' takes over asset '{1}', last generated from '{2}', which is not in this source tree any more."),
+							FText::FromString(Document->Path), FText::FromString(PackageName), FText::FromString(*OtherSource)));
+					OtherSource = nullptr;
 				}
 				if (OtherSource && !FPaths::IsSamePath(*OtherSource, Document->Path))
 				{

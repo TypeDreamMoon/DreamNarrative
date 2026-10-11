@@ -43,6 +43,12 @@ namespace UE::DreamNarrative::Lang
 	DREAMNARRATIVECOMPILER_API FString GetDnaPackageName(const FString& SourcePath, const FString& AssetDirectory);
 
 	/**
+	 * Whether an asset last generated from Recorded may be taken over by Current: the recorded file is
+	 * outside this source tree (another checkout or machine) or no longer exists (the file moved).
+	 */
+	DREAMNARRATIVECOMPILER_API bool IsStaleDnaSource(const FString& Recorded, const FString& Current);
+
+	/**
 	 * Lowers one expression that stands outside any document into Pool's expression pool and returns
 	 * its index; INDEX_NONE when it cannot be lowered. Validate it first (ValidateDnaExpression):
 	 * names resolve the way the validator resolved them.
