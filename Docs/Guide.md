@@ -238,10 +238,12 @@ dialogue 老周_初见 for 老周
   - `Requested`:这一行上屏了,放 `Line.Voice`;暂停后重新上屏会再来一次,从头放;
   - `Stopped`:没说完就被切了(玩家推进、暂停、对话结束、同一个人在别的频道开口),停掉;
   - `Finished`:说完才走的(自动推进到时,或游戏调了 `NotifyVoiceFinished`)。
-- `Speaker` 是说话人的 actor:`Story->BindSpeaker(角色, Actor)` 绑定,没绑就找带这个角色名标签的 actor。口型、面部动画从这里接。
+- `Speaker` 是说话人的 actor:`Story->BindSpeaker(角色, Actor)` 绑定,没绑就找带这个角色名标签的 actor。口型、面部动画从这里接:
+  `Requested` 时在 `Speaker` 身上放 `Line.Voice`(比如 `SpawnSoundAttached` 挂到头部骨骼),同一个音频组件交给口型方案
+  (MetaHuman 的音频驱动动画、Audio2Face、OVRLipSync 之类);`Stopped` 时停掉组件,口型跟着停。插件不碰音频与面部。
 - 自动推进的频道按语音长度(再加 `Voice Tail Seconds`)往下走;游戏的音频更清楚何时放完时,调 `Runner->NotifyVoiceFinished()`,
   或打开 `Wait For Voice Finished`,改成等游戏通知(超过长度加 `Voice Wait Grace Seconds` 仍没通知就照样往下走)。
-- 同一个人同一时刻只说一句:他在一个频道开口,别的频道上他正在说的语音先 `Stopped`(那一行还留在屏上)。
+- 同一个人同一时刻只说一句:在一个频道开口时,这个人在别的频道上正在说的语音先 `Stopped`(那一行还留在屏上)。
 - 录音台本:`dnc.ps1 vo-script [-Out 路径]` 导出每一行的 ID、说话人、原文、所在对话、上一句、情绪标签、语音状态和约定下
   该叫的资源名(按角色排,UTF-8 带 BOM,表格软件直接打开)。表头前两列就是 `LineId,Voice`:外包录完把 `Voice` 列填上,改名成
   `xxx.voice.csv` 放进源码目录,它就是语音表。`dnc.ps1 vo-status` 按角色列出有多少行、多少有语音、缺哪些。

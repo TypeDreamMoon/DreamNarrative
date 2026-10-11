@@ -289,3 +289,25 @@ fact key 集中声明,并标明归谁写 —— 叙事侧写的,还是游戏系�
   找不到报 DNS6001(警告),同名多个报 DNS6002;编辑器模块把资产目录下的每个脚本加进 Cook;导演开演时异步预加载
   演出要播的资源。同步回调与多演出共享状态的约定见 §13。`Tools/CookSmoke.ps1` 做 Cook、打包 Development /
   Shipping,并启动打包后的游戏验证脚本与演出资源都在包里。
+- 2026-10-11 配音、演出声音与走位。`dnc freeze` 把每行台词和每个选项现在的自动 ID(`对话.N`、`对话.cN`)原样写成源码里的
+  ` #id`,写完重读核对,对不上就撤销;冻结之后在中间加行不再挪动后面的 ID,`#id` 因此认带点的名字。设置里打开
+  `bRequireLineIds` 后没有 ID 的台词报 DNS6006,给开始录音或翻译之后用。语音每个角色各选一种找法:声明写
+  `voice: 路径` 按约定找(`<路径>/<行 ID,点换成下划线>`),写 `voice: table` 查表,不写用项目设置的缺省(默认不找);
+  表可以是源码目录里的 `*.voice.csv`,也可以是设置里列的 DataTable(`FDnaVoiceRow`,行名是行 ID),同一行两边都写报
+  DNS6005;台词上写的 `voice 路径` 总是优先。编译期找到就写成软引用,时长取资源上记的 `Duration`;找不到报 DNS6003
+  (发版时可在设置里升为错误),表里有而脚本里没有的行报 DNS6004。插件不放声音:行出现后 runner 发 `OnVoice`
+  (Requested),行走、跳过、暂停、中止时发 Stopped,游戏放完调 `NotifyVoiceFinished`;Story 按说话人转发,同一个
+  说话人在别的频道开口时先停掉旧的。自己往下说的频道按语音时长加 `VoiceTailSeconds` 走,或者等游戏说放完
+  (`bWaitForVoiceFinished`,迟迟不说就在时长之后再等 `VoiceWaitGraceSeconds`);进入节点时预加载这一段的语音。
+  `dnc vo-script` 导出录音台本 CSV,`dnc vo-status` 按角色报语音覆盖。演出加 `audio` 轨,同样只发事件:`sound` 由
+  导演的 `OnSound` 发出、范围结束时 `OnSoundStopped`;`music` 是世界一份,经仲裁器叠放(后开始的盖住先开始的,
+  全结束回到游戏自己的音乐,`OnMusic` 说现在该放哪首;写 `keep` 的演完不收回,成了游戏自己的音乐)。`camera` 轨加
+  `shake`(只给本机玩家的镜头,演出结束一并停)。`blocking` 轨把角色带到 `marks` 块里的标记或另一个角色身边(`move`,
+  范围内插值,写一个时刻是瞬移,加 `navigate` 走导航网格)、转身(`face`)、注视(`look`);脚和头怎么动交给实现
+  `IDnaStageActor` 的 actor。被挪过的角色演完留在原地,restore 写 `blocking back` 才放回。走位同样是演出与时间的纯函数
+  (`SampleDnaStageBlocking`,每段从前面几段把人留下的地方出发,走向它开始那一刻目标所在),导演与时间轴预览共用
+  同一套目标、终点与缓动;时间轴预览时关卡里的 actor 跟着走,结束放回;导航走位只算提示,不进采样。导演的每段从
+  actor 当时实际所在出发,所以导航或游戏挪过的人不会被拽回。本地化给译者一张表:`dnc loc-export` 用引擎采集器同一套
+  namespace 与 key 导出 CSV,带说话人、对话、上一句、情绪与源码位置;`dnc loc-import` 把译文写进本地化目标的 archive
+  (与面板 PO 导入同一个入口 `FLocTextHelper`),目标没采集到的 key 与导出后改过原文的行不导入,之后照常在面板编译。
+  CookSmoke 的探针加了演出声音与台词语音。DNS7006、DNS7007 的动词表跟着扩。
