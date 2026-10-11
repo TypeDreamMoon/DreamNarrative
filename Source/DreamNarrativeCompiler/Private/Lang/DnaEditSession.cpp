@@ -4,7 +4,10 @@
 #include "Lang/DnaLexer.h"
 #include "Lang/DnaParser.h"
 #include "Lang/DnaPrinter.h"
+#include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
+#include "Misc/Guid.h"
+#include "Misc/Paths.h"
 
 #define LOCTEXT_NAMESPACE "DnaEditSession"
 
@@ -110,25 +113,39 @@ namespace UE::DreamNarrative::Lang
 		Reparse();
 	}
 
-	bool FDnaEditSession::Save(FText& OutError, bool bOverwriteExternal)
+	bool FDnaEditSession::CanSave(FText& OutError) const
 	{
-		if (!IsDirty()) { return true; }
-		TArray<uint8> Bytes;
-		if (!FFileHelper::LoadFileToArray(Bytes, *Path) && !bOverwriteExternal)
+		FString DiskText;
+		if (!FFileHelper::LoadFileToString(DiskText, *Path))
 		{
 			OutError = FText::Format(LOCTEXT("ReadFailed", "Cannot read {0}; local edits were kept"), FText::FromString(Path));
 			return false;
 		}
-		FString DiskText;
-		FFileHelper::BufferToString(DiskText, Bytes.GetData(), Bytes.Num());
-		if (DiskText != SavedText && !bOverwriteExternal)
+		if (DiskText != SavedText)
 		{
 			OutError = FText::Format(LOCTEXT("SaveConflict", "{0} changed on disk. Discard the local edits or overwrite the file; local edits were kept"), FText::FromString(Path));
 			return false;
 		}
-		const bool bBom = Bytes.Num() >= 3 && Bytes[0] == 0xEF && Bytes[1] == 0xBB && Bytes[2] == 0xBF;
-		if (!FFileHelper::SaveStringToFile(Text, *Path, bBom ? FFileHelper::EEncodingOptions::ForceUTF8 : FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+		return true;
+	}
+
+	bool FDnaEditSession::Save(FText& OutError, bool bOverwriteExternal)
+	{
+		if (!IsDirty()) { return true; }
+		if (!bOverwriteExternal && !CanSave(OutError))
 		{
+			return false;
+		}
+		// A file that had a byte order mark keeps it.
+		TArray<uint8> Bytes;
+		FFileHelper::LoadFileToArray(Bytes, *Path);
+		const bool bBom = Bytes.Num() >= 3 && Bytes[0] == 0xEF && Bytes[1] == 0xBB && Bytes[2] == 0xBF;
+		// Written beside the file, then put in its place: a failed write leaves the old text whole.
+		const FString Temp = FPaths::GetPath(Path) / FString::Printf(TEXT(".%s.%s.tmp"), *FPaths::GetCleanFilename(Path), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+		if (!FFileHelper::SaveStringToFile(Text, *Temp, bBom ? FFileHelper::EEncodingOptions::ForceUTF8 : FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM)
+			|| !IFileManager::Get().Move(*Path, *Temp, /*bReplace=*/true, /*bEvenIfReadOnly=*/false))
+		{
+			IFileManager::Get().Delete(*Temp, false, false, true);
 			OutError = FText::Format(LOCTEXT("WriteFailed", "Cannot save {0}; local edits were kept"), FText::FromString(Path));
 			return false;
 		}

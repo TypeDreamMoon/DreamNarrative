@@ -614,7 +614,21 @@ bool SDnaStageTimeline::Redo()
 
 bool SDnaStageTimeline::SaveAll()
 {
+	// All of them or none: no file is written while another one meets a change on disk.
 	bool bOk = true;
+	for (const TPair<FString, TSharedPtr<FDnaEditSession>>& Pair : Sessions)
+	{
+		FText Error;
+		if (Pair.Value->IsDirty() && !Pair.Value->CanSave(Error))
+		{
+			Diagnostics.Add(Error.ToString());
+			bOk = false;
+		}
+	}
+	if (!bOk)
+	{
+		return false;
+	}
 	for (const TPair<FString, TSharedPtr<FDnaEditSession>>& Pair : Sessions)
 	{
 		FDnaEditSession& Session = *Pair.Value;

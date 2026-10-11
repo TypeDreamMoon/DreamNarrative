@@ -70,4 +70,33 @@ bool FDnaRegressionTimelineConflict::RunTest(const FString& Parameters)
 
 	return !HasAnyErrors();
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRegressionSaveAllOrNone, "DreamNarrative.Regression.Persistence.SaveAllOrNone", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FDnaRegressionSaveAllOrNone::RunTest(const FString& Parameters)
+{
+	if (!TestTrue(TEXT("Slate available"), FSlateApplication::IsInitialized())) { return false; }
+	const FString Stem = FPaths::ProjectIntermediateDir() / TEXT("SaveAllOrNone_") + FGuid::NewGuid().ToString(EGuidFormats::Digits);
+	const FString First = Stem + TEXT("_A.dna");
+	const FString Second = Stem + TEXT("_B.dna");
+	ON_SCOPE_EXIT { IFileManager::Get().Delete(*First); IFileManager::Get().Delete(*Second); };
+	const FString SourceA = TEXT("character Alpha\ndialogue IntroA for Alpha\n  Alpha: Hello.\n");
+	const FString SourceB = TEXT("character Beta\ndialogue IntroB for Beta\n  Beta: Hello.\n");
+	if (!TestTrue(TEXT("write sources"), FFileHelper::SaveStringToFile(SourceA, *First, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM)
+		&& FFileHelper::SaveStringToFile(SourceB, *Second, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))) { return false; }
+	TSharedRef<SDnaStoryPanel> Panel = SNew(SDnaStoryPanel).Files({ First, Second });
+	FText Error;
+	if (!TestTrue(TEXT("edit the first"), Panel->EditCondition(TEXT("IntroA"), TEXT("true"), Error))
+		|| !TestTrue(TEXT("edit the second"), Panel->EditCondition(TEXT("IntroB"), TEXT("true"), Error))) { return false; }
+	TestTrue(TEXT("someone else changes the second"), FFileHelper::SaveStringToFile(SourceB + TEXT("// elsewhere\n"), *Second, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM));
+	TArray<FString> Errors;
+	TestFalse(TEXT("the save is refused"), Panel->SaveAll(Errors));
+	FString Actual;
+	FFileHelper::LoadFileToString(Actual, *First);
+	TestEqual(TEXT("nor is the first file written"), Actual, SourceA);
+	TestTrue(TEXT("both edits are still unsaved"), Panel->HasUnsavedEdits());
+	TArray<FString> Left;
+	IFileManager::Get().FindFiles(Left, *(FPaths::GetPath(First) / TEXT("*.tmp")), true, false);
+	TestFalse(TEXT("no temporary file is left behind"), Left.ContainsByPredicate([](const FString& Name) { return Name.Contains(TEXT("SaveAllOrNone_")); }));
+	return !HasAnyErrors();
+}
+
 #endif

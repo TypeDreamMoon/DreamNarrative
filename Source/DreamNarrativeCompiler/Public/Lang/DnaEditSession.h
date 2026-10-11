@@ -38,6 +38,9 @@ namespace UE::DreamNarrative::Lang
 		 */
 		bool Save(FText& OutError, bool bOverwriteExternal = false);
 
+		/** Whether Save would write: the file reads and still holds what Open read or the last save wrote. */
+		bool CanSave(FText& OutError) const;
+
 		/** True when the file on disk no longer holds what Open was given or the last save wrote. */
 		bool IsChangedOnDisk() const;
 

@@ -454,6 +454,20 @@ bool SDnaStoryPanel::HasUnsavedEdits() const
 
 bool SDnaStoryPanel::SaveAll(TArray<FString>& OutErrors)
 {
+	// All of them or none: no file is written while another one meets a change on disk.
+	for (const TPair<FString, TSharedPtr<FDnaEditSession>>& Pair : Sessions)
+	{
+		FText Error;
+		if (Pair.Value->IsDirty() && !Pair.Value->CanSave(Error))
+		{
+			OutErrors.Add(Error.ToString());
+		}
+	}
+	if (OutErrors.Num() > 0)
+	{
+		Rebuild();
+		return false;
+	}
 	for (const TPair<FString, TSharedPtr<FDnaEditSession>>& Pair : Sessions)
 	{
 		FDnaEditSession& Session = *Pair.Value;
