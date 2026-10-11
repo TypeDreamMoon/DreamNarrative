@@ -55,9 +55,10 @@ public:
 	/**
 	 * The music: the stage that asked last has its music play. When it lets go the music goes back to
 	 * the stage beneath, or -- the last one gone -- to the game's own. OnMusic says which, each time it changes.
+	 * Kept (`music ... keep`), the last one's music plays on: it is the game's own from then on.
 	 */
 	void PushMusic(UDreamNarrativeStageDirector* Director, const TSoftObjectPtr<USoundBase>& Music, float FadeSeconds);
-	void ReleaseMusic(UDreamNarrativeStageDirector* Director);
+	void ReleaseMusic(UDreamNarrativeStageDirector* Director, bool bKeep = false);
 	/** The music the stages want now; none when the game's own plays. */
 	TSoftObjectPtr<USoundBase> GetMusic() const;
 

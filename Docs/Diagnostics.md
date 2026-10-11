@@ -457,7 +457,7 @@ gameplay 来源和类型对不上。
 
 该写范围的写成了时刻,或者反过来。
 
-**中文散文**:有的动词发生在一个时刻:镜头的移动和切换、`ramp dark` 与 `restore`、`show hud`、`clear`、`stop`、`montage`、`sequence play`,它们不能写成 `起..止`。有的动词是一段起落:`distort`、`exposure`、`streaks` 从范围开头升到正中最强再落下去,只写一个时刻就没有起落可言。按动词改成一个时刻或一个范围。
+**中文散文**:有的动词发生在一个时刻:镜头的移动和切换、`ramp dark` 与 `restore`、`show hud`、`clear`、`stop`、`montage`、`sequence play`、`shake`,它们不能写成 `起..止`。有的动词是一段起落:`distort`、`exposure`、`streaks` 从范围开头升到正中最强再落下去,只写一个时刻就没有起落可言。按动词改成一个时刻或一个范围。写了 `keep` 的 `music` 演完还要接着放,也只能写一个时刻;只放一段的音乐写成范围、去掉 `keep`。
 
 ### DNS7008
 

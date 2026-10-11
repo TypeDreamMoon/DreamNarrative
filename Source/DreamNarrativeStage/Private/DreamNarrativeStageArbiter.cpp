@@ -309,7 +309,7 @@ void UDreamNarrativeStageArbiter::PushMusic(UDreamNarrativeStageDirector* Direct
 	OnMusic.Broadcast(InMusic, FadeSeconds);
 }
 
-void UDreamNarrativeStageArbiter::ReleaseMusic(UDreamNarrativeStageDirector* Director)
+void UDreamNarrativeStageArbiter::ReleaseMusic(UDreamNarrativeStageDirector* Director, bool bKeep)
 {
 	const int32 Index = MusicHolds.IndexOfByPredicate([Director](const FMusicHold& Hold) { return Hold.Director.Get() == Director; });
 	if (Index == INDEX_NONE)
@@ -319,8 +319,9 @@ void UDreamNarrativeStageArbiter::ReleaseMusic(UDreamNarrativeStageDirector* Dir
 	const bool bPlaying = Index == MusicHolds.Num() - 1;
 	const float Fade = MusicHolds[Index].Fade;
 	MusicHolds.RemoveAt(Index);
-	// Only the one playing moves the music: back to the stage beneath, or to the game's own.
-	if (bPlaying)
+	// Only the one playing moves the music: back to the stage beneath, or to the game's own. Kept with
+	// no stage beneath, it plays on as the game's own: nothing changes.
+	if (bPlaying && !(bKeep && MusicHolds.Num() == 0))
 	{
 		OnMusic.Broadcast(GetMusic(), Fade);
 	}

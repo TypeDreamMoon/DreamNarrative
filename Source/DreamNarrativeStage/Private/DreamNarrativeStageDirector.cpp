@@ -740,6 +740,7 @@ void UDreamNarrativeStageDirector::FireCue(int32 EntryIndex)
 		if (Music.IsNull() || !Arbiter) { break; }
 		Touch(ESlot::Music);
 		RangeMusic = Entry.bRange ? EntryIndex : INDEX_NONE;
+		bKeepMusic = Entry.bFlag;
 		Arbiter->PushMusic(this, Music, Entry.Over * UnitSeconds);
 		break;
 	}
@@ -1038,8 +1039,9 @@ void UDreamNarrativeStageDirector::UnwindSlot(ESlot Slot)
 		break;
 	}
 	case ESlot::Music:
-		if (UDreamNarrativeStageArbiter* Arbiter = GetArbiter()) { Arbiter->ReleaseMusic(this); }
+		if (UDreamNarrativeStageArbiter* Arbiter = GetArbiter()) { Arbiter->ReleaseMusic(this, bKeepMusic && !bTearingDown); }
 		RangeMusic = INDEX_NONE;
+		bKeepMusic = false;
 		break;
 	case ESlot::Shake:
 	{

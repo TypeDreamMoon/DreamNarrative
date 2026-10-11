@@ -188,7 +188,7 @@ struct DREAMNARRATIVESTAGE_API FDnaStageEntry
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	float Amount = 0.f;
 
-	/** `on` for a key light; `persist` for a spawned effect; `hard` for a cut meant to be seen. */
+	/** `on` for a key light; `persist` for a spawned effect; `hard` for a cut meant to be seen; `run` for a move; `keep` for music. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	bool bFlag = false;
 

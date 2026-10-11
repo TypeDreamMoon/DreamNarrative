@@ -277,6 +277,8 @@ private:
 	int32 NextSoundHandle = 0;
 	/** The entry whose range the music lasts for; INDEX_NONE when it lasts the stage. */
 	int32 RangeMusic = INDEX_NONE;
+	/** The music last asked for plays on after the stage (`keep`). */
+	bool bKeepMusic = false;
 	TArray<TWeakObjectPtr<UCameraShakeBase>> Shakes;
 
 	// blocking

@@ -572,9 +572,14 @@ namespace UE::DreamNarrative::Lang
 					}
 					if (Verb == TEXT("music"))
 					{
-						if (!Args.Path(Entry.Asset)) { return BadArgs(Line, TEXT("music 资源 [fade 2s]")); }
+						if (!Args.Path(Entry.Asset)) { return BadArgs(Line, TEXT("music 资源 [fade 2s] [keep]")); }
 						Entry.Verb = EDnaStageVerb::Music;
-						if (Args.Word(TEXT("fade"))) { return ReadSpan(Args, Line, Entry.Over, true); }
+						while (!Args.AtEnd())
+						{
+							if (Args.Word(TEXT("fade"))) { if (!ReadSpan(Args, Line, Entry.Over, true)) { return false; } }
+							else if (Args.Word(TEXT("keep"))) { Entry.bFlag = true; }
+							else { return BadArgs(Line, TEXT("music 资源 [fade 2s] [keep]")); }
+						}
 						return true;
 					}
 					break;
@@ -699,6 +704,11 @@ namespace UE::DreamNarrative::Lang
 						? LOCTEXT("PointOnly", "'{0}' happens at a moment; write one time, not a range")
 						: LOCTEXT("RangeOnly", "'{0}' rises and falls over a range; write it as from..to, such as 1.9s..2.1s"),
 						FText::FromString(::DreamNarrative::LexToString(Entry.Verb))));
+					return;
+				}
+				if (Entry.Verb == EDnaStageVerb::Music && Entry.bFlag && Entry.bRange)
+				{
+					Fail(TEXT("DNS7007"), Line.Raw.Span, LOCTEXT("KeptMusicRange", "Music in a range lasts that range; `keep` is for music that plays on past the stage, so write one time"));
 					return;
 				}
 				if ((Entry.Verb == EDnaStageVerb::Cut || Entry.Verb == EDnaStageVerb::BlendTo || Entry.Verb == EDnaStageVerb::Whip) && !Out.FindShot(Entry.Target))

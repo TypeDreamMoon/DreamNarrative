@@ -204,7 +204,9 @@ bool FDnaRegressionStageAudio::RunTest(const FString& Parameters)
 		"    0.0s         music %s/BGM_A fade 1.0s\n"
 		"    0.5s         sound %s/SFX_Hit volume 0.8\n"
 		"stage 回忆\n  duration 3.0s\n  audio\n"
-		"    0.0s         music %s/BGM_B fade 0.5s\n"), *Root, *Root, *Root, *Root))) { return false; }
+		"    0.0s         music %s/BGM_B fade 0.5s\n"
+		"stage 登场\n  duration 1.0s\n  audio\n"
+		"    0.0s         music %s/BGM_B keep\n"), *Root, *Root, *Root, *Root, *Root))) { return false; }
 	FDnaStandaloneGame Game;
 	RegisterDefinitions(Game, Definitions);
 	UDreamNarrativeStageDirector* First = MakeDirector(Game);
@@ -241,6 +243,14 @@ bool FDnaRegressionStageAudio::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the one on top ending goes back to the one beneath"), Probe->Take(), FString(TEXT("music BGM_A 0.5")));
 	First->Stop();
 	TestEqual(TEXT("cut short, a held sound stops too"), Probe->Take(), FString(TEXT("music game 1.0, stop")));
+
+	// `keep`: the music plays on after the stage, as the game's own.
+	TestTrue(TEXT("a stage that keeps its music"), First->PlayStage(TEXT("登场")));
+	TestEqual(TEXT("its music plays"), Probe->Take(), FString(TEXT("music BGM_B 0.0")));
+	First->Advance(1.5f);
+	TestFalse(TEXT("it is over"), First->IsPlaying());
+	TestEqual(TEXT("and the music is not taken back"), Probe->Take(), FString());
+	TestTrue(TEXT("no stage holds music any more"), Arbiter->GetMusic().IsNull());
 	return !HasAnyErrors();
 }
 
@@ -315,6 +325,8 @@ bool FDnaRegressionStageBlockingSyntax::RunTest(const FString& Parameters)
 		"  camera\n    0.5s  shake /Script/Engine.CameraShakeBase scale 1.5\n"
 		"  blocking\n    0.0s..1.0s  move 甲 -> 桌边 walk navigate\n    1.0s  face 甲 -> 乙 over 0.3s\n    1.0s..2.0s  look 甲 at 乙\n")).Num(), 0);
 	TestEqual(TEXT("a shake is a moment"), Codes(TEXT("stage 坏\n  duration 2.0s\n  camera\n    0.0s..1.0s  shake /Game/S\n")), TArray<FString>{ TEXT("DNS7007") });
+	TestEqual(TEXT("kept music starts at a moment"), Codes(TEXT("stage 坏\n  duration 2.0s\n  audio\n    0.0s..1.0s  music /Game/M keep\n")), TArray<FString>{ TEXT("DNS7007") });
+	TestEqual(TEXT("music takes fade and keep in any order"), Codes(TEXT("stage 好\n  duration 2.0s\n  audio\n    0.0s  music /Game/M keep fade 1.0s\n")).Num(), 0);
 	TestEqual(TEXT("`blocking back` belongs under restore"), Codes(TEXT("stage 坏\n  duration 2.0s\n  blocking\n    1.0s  back\n")), TArray<FString>{ TEXT("DNS7006") });
 	TestEqual(TEXT("a move names who and where"), Codes(TEXT("stage 坏\n  duration 2.0s\n  blocking\n    0.0s..1.0s  move 甲\n")), TArray<FString>{ TEXT("DNS7006") });
 	return !HasAnyErrors();
