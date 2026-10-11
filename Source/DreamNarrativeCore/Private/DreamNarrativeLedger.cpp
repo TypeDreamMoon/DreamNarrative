@@ -721,8 +721,16 @@ FDnaProfileSnapshot UDreamNarrativeLedger::MakeProfileSnapshot() const
 	return Snapshot;
 }
 
-void UDreamNarrativeLedger::ApplyProfileSnapshot(const FDnaProfileSnapshot& Snapshot)
+bool UDreamNarrativeLedger::ApplyProfileSnapshot(const FDnaProfileSnapshot& Snapshot)
 {
+	// Written by a newer build: what it holds may not read the way this one thinks. Refused whole
+	// rather than taken in part.
+	const int32 Readable = FDnaProfileSnapshot().SchemaVersion;
+	if (Snapshot.SchemaVersion > Readable)
+	{
+		UE_LOG(LogDreamNarrative, Error, TEXT("ApplyProfileSnapshot: the profile is schema %d, newer than this build reads (%d); nothing was applied"), Snapshot.SchemaVersion, Readable);
+		return false;
+	}
 	if (Trace)
 	{
 		Trace->OnEvent(TEXT("profile.apply"));
@@ -754,11 +762,21 @@ void UDreamNarrativeLedger::ApplyProfileSnapshot(const FDnaProfileSnapshot& Snap
 	}
 	OnSnapshotRestored.Broadcast();
 	OnSnapshotApplied.Broadcast();
+	return true;
 }
 
-void UDreamNarrativeLedger::ApplySnapshot(const FDnaLedgerSnapshot& InSnapshot)
+bool UDreamNarrativeLedger::ApplySnapshot(const FDnaLedgerSnapshot& InSnapshot)
 {
+	const int32 Readable = FDnaLedgerSnapshot().SchemaVersion;
+	if (InSnapshot.SchemaVersion > Readable)
+	{
+		UE_LOG(LogDreamNarrative, Error, TEXT("ApplySnapshot: the snapshot is schema %d, newer than this build reads (%d); nothing was applied"), InSnapshot.SchemaVersion, Readable);
+		return false;
+	}
 	FDnaLedgerSnapshot Snapshot = InSnapshot;
+	// Older layouts come up one version at a time; a step goes here when a layout changes what it means.
+	// 1 -> 2 only added checkpoints, and a save from before has none.
+	Snapshot.SchemaVersion = Readable;
 	// Canonical entries win if an old save contains both the old and current spelling.
 	auto RemapKeys = [this](auto& Map)
 	{
@@ -788,6 +806,20 @@ void UDreamNarrativeLedger::ApplySnapshot(const FDnaLedgerSnapshot& InSnapshot)
 		RemapKeys(Point.Timers);
 		RemapChoices(Point.ChosenOnce);
 	}
+	// Old names now one chapter keep one checkpoint: the first, left when it was first entered. A chapter
+	// no script declares any more cannot be chosen, so its checkpoint goes.
+	TSet<FName> Seen;
+	Snapshot.Checkpoints.RemoveAll([this, &Seen](const FDnaChapterCheckpoint& Point)
+	{
+		bool bAlready = false;
+		Seen.Add(Point.Chapter, &bAlready);
+		if (!bAlready && ChapterDecls.Num() > 0 && !ChapterDecls.Contains(Point.Chapter))
+		{
+			UE_LOG(LogDreamNarrative, Warning, TEXT("ApplySnapshot: chapter '%s' is no longer declared; its checkpoint was dropped"), *Point.Chapter.ToString());
+			return true;
+		}
+		return bAlready;
+	});
 	if (Trace)
 	{
 		Trace->OnEvent(TEXT("ledger.snapshot.apply"));
@@ -843,6 +875,7 @@ void UDreamNarrativeLedger::ApplySnapshot(const FDnaLedgerSnapshot& InSnapshot)
 	}
 	OnSnapshotRestored.Broadcast();
 	OnSnapshotApplied.Broadcast();
+	return true;
 }
 
 void UDreamNarrativeLedger::ResetToDefaults()

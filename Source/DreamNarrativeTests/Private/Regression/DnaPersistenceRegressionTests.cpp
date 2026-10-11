@@ -194,4 +194,44 @@ bool FDnaRegressionSessionSave::RunTest(const FString& Parameters)
 	}
 	return !HasAnyErrors();
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRegressionCheckpointMerge, "DreamNarrative.Regression.Persistence.CheckpointsOfMergedChapters", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FDnaRegressionCheckpointMerge::RunTest(const FString& Parameters)
+{
+	FDnaTestWorld World(*this);
+	if (!World.CompileText(TEXT("chapter Opening was Prologue\nchapter Middle after Opening\n"))) { return false; }
+	// A save from before: one checkpoint under the old name, one under the new, one of a chapter since cut.
+	FDnaLedgerSnapshot Saved;
+	Saved.Chapter = TEXT("Middle");
+	for (const TCHAR* Chapter : { TEXT("Prologue"), TEXT("Opening"), TEXT("Cut"), TEXT("Middle") })
+	{
+		FDnaChapterCheckpoint& Point = Saved.Checkpoints.AddDefaulted_GetRef();
+		Point.Chapter = Chapter;
+	}
+	TestTrue(TEXT("the save loads"), World.Ledger().ApplySnapshot(Saved));
+	TestEqual(TEXT("one checkpoint per chapter, the cut one gone"), World.Ledger().GetChapterCheckpoints(), TArray<FName>{ TEXT("Opening"), TEXT("Middle") });
+	TestTrue(TEXT("the merged chapter can be chosen"), World.Ledger().SelectChapter(TEXT("Opening")));
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRegressionFutureSnapshot, "DreamNarrative.Regression.Persistence.FutureSnapshotRefused", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FDnaRegressionFutureSnapshot::RunTest(const FString& Parameters)
+{
+	FDnaTestWorld World(*this);
+	if (!World.CompileText(TEXT("fact Count: int\nfact Seen: bool profile\nchapter First\nchapter Second after First\n"))) { return false; }
+	World.Ledger().SetChapter(TEXT("First"));
+	World.Ledger().SetFact(TEXT("Count"), FDnaValue::FromInt(3), EDnaWriteSource::Narrative);
+	FDnaLedgerSnapshot Future = World.Ledger().MakeSnapshot();
+	Future.SchemaVersion += 1;
+	Future.Chapter = TEXT("Second");
+	Future.Facts.Reset();
+	AddExpectedError(TEXT("newer than this build reads"), EAutomationExpectedErrorFlags::Contains, 2);
+	TestFalse(TEXT("a newer save is refused"), World.Ledger().ApplySnapshot(Future));
+	TestEqual(TEXT("nothing of it applied: the chapter"), World.Ledger().GetChapter(), FName(TEXT("First")));
+	TestEqual(TEXT("nothing of it applied: the facts"), World.Ledger().GetFactAsInt(TEXT("Count")), 3);
+	FDnaProfileSnapshot Profile = World.Ledger().MakeProfileSnapshot();
+	Profile.SchemaVersion += 1;
+	TestFalse(TEXT("a newer profile is refused"), World.Ledger().ApplyProfileSnapshot(Profile));
+	return !HasAnyErrors();
+}
+
 #endif

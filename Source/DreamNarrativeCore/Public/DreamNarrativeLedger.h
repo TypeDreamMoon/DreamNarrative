@@ -311,9 +311,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Narrative|Save")
 	FDnaLedgerSnapshot MakeSnapshot() const;
 
-	/** Restores a snapshot, resolving renamed facts through the redirects the scripts declared. */
+	/**
+	 * Restores a snapshot, resolving renamed facts through the redirects the scripts declared. An older
+	 * layout is brought up first; one newer than this build reads is refused whole (false), nothing applied.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Save")
-	void ApplySnapshot(const FDnaLedgerSnapshot& Snapshot);
+	bool ApplySnapshot(const FDnaLedgerSnapshot& Snapshot);
 
 	/** The save slot's layer back to defaults: every fact but the profile's, chapter to none, bookkeeping and checkpoints cleared, timers stopped. */
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Save")
@@ -323,9 +326,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Narrative|Save")
 	FDnaProfileSnapshot MakeProfileSnapshot() const;
 
-	/** Puts the profile facts back (those it does not carry to their defaults); the save slot's layer is left alone. */
+	/**
+	 * Puts the profile facts back (those it does not carry to their defaults); the save slot's layer is
+	 * left alone. A profile newer than this build reads is refused whole (false).
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Narrative|Save")
-	void ApplyProfileSnapshot(const FDnaProfileSnapshot& Snapshot);
+	bool ApplyProfileSnapshot(const FDnaProfileSnapshot& Snapshot);
 
 	// ---------------------------------------------------------------- timers
 
