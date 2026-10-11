@@ -20,6 +20,7 @@
 #include "DreamNarrativeStageModule.h"
 #include "DreamNarrativeStageSubsystem.h"
 #include "DreamNarrativeStageWatchdog.h"
+#include "Engine/AssetManager.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -89,6 +90,7 @@ uint32 UDreamNarrativeStageDirector::Play(const FDnaStageData& InStage, float Li
 	bEnding = false;
 	if (++PlayNumber == 0) { PlayNumber = 1; }
 	const uint32 ThisPlay = PlayNumber;
+	PreloadAssets();
 
 	APawn* Pawn = GetPawn();
 	StartPawn = Pawn;
@@ -205,6 +207,11 @@ void UDreamNarrativeStageDirector::End(EDnaStageEnd Reason)
 	}
 	bPlaying = false;
 	bEnding = false;
+	if (Preload.IsValid())
+	{
+		Preload->ReleaseHandle();
+		Preload.Reset();
+	}
 	const FName Name = Stage.Name;
 	const uint32 Number = PlayNumber;
 	const bool bOnLine = Stage.bLineRelative;
@@ -844,6 +851,40 @@ APlayerController* UDreamNarrativeStageDirector::GetController() const
 	}
 	const UWorld* World = GetWorld();
 	return World ? World->GetFirstPlayerController() : nullptr;
+}
+
+void UDreamNarrativeStageDirector::PreloadAssets()
+{
+	if (Preload.IsValid())
+	{
+		Preload->ReleaseHandle();
+		Preload.Reset();
+	}
+	// The compiler wrote a path for every asset it found; those load now, while the stage's first
+	// moments play, rather than all at once at their cue.
+	TArray<FSoftObjectPath> Assets;
+	for (const FDnaStageEntry& Entry : Stage.Entries)
+	{
+		const bool bLoads = Entry.Verb == EDnaStageVerb::Montage || Entry.Verb == EDnaStageVerb::Spawn || Entry.Verb == EDnaStageVerb::PlaySequence;
+		if (!bLoads || !Entry.Asset.StartsWith(TEXT("/")))
+		{
+			continue;
+		}
+		FString Path = Entry.Asset;
+		if (!Path.Contains(TEXT(".")))
+		{
+			Path += TEXT(".") + FPackageName::GetShortName(Path);
+		}
+		const FSoftObjectPath Asset(Path);
+		if (!Asset.ResolveObject())
+		{
+			Assets.AddUnique(Asset);
+		}
+	}
+	if (Assets.Num() > 0 && UAssetManager::IsInitialized())
+	{
+		Preload = UAssetManager::GetStreamableManager().RequestAsyncLoad(Assets, FStreamableDelegate(), FStreamableManager::AsyncLoadHighPriority);
+	}
 }
 
 UDreamNarrativeStageArbiter* UDreamNarrativeStageDirector::GetArbiter() const

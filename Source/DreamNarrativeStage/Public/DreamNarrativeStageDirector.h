@@ -23,6 +23,7 @@
 
 class UDreamNarrativeLedger;
 class UDreamNarrativeStageArbiter;
+struct FStreamableHandle;
 class ACameraActor;
 class AHUD;
 class ALevelSequenceActor;
@@ -175,6 +176,8 @@ private:
 
 	APlayerController* GetController() const;
 	APawn* GetPawn() const;
+	/** Starts loading the assets the stage plays. */
+	void PreloadAssets();
 	/** What the world's stages share goes through it; null in a world without one. */
 	UDreamNarrativeStageArbiter* GetArbiter() const;
 	/** Where the view goes back to: the stage beneath this one, or the game. */
@@ -200,6 +203,8 @@ private:
 	uint64 AdvanceCount = 0;
 
 	TMap<FName, TWeakObjectPtr<AActor>> Roles;
+	/** The assets of the stage playing, loading or loaded; let go when it ends. */
+	TSharedPtr<FStreamableHandle> Preload;
 	TArray<ESlot> Touched;
 
 	// camera
