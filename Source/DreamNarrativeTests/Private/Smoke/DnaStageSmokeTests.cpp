@@ -332,6 +332,56 @@ bool FDnaStageSmokeCutShortTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaStageSmokeOverlapTest, "DreamNarrative.Smoke.InProcess.OverlappingStagesPutTheWorldBack", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+
+bool FDnaStageSmokeOverlapTest::RunTest(const FString& Parameters)
+{
+	using namespace UE::DreamNarrative::Tests::StageSmoke;
+
+	FStageGame Session(*this);
+	const FDnaStageData* First = Session.Stage(TEXT("叠演甲"));
+	const FDnaStageData* Second = Session.Stage(TEXT("叠演乙"));
+	if (!TestTrue(TEXT("the game is rigged"), Session.IsValid()) || !TestNotNull(TEXT("the first stage is loaded"), First) || !TestNotNull(TEXT("the second stage is loaded"), Second))
+	{
+		return false;
+	}
+	// A story stage on the player's controller, and an ability's on the pawn: one HUD, one view, one world.
+	UDreamNarrativeStageDirector* OnController = UDreamNarrativeStageDirector::FindOrAddDirector(Session.Rig.Controller);
+	UDreamNarrativeStageDirector* OnPawn = UDreamNarrativeStageDirector::FindOrAddDirector(Session.Rig.Pawn);
+	OnController->bManualAdvance = true;
+	OnPawn->bManualAdvance = true;
+	auto ShowsLiveCamera = [&Session]() { return IsValid(Cast<ACameraActor>(Session.Rig.Controller->GetViewTarget())); };
+
+	const FWorldState Before = Read(Session.World(), Session.Rig);
+	for (const bool bOlderEndsFirst : { true, false })
+	{
+		const TCHAR* Order = bOlderEndsFirst ? TEXT("older ends first") : TEXT("newer ends first");
+		TestTrue(FString::Printf(TEXT("%s: the older plays"), Order), OnController->Play(*First) != 0);
+		AdvanceTo(*OnController, 0.5f);
+		TestTrue(FString::Printf(TEXT("%s: the newer plays"), Order), OnPawn->Play(*Second) != 0);
+		AdvanceTo(*OnPawn, 0.5f);
+		const FWorldState Both = Read(Session.World(), Session.Rig);
+		TestFalse(FString::Printf(TEXT("%s: both hide the HUD"), Order), Both.bHudShown);
+		TestTrue(FString::Printf(TEXT("%s: a stage camera shows"), Order), ShowsLiveCamera());
+		TestEqual(FString::Printf(TEXT("%s: both scale the time"), Order), Both.Dilation, Before.Dilation * 0.1f, 1e-3f);
+		TestTrue(FString::Printf(TEXT("%s: the lights are down"), Order), Both.Sun < Before.Sun && Both.Sky < Before.Sky);
+
+		UDreamNarrativeStageDirector* EndsFirst = bOlderEndsFirst ? OnController : OnPawn;
+		UDreamNarrativeStageDirector* EndsLast = bOlderEndsFirst ? OnPawn : OnController;
+		EndsFirst->Stop();
+		const FWorldState One = Read(Session.World(), Session.Rig);
+		TestFalse(FString::Printf(TEXT("%s: the HUD stays hidden while a stage still hides it"), Order), One.bHudShown);
+		TestTrue(FString::Printf(TEXT("%s: the view stays on the stage still playing"), Order), ShowsLiveCamera());
+		TestEqual(FString::Printf(TEXT("%s: one stage camera is left"), Order), One.Cameras, Before.Cameras + 1);
+		TestTrue(FString::Printf(TEXT("%s: the lights stay down while a stage still dims them"), Order), One.Sun < Before.Sun && One.Sky < Before.Sky);
+		TestTrue(FString::Printf(TEXT("%s: the lights come part way back"), Order), One.Sun > Both.Sun);
+		TestEqual(FString::Printf(TEXT("%s: the time keeps the other stage's scale"), Order), One.Dilation, Before.Dilation * (bOlderEndsFirst ? 0.2f : 0.5f), 1e-3f);
+		EndsLast->Stop();
+		Session.Same(*FString::Printf(TEXT("%s: and the world is as it was"), Order), Before);
+	}
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaStageSmokeDeathTest, "DreamNarrative.Smoke.InProcess.StageEndsWhenThePlayerDies", EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::EngineFilter)
 
 bool FDnaStageSmokeDeathTest::RunTest(const FString& Parameters)

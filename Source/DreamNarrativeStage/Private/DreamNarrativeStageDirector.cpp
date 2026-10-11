@@ -16,6 +16,7 @@
 #include "Components/SkyLightComponent.h"
 #include "Components/SpotLightComponent.h"
 #include "DreamNarrativeSettings.h"
+#include "DreamNarrativeStageArbiter.h"
 #include "DreamNarrativeStageModule.h"
 #include "DreamNarrativeStageSubsystem.h"
 #include "DreamNarrativeStageWatchdog.h"
@@ -48,18 +49,6 @@ namespace
 	void SetView(APlayerController& Controller, AActor* Target, float Blend)
 	{
 		Controller.SetViewTargetWithBlend(Target, Blend, VTBlend_Cubic, 0.f, false);
-	}
-
-	void SetLightIntensity(ULightComponentBase* Light, float Intensity)
-	{
-		if (ULightComponent* Local = Cast<ULightComponent>(Light))
-		{
-			Local->SetIntensity(Intensity);
-		}
-		else if (USkyLightComponent* Sky = Cast<USkyLightComponent>(Light))
-		{
-			Sky->SetIntensity(Intensity);
-		}
 	}
 }
 
@@ -251,17 +240,15 @@ void UDreamNarrativeStageDirector::ApplyPose(const FDnaStagePose& NewPose)
 		{
 			Touch(ESlot::Hud);
 			const APlayerController* Controller = GetController();
-			AHUD* Shown = Controller ? Controller->GetHUD() : nullptr;
-			Hud = Shown;
-			if (Shown)
+			Hud = Controller ? Controller->GetHUD() : nullptr;
+			if (UDreamNarrativeStageArbiter* Arbiter = GetArbiter())
 			{
-				bHudWasShown = Shown->bShowHUD;
-				Shown->bShowHUD = false;
+				Arbiter->HideHud(this, Hud.Get());
 			}
 		}
-		else if (AHUD* Shown = Hud.Get())
+		else if (UDreamNarrativeStageArbiter* Arbiter = GetArbiter())
 		{
-			Shown->bShowHUD = bHudWasShown;
+			Arbiter->ReleaseHud(this);
 		}
 		bHudHidden = NewPose.bHudHidden;
 		OnHudVisibility.Broadcast(!bHudHidden);
@@ -305,7 +292,6 @@ void UDreamNarrativeStageDirector::ApplyCamera(const FDnaStageCameraPose& Camera
 		}
 		Touch(ESlot::Camera);
 		CameraController = Controller;
-		OriginalViewTarget = Controller->GetViewTarget();
 		GameView = Controller->PlayerCameraManager->GetCameraCacheView();
 		if (GameView.FOV <= 0.f)
 		{
@@ -320,6 +306,10 @@ void UDreamNarrativeStageDirector::ApplyCamera(const FDnaStageCameraPose& Camera
 		{
 			Spawned->GetCameraComponent()->SetConstraintAspectRatio(false);
 			Spawned->GetCameraComponent()->SetFieldOfView(GameView.FOV);
+			if (UDreamNarrativeStageArbiter* Arbiter = GetArbiter())
+			{
+				Arbiter->TakeView(this, Controller, Spawned);
+			}
 			SetView(*Controller, Spawned, Camera.BlendIn);
 		}
 		bViewTaken = true;
@@ -333,12 +323,13 @@ void UDreamNarrativeStageDirector::ApplyCamera(const FDnaStageCameraPose& Camera
 		Spawned->GetCameraComponent()->SetFieldOfView(View.FOV);
 	}
 
-	if (Controller)
+	// A stage that took the view after this one shows over it: this one leaves the view alone.
+	const UDreamNarrativeStageArbiter* Arbiter = GetArbiter();
+	if (Controller && (!Arbiter || Arbiter->IsShowingView(this)))
 	{
 		if (Camera.bReturning && !bViewReturning)
 		{
-			AActor* Back = OriginalViewTarget.IsValid() ? OriginalViewTarget.Get() : (Controller->GetPawn() ? static_cast<AActor*>(Controller->GetPawn()) : Controller);
-			SetView(*Controller, Back, Camera.BlendOut);
+			SetView(*Controller, GetViewBack(*Controller), Camera.BlendOut);
 			bViewReturning = true;
 		}
 		else if (!Camera.bReturning && bViewReturning && StageCamera.IsValid())
@@ -354,31 +345,10 @@ void UDreamNarrativeStageDirector::ApplyLight(const FDnaStagePose& NewPose)
 {
 	if (!FMath::IsNearlyEqual(NewPose.LightShare, AppliedLightShare))
 	{
-		if (!Touched.Contains(ESlot::Light))
+		if (UDreamNarrativeStageArbiter* Arbiter = GetArbiter())
 		{
 			Touch(ESlot::Light);
-			DimmedLights.Reset();
-			if (UWorld* World = GetWorld())
-			{
-				for (TActorIterator<AActor> It(World); It; ++It)
-				{
-					TInlineComponentArray<ULightComponentBase*> Lights(*It);
-					for (ULightComponentBase* Light : Lights)
-					{
-						if (Light && (Light->IsA<UDirectionalLightComponent>() || Light->IsA<USkyLightComponent>()))
-						{
-							DimmedLights.Emplace(Light, Light->Intensity);
-						}
-					}
-				}
-			}
-		}
-		for (const TPair<TWeakObjectPtr<ULightComponentBase>, float>& Light : DimmedLights)
-		{
-			if (ULightComponentBase* Component = Light.Key.Get())
-			{
-				SetLightIntensity(Component, Light.Value * NewPose.LightShare);
-			}
+			Arbiter->SetLightShare(this, NewPose.LightShare);
 		}
 		AppliedLightShare = NewPose.LightShare;
 	}
@@ -537,13 +507,10 @@ void UDreamNarrativeStageDirector::ApplyGame(const FDnaStagePose& NewPose)
 
 	if (!FMath::IsNearlyEqual(NewPose.TimeDilation, AppliedDilation))
 	{
-		UWorld* World = GetWorld();
-		UDreamNarrativeStageWatchdog* Watchdog = World ? World->GetSubsystem<UDreamNarrativeStageWatchdog>() : nullptr;
-		if (Watchdog)
+		if (UDreamNarrativeStageArbiter* Arbiter = GetArbiter())
 		{
 			Touch(ESlot::Time);
-			DilatedWorld = World->GetWorldSettings();
-			Watchdog->SetTimeDilation(this, NewPose.TimeDilation);
+			Arbiter->SetTimeDilation(this, NewPose.TimeDilation);
 			AppliedDilation = NewPose.TimeDilation;
 		}
 	}
@@ -730,10 +697,14 @@ void UDreamNarrativeStageDirector::UnwindSlot(ESlot Slot)
 		if (bViewTaken)
 		{
 			APlayerController* Controller = CameraController.Get();
-			if (IsValid(Controller) && !bTearingDown)
+			if (UDreamNarrativeStageArbiter* Arbiter = GetArbiter())
 			{
-				AActor* Back = OriginalViewTarget.IsValid() ? OriginalViewTarget.Get() : (Controller->GetPawn() ? static_cast<AActor*>(Controller->GetPawn()) : Controller);
-				SetView(*Controller, Back, 0.f);
+				// The view goes beneath only when this stage was the one on screen.
+				Arbiter->ReleaseView(this, IsValid(Controller) && !bTearingDown);
+			}
+			else if (IsValid(Controller) && !bTearingDown)
+			{
+				SetView(*Controller, GetViewBack(*Controller), 0.f);
 			}
 		}
 		if (ACameraActor* Spawned = StageCamera.Get())
@@ -745,14 +716,10 @@ void UDreamNarrativeStageDirector::UnwindSlot(ESlot Slot)
 		bViewReturning = false;
 		break;
 	case ESlot::Light:
-		for (const TPair<TWeakObjectPtr<ULightComponentBase>, float>& Light : DimmedLights)
+		if (UDreamNarrativeStageArbiter* Arbiter = GetArbiter())
 		{
-			if (ULightComponentBase* Component = Light.Key.Get())
-			{
-				SetLightIntensity(Component, Light.Value);
-			}
+			Arbiter->ReleaseLightShare(this);
 		}
-		DimmedLights.Reset();
 		AppliedLightShare = 1.f;
 		break;
 	case ESlot::KeyLight:
@@ -779,9 +746,12 @@ void UDreamNarrativeStageDirector::UnwindSlot(ESlot Slot)
 		RangeEffects.Reset();
 		break;
 	case ESlot::Hud:
+		if (UDreamNarrativeStageArbiter* Arbiter = GetArbiter())
+		{
+			Arbiter->ReleaseHud(this);
+		}
 		if (bHudHidden)
 		{
-			if (AHUD* Shown = Hud.Get()) { Shown->bShowHUD = bHudWasShown; }
 			bHudHidden = false;
 			OnHudVisibility.Broadcast(true);
 		}
@@ -819,14 +789,10 @@ void UDreamNarrativeStageDirector::UnwindSlot(ESlot Slot)
 		InputController.Reset();
 		break;
 	case ESlot::Time:
-		if (AWorldSettings* Settings = DilatedWorld.Get())
+		if (UDreamNarrativeStageArbiter* Arbiter = GetArbiter())
 		{
-			if (UDreamNarrativeStageWatchdog* Watchdog = Settings->GetWorld()->GetSubsystem<UDreamNarrativeStageWatchdog>())
-			{
-				Watchdog->ReleaseTimeDilation(this);
-			}
+			Arbiter->ReleaseTimeDilation(this);
 		}
-		DilatedWorld.Reset();
 		AppliedDilation = 1.f;
 		break;
 	case ESlot::Damage:
@@ -871,6 +837,22 @@ APlayerController* UDreamNarrativeStageDirector::GetController() const
 	}
 	const UWorld* World = GetWorld();
 	return World ? World->GetFirstPlayerController() : nullptr;
+}
+
+UDreamNarrativeStageArbiter* UDreamNarrativeStageDirector::GetArbiter() const
+{
+	const UWorld* World = GetWorld();
+	return World ? World->GetSubsystem<UDreamNarrativeStageArbiter>() : nullptr;
+}
+
+AActor* UDreamNarrativeStageDirector::GetViewBack(APlayerController& Controller) const
+{
+	const UDreamNarrativeStageArbiter* Arbiter = GetArbiter();
+	if (AActor* Beneath = Arbiter ? Arbiter->GetViewBeneath(this) : nullptr)
+	{
+		return Beneath;
+	}
+	return Controller.GetPawn() ? static_cast<AActor*>(Controller.GetPawn()) : &Controller;
 }
 
 APawn* UDreamNarrativeStageDirector::GetPawn() const

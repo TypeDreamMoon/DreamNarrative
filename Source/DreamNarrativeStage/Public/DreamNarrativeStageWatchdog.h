@@ -26,10 +26,6 @@ public:
 	void Watch(UDreamNarrativeStageDirector* Director);
 	void Unwatch(UDreamNarrativeStageDirector* Director);
 
-	/** Composes each playing director's time scale over the world's original scale. */
-	void SetTimeDilation(UDreamNarrativeStageDirector* Director, float Scale);
-	void ReleaseTimeDilation(UDreamNarrativeStageDirector* Director);
-
 	/** The directors playing in this world now. */
 	TArray<UDreamNarrativeStageDirector*> GetPlaying() const;
 
@@ -43,10 +39,6 @@ protected:
 
 private:
 	void HandleWorldTearingDown(UWorld* World);
-	void UpdateTimeDilation();
-	TMap<TWeakObjectPtr<UDreamNarrativeStageDirector>, float> TimeScales;
-	float OriginalTimeDilation = 1.f;
-	bool bHasOriginalTimeDilation = false;
 
 	TArray<TWeakObjectPtr<UDreamNarrativeStageDirector>> Playing;
 	/** Per director: its advance count when last seen to move, and the world's seconds it has stood still since. */

@@ -2,6 +2,7 @@
 
 #include "DreamNarrativeStageWatchdog.h"
 #include "DreamNarrativeSettings.h"
+#include "DreamNarrativeStageArbiter.h"
 #include "DreamNarrativeStageDirector.h"
 #include "DreamNarrativeStageModule.h"
 #include "Engine/World.h"
@@ -34,44 +35,7 @@ void UDreamNarrativeStageWatchdog::Watch(UDreamNarrativeStageDirector* Director)
 
 void UDreamNarrativeStageWatchdog::Unwatch(UDreamNarrativeStageDirector* Director)
 {
-	ReleaseTimeDilation(Director);
 	Playing.RemoveAll([Director](const TWeakObjectPtr<UDreamNarrativeStageDirector>& Each) { return !Each.IsValid() || Each.Get() == Director; });
-}
-
-void UDreamNarrativeStageWatchdog::SetTimeDilation(UDreamNarrativeStageDirector* Director, float Scale)
-{
-	if (!Director || !GetWorld()) { return; }
-	if (FMath::IsNearlyEqual(Scale, 1.f))
-	{
-		ReleaseTimeDilation(Director);
-		return;
-	}
-	if (!bHasOriginalTimeDilation)
-	{
-		OriginalTimeDilation = GetWorld()->GetWorldSettings()->TimeDilation;
-		bHasOriginalTimeDilation = true;
-	}
-	TimeScales.Add(Director, Scale);
-	UpdateTimeDilation();
-}
-
-void UDreamNarrativeStageWatchdog::ReleaseTimeDilation(UDreamNarrativeStageDirector* Director)
-{
-	TimeScales.Remove(Director);
-	UpdateTimeDilation();
-}
-
-void UDreamNarrativeStageWatchdog::UpdateTimeDilation()
-{
-	if (!bHasOriginalTimeDilation) { return; }
-	float Combined = OriginalTimeDilation;
-	for (auto It = TimeScales.CreateIterator(); It; ++It)
-	{
-		if (!It.Key().IsValid()) { It.RemoveCurrent(); }
-		else { Combined *= It.Value(); }
-	}
-	if (UWorld* World = GetWorld()) { World->GetWorldSettings()->SetTimeDilation(Combined); }
-	if (TimeScales.IsEmpty()) { bHasOriginalTimeDilation = false; }
 }
 
 TArray<UDreamNarrativeStageDirector*> UDreamNarrativeStageWatchdog::GetPlaying() const
@@ -99,8 +63,6 @@ void UDreamNarrativeStageWatchdog::HandleWorldTearingDown(UWorld* World)
 		Director->Stop(EDnaStageEnd::LevelChange);
 	}
 	Playing.Reset();
-	TimeScales.Reset();
-	UpdateTimeDilation();
 }
 
 void UDreamNarrativeStageWatchdog::Tick(float DeltaTime)
@@ -110,15 +72,11 @@ void UDreamNarrativeStageWatchdog::Tick(float DeltaTime)
 	{
 		return;
 	}
-	// A director gone without letting go takes its scale with it. Otherwise the world's time is left
-	// alone between changes: the game may set it too.
-	for (const TPair<TWeakObjectPtr<UDreamNarrativeStageDirector>, float>& Pair : TimeScales)
+	// A director gone without letting go: what it held goes back. Otherwise what the stages share is
+	// left alone between their changes -- the game may set it too.
+	if (UDreamNarrativeStageArbiter* Arbiter = World->GetSubsystem<UDreamNarrativeStageArbiter>())
 	{
-		if (!Pair.Key.IsValid())
-		{
-			UpdateTimeDilation();
-			break;
-		}
+		Arbiter->PurgeStale();
 	}
 	const float Grace = UDreamNarrativeSettings::Get()->StageWatchdogSeconds;
 	for (UDreamNarrativeStageDirector* Director : GetPlaying())

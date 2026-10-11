@@ -22,6 +22,7 @@
 #include "DreamNarrativeStageDirector.generated.h"
 
 class UDreamNarrativeLedger;
+class UDreamNarrativeStageArbiter;
 class ACameraActor;
 class AHUD;
 class ALevelSequenceActor;
@@ -168,6 +169,10 @@ private:
 
 	APlayerController* GetController() const;
 	APawn* GetPawn() const;
+	/** What the world's stages share goes through it; null in a world without one. */
+	UDreamNarrativeStageArbiter* GetArbiter() const;
+	/** Where the view goes back to: the stage beneath this one, or the game. */
+	AActor* GetViewBack(APlayerController& Controller) const;
 	template <typename T> T* ResolveAsset(const FString& NameOrPath) const;
 	/** Logs a cue whose asset was not found; true when it was. */
 	bool WarnIfMissing(const FDnaStageEntry& Entry, const UObject* Asset, const TCHAR* What) const;
@@ -192,14 +197,12 @@ private:
 
 	// camera
 	TWeakObjectPtr<APlayerController> CameraController;
-	TWeakObjectPtr<AActor> OriginalViewTarget;
 	TWeakObjectPtr<ACameraActor> StageCamera;
 	FMinimalViewInfo GameView;
 	bool bViewTaken = false;
 	bool bViewReturning = false;
 
 	// light
-	TArray<TPair<TWeakObjectPtr<ULightComponentBase>, float>> DimmedLights;
 	TMap<FName, TWeakObjectPtr<ULightComponent>> KeyLights;
 	float AppliedLightShare = 1.f;
 
@@ -216,14 +219,12 @@ private:
 
 	// ui
 	TWeakObjectPtr<AHUD> Hud;
-	bool bHudWasShown = true;
 	bool bHudHidden = false;
 	FText ShownText;
 
 	// game
 	TWeakObjectPtr<APlayerController> InputController;
 	bool bInputLocked = false;
-	TWeakObjectPtr<AWorldSettings> DilatedWorld;
 	float AppliedDilation = 1.f;
 	bool bDamageWindow = false;
 

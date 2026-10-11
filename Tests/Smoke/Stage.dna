@@ -40,6 +40,40 @@ stage 推近
   camera
     0%       push 30cm over 100%
 
+// 两个导演同时演、错开结束:时间、太阳和天光、HUD、镜头都按各自的持有者合起来,最后一个结束时才全部还原。
+
+stage 叠演甲
+  duration 2.0s
+  shots
+    远景     local (400, 0, 120) of 主角 look 主角 fov 60
+  camera
+    0.0s     blend -> 远景 0.1s
+  light
+    0.0s     ramp dark 0.1s
+  ui
+    0.0s..2.0s   hide hud
+  game
+    0.0s..2.0s   hitstop 0.5x
+  restore
+    camera   blend back 0.1s
+    light    restore 0.1s
+
+stage 叠演乙
+  duration 2.0s
+  shots
+    近景     local (150, 0, 80) of 主角 look 主角 fov 40
+  camera
+    0.0s     blend -> 近景 0.1s
+  light
+    0.0s     ramp dark 0.1s
+  ui
+    0.0s..2.0s   hide hud
+  game
+    0.0s..2.0s   hitstop 0.2x
+  restore
+    camera   blend back 0.1s
+    light    restore 0.1s
+
 dialogue 甲_过场 for 甲
   甲: 看好了。
   play 过场
