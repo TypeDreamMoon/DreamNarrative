@@ -21,6 +21,7 @@
 #include "DreamNarrativeStageSubsystem.h"
 #include "DreamNarrativeStageWatchdog.h"
 #include "Engine/AssetManager.h"
+#include "Sound/SoundBase.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -42,7 +43,7 @@ namespace
 	const TCHAR* SlotName(uint8 Slot)
 	{
 		static const TCHAR* Names[] = { TEXT("camera"), TEXT("light"), TEXT("key light"), TEXT("mask"), TEXT("vfx"), TEXT("hud"), TEXT("text"),
-			TEXT("anim"), TEXT("input"), TEXT("time"), TEXT("damage window"), TEXT("sequence") };
+			TEXT("anim"), TEXT("input"), TEXT("time"), TEXT("damage window"), TEXT("sequence"), TEXT("sound"), TEXT("music") };
 		return Slot < UE_ARRAY_COUNT(Names) ? Names[Slot] : TEXT("?");
 	}
 
@@ -557,6 +558,22 @@ void UDreamNarrativeStageDirector::FireCuesUpTo(float Unit)
 			}
 		}
 	}
+	// Sounds a range holds stop at its end, and music that lasts a range goes back.
+	for (auto It = RangeSounds.CreateIterator(); It; ++It)
+	{
+		if (Stage.Entries.IsValidIndex(It.Key()) && Stage.Entries[It.Key()].End <= Unit)
+		{
+			const int32 Handle = It.Value();
+			It.RemoveCurrent();
+			OnSoundStopped.Broadcast(Handle);
+			if (!bPlaying || PlayNumber != ThisPlay) { return; }
+		}
+	}
+	if (Stage.Entries.IsValidIndex(RangeMusic) && Stage.Entries[RangeMusic].End <= Unit)
+	{
+		RangeMusic = INDEX_NONE;
+		if (UDreamNarrativeStageArbiter* Arbiter = GetArbiter()) { Arbiter->ReleaseMusic(this); }
+	}
 	// Effects a range spawned go at its end.
 	for (auto It = RangeEffects.CreateIterator(); It; ++It)
 	{
@@ -674,9 +691,49 @@ void UDreamNarrativeStageDirector::FireCue(int32 EntryIndex)
 		}
 		break;
 	}
+	case EDnaStageVerb::Sound:
+	{
+		FDnaStageSound Cue;
+		Cue.Handle = ++NextSoundHandle;
+		Cue.Sound = SoundOf(Entry);
+		Cue.Actor = Entry.Target.IsNone() ? nullptr : ResolveActor(Entry.Target);
+		Cue.Volume = Entry.Amount;
+		Cue.bHeld = Entry.bRange;
+		if (Cue.Sound.IsNull()) { break; }
+		if (Cue.bHeld)
+		{
+			Touch(ESlot::Sound);
+			RangeSounds.Add(EntryIndex, Cue.Handle);
+		}
+		OnSound.Broadcast(Cue);
+		break;
+	}
+	case EDnaStageVerb::Music:
+	{
+		const TSoftObjectPtr<USoundBase> Music = SoundOf(Entry);
+		UDreamNarrativeStageArbiter* Arbiter = GetArbiter();
+		if (Music.IsNull() || !Arbiter) { break; }
+		Touch(ESlot::Music);
+		RangeMusic = Entry.bRange ? EntryIndex : INDEX_NONE;
+		Arbiter->PushMusic(this, Music, Entry.Over * UnitSeconds);
+		break;
+	}
 	default:
 		break;
 	}
+}
+
+TSoftObjectPtr<USoundBase> UDreamNarrativeStageDirector::SoundOf(const FDnaStageEntry& Entry) const
+{
+	if (Entry.Asset.StartsWith(TEXT("/")))
+	{
+		FString Path = Entry.Asset;
+		if (!Path.Contains(TEXT("."))) { Path += TEXT(".") + FPackageName::GetShortName(Path); }
+		return TSoftObjectPtr<USoundBase>(FSoftObjectPath(Path));
+	}
+	USoundBase* Sound = ResolveAsset<USoundBase>(Entry.Asset);
+	WarnIfMissing(Entry, Sound, TEXT("sound"));
+	return TSoftObjectPtr<USoundBase>(Sound);
 }
 
 bool UDreamNarrativeStageDirector::WarnIfMissing(const FDnaStageEntry& Entry, const UObject* Asset, const TCHAR* What) const
@@ -816,6 +873,18 @@ void UDreamNarrativeStageDirector::UnwindSlot(ESlot Slot)
 			OnDamageWindow.Broadcast(false);
 		}
 		break;
+	case ESlot::Sound:
+	{
+		TArray<int32> Held;
+		RangeSounds.GenerateValueArray(Held);
+		RangeSounds.Reset();
+		for (const int32 Handle : Held) { OnSoundStopped.Broadcast(Handle); }
+		break;
+	}
+	case ESlot::Music:
+		if (UDreamNarrativeStageArbiter* Arbiter = GetArbiter()) { Arbiter->ReleaseMusic(this); }
+		RangeMusic = INDEX_NONE;
+		break;
 	case ESlot::Sequence:
 		for (const TWeakObjectPtr<ALevelSequenceActor>& Weak : Sequences)
 		{
@@ -865,7 +934,8 @@ void UDreamNarrativeStageDirector::PreloadAssets()
 	TArray<FSoftObjectPath> Assets;
 	for (const FDnaStageEntry& Entry : Stage.Entries)
 	{
-		const bool bLoads = Entry.Verb == EDnaStageVerb::Montage || Entry.Verb == EDnaStageVerb::Spawn || Entry.Verb == EDnaStageVerb::PlaySequence;
+		const bool bLoads = Entry.Verb == EDnaStageVerb::Montage || Entry.Verb == EDnaStageVerb::Spawn || Entry.Verb == EDnaStageVerb::PlaySequence
+			|| Entry.Verb == EDnaStageVerb::Sound || Entry.Verb == EDnaStageVerb::Music;
 		if (!bLoads || !Entry.Asset.StartsWith(TEXT("/")))
 		{
 			continue;

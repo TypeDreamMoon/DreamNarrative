@@ -22,6 +22,7 @@ enum class EDnaStageTrack : uint8
 	Anim,
 	Game,
 	Sequence,
+	Audio,
 };
 
 UENUM(BlueprintType)
@@ -95,6 +96,12 @@ enum class EDnaStageVerb : uint8
 	// sequence
 	/** `play 关卡序列`. */
 	PlaySequence,
+
+	// audio (the game plays them; the director says when)
+	/** `sound 资源 [at 角色] [volume n]`: once at its time, or held through its range. */
+	Sound,
+	/** `music 资源 [fade 时长]`: the music changes; when the stage lets go it goes back. */
+	Music,
 };
 
 /**

@@ -56,7 +56,7 @@ namespace UE::DreamNarrative::Lang
 		bool IsTrackName(const FString& Word)
 		{
 			return Word == TEXT("camera") || Word == TEXT("light") || Word == TEXT("mask") || Word == TEXT("vfx")
-				|| Word == TEXT("ui") || Word == TEXT("anim") || Word == TEXT("game") || Word == TEXT("sequence");
+				|| Word == TEXT("ui") || Word == TEXT("anim") || Word == TEXT("game") || Word == TEXT("sequence") || Word == TEXT("audio");
 		}
 
 		bool IsDeclarationWord(const FString& Word)

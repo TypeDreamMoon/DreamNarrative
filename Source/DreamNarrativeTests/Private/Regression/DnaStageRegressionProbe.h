@@ -17,4 +17,29 @@ public:
 
 	UFUNCTION()
 	void StopWhenHidden(bool bVisible) { if (!bVisible && Director) { Director->Stop(); } }
+
+	/** What the stage said of its sounds and music, in order: `sound SFX_Hit 0.8`, `stop`, `music BGM_A 1.0`, `music game 0.5`. */
+	TArray<FString> Heard;
+
+	UFUNCTION()
+	void HearSound(const FDnaStageSound& Sound)
+	{
+		Heard.Add(FString::Printf(TEXT("sound %s %.1f%s"), *Sound.Sound.GetAssetName(), Sound.Volume, Sound.bHeld ? TEXT(" held") : TEXT("")));
+	}
+
+	UFUNCTION()
+	void HearSoundStopped(int32 Handle) { Heard.Add(TEXT("stop")); }
+
+	UFUNCTION()
+	void HearMusic(TSoftObjectPtr<USoundBase> Music, float FadeSeconds)
+	{
+		Heard.Add(FString::Printf(TEXT("music %s %.1f"), Music.IsNull() ? TEXT("game") : *Music.GetAssetName(), FadeSeconds));
+	}
+
+	FString Take()
+	{
+		const FString Out = FString::Join(Heard, TEXT(", "));
+		Heard.Reset();
+		return Out;
+	}
 };

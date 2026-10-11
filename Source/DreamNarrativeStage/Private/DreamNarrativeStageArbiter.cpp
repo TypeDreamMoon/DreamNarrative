@@ -9,6 +9,7 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/WorldSettings.h"
+#include "Sound/SoundBase.h"
 
 namespace
 {
@@ -44,6 +45,7 @@ void UDreamNarrativeStageArbiter::Deinitialize()
 	}
 	Huds.Reset();
 	Views.Reset();
+	MusicHolds.Reset();
 	Super::Deinitialize();
 }
 
@@ -294,11 +296,53 @@ void UDreamNarrativeStageArbiter::ReleaseView(UDreamNarrativeStageDirector* Dire
 	}
 }
 
+// ---------------------------------------------------------------- the music
+
+void UDreamNarrativeStageArbiter::PushMusic(UDreamNarrativeStageDirector* Director, const TSoftObjectPtr<USoundBase>& InMusic, float FadeSeconds)
+{
+	if (!Director || InMusic.IsNull())
+	{
+		return;
+	}
+	MusicHolds.RemoveAll([Director](const FMusicHold& Hold) { return Hold.Director.Get() == Director; });
+	MusicHolds.Add({ Director, InMusic, FadeSeconds });
+	OnMusic.Broadcast(InMusic, FadeSeconds);
+}
+
+void UDreamNarrativeStageArbiter::ReleaseMusic(UDreamNarrativeStageDirector* Director)
+{
+	const int32 Index = MusicHolds.IndexOfByPredicate([Director](const FMusicHold& Hold) { return Hold.Director.Get() == Director; });
+	if (Index == INDEX_NONE)
+	{
+		return;
+	}
+	const bool bPlaying = Index == MusicHolds.Num() - 1;
+	const float Fade = MusicHolds[Index].Fade;
+	MusicHolds.RemoveAt(Index);
+	// Only the one playing moves the music: back to the stage beneath, or to the game's own.
+	if (bPlaying)
+	{
+		OnMusic.Broadcast(GetMusic(), Fade);
+	}
+}
+
+TSoftObjectPtr<USoundBase> UDreamNarrativeStageArbiter::GetMusic() const
+{
+	return MusicHolds.Num() > 0 ? MusicHolds.Last().Music : TSoftObjectPtr<USoundBase>();
+}
+
 // ---------------------------------------------------------------- directors gone
 
 void UDreamNarrativeStageArbiter::PurgeStale()
 {
 	auto IsStale = [](const FDirectorRef& Director) { return !Director.IsValid(); };
+	if (MusicHolds.Num() > 0)
+	{
+		const bool bTopGone = IsStale(MusicHolds.Last().Director);
+		const float Fade = MusicHolds.Last().Fade;
+		MusicHolds.RemoveAll([&IsStale](const FMusicHold& Hold) { return IsStale(Hold.Director); });
+		if (bTopGone) { OnMusic.Broadcast(GetMusic(), Fade); }
+	}
 	bool bTime = false;
 	for (auto It = TimeScales.CreateIterator(); It; ++It)
 	{

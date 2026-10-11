@@ -17,6 +17,12 @@
 #include "GameFramework/WorldSettings.h"
 #include "Smoke/DnaTestStageAbility.h"
 #include "UObject/StrongObjectPtr.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "DreamNarrativeStageArbiter.h"
+#include "Misc/Guid.h"
+#include "Misc/ScopeExit.h"
+#include "Sound/SoundWave.h"
+#include "UObject/Package.h"
 
 using namespace UE::DreamNarrative::Tests;
 namespace
@@ -176,4 +182,65 @@ bool FDnaRegressionStageTearDown::RunTest(const FString& Parameters)
 	Host->UnregisterDirector(Director);
 	return !HasAnyErrors();
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaRegressionStageAudio, "DreamNarrative.Regression.Stage.AudioEvents", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FDnaRegressionStageAudio::RunTest(const FString& Parameters)
+{
+	const FString Root = TEXT("/Temp/DnaStageAudio_") + FGuid::NewGuid().ToString(EGuidFormats::Digits);
+	TArray<UObject*> Made;
+	for (const TCHAR* Name : { TEXT("SFX_Hit"), TEXT("SFX_Wind"), TEXT("BGM_A"), TEXT("BGM_B") })
+	{
+		USoundWave* Wave = NewObject<USoundWave>(CreatePackage(*(Root / Name)), Name, RF_Public | RF_Standalone);
+		Wave->Duration = 3.f;
+		FAssetRegistryModule::AssetCreated(Wave);
+		Made.Add(Wave);
+	}
+	ON_SCOPE_EXIT { for (UObject* Object : Made) { FAssetRegistryModule::AssetDeleted(Object); Object->ClearFlags(RF_Standalone); } };
+
+	FDnaTestWorld Definitions(*this);
+	if (!Definitions.CompileText(FString::Printf(TEXT(
+		"stage 打击\n  duration 2.0s\n  audio\n"
+		"    0.0s..1.0s   sound %s/SFX_Wind\n"
+		"    0.0s         music %s/BGM_A fade 1.0s\n"
+		"    0.5s         sound %s/SFX_Hit volume 0.8\n"
+		"stage 回忆\n  duration 3.0s\n  audio\n"
+		"    0.0s         music %s/BGM_B fade 0.5s\n"), *Root, *Root, *Root, *Root))) { return false; }
+	FDnaStandaloneGame Game;
+	RegisterDefinitions(Game, Definitions);
+	UDreamNarrativeStageDirector* First = MakeDirector(Game);
+	UDreamNarrativeStageDirector* Second = MakeDirector(Game);
+	UDreamNarrativeStageArbiter* Arbiter = Game.GetWorld()->GetSubsystem<UDreamNarrativeStageArbiter>();
+	if (!TestNotNull(TEXT("the world arbitrates"), Arbiter)) { return false; }
+	TStrongObjectPtr<UDnaStageRegressionProbe> Probe(NewObject<UDnaStageRegressionProbe>());
+	for (UDreamNarrativeStageDirector* Director : { First, Second })
+	{
+		Director->OnSound.AddDynamic(Probe.Get(), &UDnaStageRegressionProbe::HearSound);
+		Director->OnSoundStopped.AddDynamic(Probe.Get(), &UDnaStageRegressionProbe::HearSoundStopped);
+	}
+	Arbiter->OnMusic.AddDynamic(Probe.Get(), &UDnaStageRegressionProbe::HearMusic);
+
+	TestTrue(TEXT("the first stage plays"), First->PlayStage(TEXT("打击")));
+	TestEqual(TEXT("its first moment"), Probe->Take(), FString(TEXT("sound SFX_Wind 1.0 held, music BGM_A 1.0")));
+	First->Advance(0.6f);
+	TestEqual(TEXT("a sound at its time"), Probe->Take(), FString(TEXT("sound SFX_Hit 0.8")));
+	First->Advance(0.5f);
+	TestEqual(TEXT("a held sound stops at the end of its range"), Probe->Take(), FString(TEXT("stop")));
+
+	// Music is the world's: the stage that asked last plays; its end goes back to the one beneath, then to the game.
+	TestTrue(TEXT("the second stage plays"), Second->PlayStage(TEXT("回忆")));
+	TestEqual(TEXT("its music takes over"), Probe->Take(), FString(TEXT("music BGM_B 0.5")));
+	First->Stop();
+	TestEqual(TEXT("the one beneath ending moves nothing"), Probe->Take(), FString());
+	Second->Stop();
+	TestEqual(TEXT("the last one ending gives the music back to the game"), Probe->Take(), FString(TEXT("music game 0.5")));
+
+	First->PlayStage(TEXT("打击"));
+	Second->PlayStage(TEXT("回忆"));
+	Probe->Take();
+	Second->Stop();
+	TestEqual(TEXT("the one on top ending goes back to the one beneath"), Probe->Take(), FString(TEXT("music BGM_A 0.5")));
+	First->Stop();
+	TestEqual(TEXT("cut short, a held sound stops too"), Probe->Take(), FString(TEXT("music game 1.0, stop")));
+	return !HasAnyErrors();
+}
+
 #endif

@@ -50,6 +50,8 @@ namespace UE::DreamNarrative::Lang
 			case EDnaStageVerb::Montage: return FTopLevelAssetPath(TEXT("/Script/Engine"), TEXT("AnimMontage"));
 			case EDnaStageVerb::Spawn: return FTopLevelAssetPath(TEXT("/Script/Niagara"), TEXT("NiagaraSystem"));
 			case EDnaStageVerb::PlaySequence: return FTopLevelAssetPath(TEXT("/Script/LevelSequence"), TEXT("LevelSequence"));
+			case EDnaStageVerb::Sound:
+			case EDnaStageVerb::Music: return FTopLevelAssetPath(TEXT("/Script/Engine"), TEXT("SoundBase"));
 			default: return FTopLevelAssetPath();
 			}
 		}

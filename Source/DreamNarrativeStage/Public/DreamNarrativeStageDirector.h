@@ -37,6 +37,7 @@ class ULightComponentBase;
 class UMaterialInstanceDynamic;
 class UNiagaraComponent;
 class UPostProcessComponent;
+class USoundBase;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDnaStageStartedSignature, FName, Stage);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDnaStageEndedSignature, FName, Stage, EDnaStageEnd, Reason);
@@ -46,6 +47,34 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDnaStageSwitchSignature, bool, bOn)
 /** A montage's `warp 目标 角色`: what the game hands its motion warping. */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FDnaStageWarpSignature, AActor*, Actor, FName, WarpTarget, AActor*, TargetActor);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FDnaStagePlayEndedNative, uint32 /*Play*/, EDnaStageEnd /*Reason*/);
+
+/** A `sound` of the stage, for the game to play. */
+USTRUCT(BlueprintType)
+struct DREAMNARRATIVESTAGE_API FDnaStageSound
+{
+	GENERATED_BODY()
+
+	/** Names it to OnSoundStopped, for a held one. */
+	UPROPERTY(BlueprintReadOnly, Category = "Narrative")
+	int32 Handle = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Narrative")
+	TSoftObjectPtr<USoundBase> Sound;
+
+	/** `at 角色`: where it sounds from; none: not placed. */
+	UPROPERTY(BlueprintReadOnly, Category = "Narrative")
+	TObjectPtr<AActor> Actor;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Narrative")
+	float Volume = 1.f;
+
+	/** Held through the entry's range: OnSoundStopped says when it goes. Otherwise it plays once, as long as it is. */
+	UPROPERTY(BlueprintReadOnly, Category = "Narrative")
+	bool bHeld = false;
+};
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDnaStageSoundSignature, const FDnaStageSound&, Sound);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDnaStageSoundStoppedSignature, int32, Handle);
 
 UCLASS(ClassGroup = (Narrative), meta = (BlueprintSpawnableComponent))
 class DREAMNARRATIVESTAGE_API UDreamNarrativeStageDirector : public UActorComponent
@@ -146,6 +175,14 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Narrative|Stage")
 	FDnaStageWarpSignature OnWarpTarget;
 
+	/** A `sound` comes up: the game plays it. The music is the world's: UDreamNarrativeStageArbiter::OnMusic. */
+	UPROPERTY(BlueprintAssignable, Category = "Narrative|Stage")
+	FDnaStageSoundSignature OnSound;
+
+	/** A held sound's range is over, or the stage ended: stop it. */
+	UPROPERTY(BlueprintAssignable, Category = "Narrative|Stage")
+	FDnaStageSoundStoppedSignature OnSoundStopped;
+
 	/** Every end, with the play's number: what the stage subsystem waits on. */
 	FDnaStagePlayEndedNative OnPlayEnded;
 
@@ -159,7 +196,7 @@ protected:
 
 private:
 	/** The parts of the world a stage touches, each noted with how it was before. */
-	enum class ESlot : uint8 { Camera, Light, KeyLight, Mask, Vfx, Hud, Text, Anim, Input, Time, Damage, Sequence };
+	enum class ESlot : uint8 { Camera, Light, KeyLight, Mask, Vfx, Hud, Text, Anim, Input, Time, Damage, Sequence, Sound, Music };
 
 	void Touch(ESlot Slot);
 	void ApplyPose(const FDnaStagePose& NewPose);
@@ -183,6 +220,8 @@ private:
 	/** Where the view goes back to: the stage beneath this one, or the game. */
 	AActor* GetViewBack(APlayerController& Controller) const;
 	template <typename T> T* ResolveAsset(const FString& NameOrPath) const;
+	/** A sound the stage names, without loading one named by path (the game loads it, or it is preloading). */
+	TSoftObjectPtr<USoundBase> SoundOf(const FDnaStageEntry& Entry) const;
 	/** Logs a cue whose asset was not found; true when it was. */
 	bool WarnIfMissing(const FDnaStageEntry& Entry, const UObject* Asset, const TCHAR* What) const;
 
@@ -228,6 +267,11 @@ private:
 	TMap<int32, TWeakObjectPtr<UNiagaraComponent>> RangeEffects;
 	TArray<TPair<TWeakObjectPtr<UAnimInstance>, TWeakObjectPtr<UAnimMontage>>> Montages;
 	TArray<TWeakObjectPtr<ALevelSequenceActor>> Sequences;
+	/** Sounds a range holds, by entry, to stop at its end. */
+	TMap<int32, int32> RangeSounds;
+	int32 NextSoundHandle = 0;
+	/** The entry whose range the music lasts for; INDEX_NONE when it lasts the stage. */
+	int32 RangeMusic = INDEX_NONE;
 
 	// ui
 	TWeakObjectPtr<AHUD> Hud;

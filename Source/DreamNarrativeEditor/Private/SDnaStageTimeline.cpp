@@ -30,7 +30,8 @@ using namespace UE::DreamNarrative::Lang;
 
 namespace
 {
-	constexpr int32 NumRows = 9;  // eight tracks and the restore block
+	constexpr int32 NumTracks = static_cast<int32>(EDnaStageTrack::Audio) + 1;
+	constexpr int32 NumRows = NumTracks + 1;  // the tracks and the restore block
 	constexpr float RowHeight = 22.f;
 	constexpr float RulerHeight = 18.f;
 	constexpr float HeaderWidth = 76.f;
@@ -38,7 +39,7 @@ namespace
 
 	const TCHAR* RowName(int32 Row)
 	{
-		return Row < 8 ? DreamNarrative::LexToString(static_cast<EDnaStageTrack>(Row)) : TEXT("restore");
+		return Row < NumTracks ? DreamNarrative::LexToString(static_cast<EDnaStageTrack>(Row)) : TEXT("restore");
 	}
 
 	/** Muted, one hue per track. */
@@ -54,6 +55,7 @@ namespace
 		case EDnaStageTrack::Anim: return FLinearColor(0.42f, 0.50f, 0.36f);
 		case EDnaStageTrack::Game: return FLinearColor(0.54f, 0.40f, 0.36f);
 		case EDnaStageTrack::Sequence: return FLinearColor(0.36f, 0.46f, 0.56f);
+		case EDnaStageTrack::Audio: return FLinearColor(0.50f, 0.40f, 0.50f);
 		}
 		return FLinearColor::Gray;
 	}
@@ -137,7 +139,7 @@ public:
 		{
 			FDnaStageEntry AtEnd = Stage->Restore[Index];
 			AtEnd.Start = AtEnd.End = Stage->Duration;
-			PaintEntry(Geometry, *Stage, AtEnd, 8, Out, Layer + 4, Box, Text);
+			PaintEntry(Geometry, *Stage, AtEnd, NumTracks, Out, Layer + 4, Box, Text);
 		}
 
 		// -- the playhead
@@ -276,7 +278,7 @@ private:
 	bool HitTest(const FGeometry& Geometry, const FDnaStageData& Stage, const FVector2D& Local, FDrag& Out) const
 	{
 		const int32 Row = FMath::FloorToInt((Local.Y - RulerHeight) / RowHeight);
-		if (Row < 0 || Row >= 8)
+		if (Row < 0 || Row >= NumTracks)
 		{
 			return false;
 		}
@@ -304,7 +306,7 @@ private:
 	{
 		FDnaStageEntry Entry = Original;
 		// The entry being dragged is drawn where it would land.
-		if (Drag.bActive && Row < 8 && Drag.Entry.SourceLine == Entry.SourceLine)
+		if (Drag.bActive && Row < NumTracks && Drag.Entry.SourceLine == Entry.SourceLine)
 		{
 			switch (Drag.Part)
 			{

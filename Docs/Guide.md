@@ -147,7 +147,7 @@ stage 灯亮
     2.5s..2.7s   hitstop 0.2x
 ```
 
-- 轨道:camera、light、mask、vfx、ui、anim、game、sequence;动词表见 `Diagnostics.md` 的 DNS7006。
+- 轨道:camera、light、mask、vfx、ui、anim、game、sequence、audio;动词表见 `Diagnostics.md` 的 DNS7006。
 - 时间基:默认秒;`base: line` 的演出跟着挂上的台词走,时间写百分比,只能用 `@演出名` 挂在台词上。
 - 机位按角色名摆放:角色名就是 actor 的 tag(或用导演的 `BindActor` 绑定);`rot (pitch, yaw, roll)` 给出明确朝向;
   不绑定的锚点就是世界坐标。
@@ -161,6 +161,12 @@ stage 灯亮
   被取代的外层请求返回 0。
 - 资源:`montage`、`spawn`、`sequence play` 写的资源编译时就找(名字在 Stage Asset Roots 下找,路径直接认),找到的写成
   路径并记进脚本资产,打包时一起带上;找不到是 DNS6001 警告——编辑器里也许还能演,包里多半没有。
+- 声音(`audio` 轨)也是只发事件,游戏来放:
+  - `0.5s sound /Game/SFX/打击 [at 角色] [volume 0.8]`:导演的 `OnSound` 发一次;写成范围(`0.0s..3.0s sound 风声`)就是
+    持续音,范围结束或演出结束时 `OnSoundStopped` 让游戏停掉;
+  - `0.0s music /Game/BGM/回忆 [fade 1.0s]`:音乐是全世界一份,仲裁器的 `OnMusic(音乐, 淡入淡出)` 说现在该放哪首——后开始的
+    演出盖住先开始的,它结束时回到下面那个演出的音乐,最后一个结束时 `音乐` 为空,意思是回到游戏自己的音乐。写成范围的
+    音乐只放这一段。
 - 能力里演:`PlayNarrativeStage` 能力任务;或在演出里写 `gameplay: 标签`,GAS 桥收到这个事件就在化身上演。
 
 ## 4. 接进游戏

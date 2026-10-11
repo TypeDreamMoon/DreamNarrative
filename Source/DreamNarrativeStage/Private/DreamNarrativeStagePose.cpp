@@ -87,6 +87,7 @@ namespace DreamNarrative
 		case EDnaStageTrack::Anim: return TEXT("anim");
 		case EDnaStageTrack::Game: return TEXT("game");
 		case EDnaStageTrack::Sequence: return TEXT("sequence");
+		case EDnaStageTrack::Audio: return TEXT("audio");
 		}
 		return TEXT("?");
 	}
@@ -124,6 +125,8 @@ namespace DreamNarrative
 		case EDnaStageVerb::TimeScale: return TEXT("time");
 		case EDnaStageVerb::DamageWindow: return TEXT("damage window");
 		case EDnaStageVerb::PlaySequence: return TEXT("play");
+		case EDnaStageVerb::Sound: return TEXT("sound");
+		case EDnaStageVerb::Music: return TEXT("music");
 		}
 		return TEXT("?");
 	}
@@ -178,6 +181,8 @@ namespace DreamNarrative
 		case EDnaStageVerb::Spawn:
 		case EDnaStageVerb::StopVfx:
 		case EDnaStageVerb::PlaySequence:
+		case EDnaStageVerb::Sound:
+		case EDnaStageVerb::Music:
 			return true;
 		default:
 			return false;

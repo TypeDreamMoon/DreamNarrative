@@ -15,7 +15,7 @@ namespace UE::DreamNarrative::Lang
 			static const TPair<const TCHAR*, EDnaStageTrack> Tracks[] = {
 				{ TEXT("camera"), EDnaStageTrack::Camera }, { TEXT("light"), EDnaStageTrack::Light }, { TEXT("mask"), EDnaStageTrack::Mask },
 				{ TEXT("vfx"), EDnaStageTrack::Vfx }, { TEXT("ui"), EDnaStageTrack::Ui }, { TEXT("anim"), EDnaStageTrack::Anim },
-				{ TEXT("game"), EDnaStageTrack::Game }, { TEXT("sequence"), EDnaStageTrack::Sequence },
+				{ TEXT("game"), EDnaStageTrack::Game }, { TEXT("sequence"), EDnaStageTrack::Sequence }, { TEXT("audio"), EDnaStageTrack::Audio },
 			};
 			for (const TPair<const TCHAR*, EDnaStageTrack>& Track : Tracks)
 			{
@@ -540,6 +540,29 @@ namespace UE::DreamNarrative::Lang
 					{
 						if (!Args.Word(TEXT("window"))) { return BadArgs(Line, TEXT("damage window")); }
 						Entry.Verb = EDnaStageVerb::DamageWindow;
+						return true;
+					}
+					break;
+
+				case EDnaStageTrack::Audio:
+					if (Verb == TEXT("sound"))
+					{
+						if (!Args.Path(Entry.Asset)) { return BadArgs(Line, TEXT("sound 资源 [at 角色] [volume 0.8]")); }
+						Entry.Verb = EDnaStageVerb::Sound;
+						Entry.Amount = 1.f;
+						while (!Args.AtEnd())
+						{
+							if (Args.Word(TEXT("at")) && Args.Name(Name)) { Entry.Target = FName(*Name); }
+							else if (Args.Word(TEXT("volume")) && Args.Number(Number) && Number >= 0.0) { Entry.Amount = static_cast<float>(Number); }
+							else { return BadArgs(Line, TEXT("sound 资源 [at 角色] [volume 0.8]")); }
+						}
+						return true;
+					}
+					if (Verb == TEXT("music"))
+					{
+						if (!Args.Path(Entry.Asset)) { return BadArgs(Line, TEXT("music 资源 [fade 2s]")); }
+						Entry.Verb = EDnaStageVerb::Music;
+						if (Args.Word(TEXT("fade"))) { return ReadSpan(Args, Line, Entry.Over, true); }
 						return true;
 					}
 					break;

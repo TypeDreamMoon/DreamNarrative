@@ -15,6 +15,10 @@
 class AHUD;
 class APlayerController;
 class ULightComponentBase;
+class USoundBase;
+
+/** The music the stages want now; none: the game's own music, back from them. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDnaStageMusicSignature, TSoftObjectPtr<USoundBase>, Music, float, FadeSeconds);
 
 UCLASS()
 class DREAMNARRATIVESTAGE_API UDreamNarrativeStageArbiter : public UWorldSubsystem
@@ -48,12 +52,25 @@ public:
 	/** Director lets go of the view; bSetView puts the view beneath on screen if Director was showing. */
 	void ReleaseView(UDreamNarrativeStageDirector* Director, bool bSetView);
 
+	/**
+	 * The music: the stage that asked last has its music play. When it lets go the music goes back to
+	 * the stage beneath, or -- the last one gone -- to the game's own. OnMusic says which, each time it changes.
+	 */
+	void PushMusic(UDreamNarrativeStageDirector* Director, const TSoftObjectPtr<USoundBase>& Music, float FadeSeconds);
+	void ReleaseMusic(UDreamNarrativeStageDirector* Director);
+	/** The music the stages want now; none when the game's own plays. */
+	TSoftObjectPtr<USoundBase> GetMusic() const;
+
 	/** Drops whatever directors gone without letting go still hold, and puts the world right for it. */
 	void PurgeStale();
 
 	/** A HUD went (false) or came back (true), all stages counted: for a HUD that is not an AHUD. */
 	UPROPERTY(BlueprintAssignable, Category = "Narrative|Stage")
 	FDnaStageSwitchSignature OnHudVisibility;
+
+	/** The music changed: play Music (fading over FadeSeconds); none: the game's own music again. */
+	UPROPERTY(BlueprintAssignable, Category = "Narrative|Stage")
+	FDnaStageMusicSignature OnMusic;
 
 protected:
 	virtual bool DoesSupportWorldType(const EWorldType::Type WorldType) const override;
@@ -94,4 +111,13 @@ private:
 		TArray<FViewHold> Holds;
 	};
 	TArray<FViewStack> Views;
+
+	struct FMusicHold
+	{
+		FDirectorRef Director;
+		TSoftObjectPtr<USoundBase> Music;
+		float Fade = 0.f;
+	};
+	/** Oldest first; the last one plays. */
+	TArray<FMusicHold> MusicHolds;
 };
