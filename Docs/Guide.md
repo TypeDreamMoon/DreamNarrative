@@ -227,6 +227,10 @@ test 零件齐了灯就亮
 台词、选项、标题、日志、资料、演出文字都是可本地化文本:命名空间是 `DNA/<文件名>`,key 是行 ID(或 `stage.<演出>.text<n>`
 这类稳定名字)。脚本资产在 `Asset Directory` 下,用引擎的本地化面板按资产采集即可;要 key 不随行移动,给行写上 `#id`。
 
+没写 `#id` 的行按位置编号(`对话.3`、选项 `对话.c2`),前面插一句,后面的都会变。开始录音或翻译之前跑一次
+`dnc.ps1 freeze`(编辑器关着):它把每行现在的 ID 原样写进源码,存档、翻译都不受影响;之后在项目设置里打开
+`Require Line Ids`,没有 `#id` 的行就会报 DNS6006。`#id` 可以带点(`#老周_初见.3`)。
+
 ## 8. VS Code
 
 `dreamnarrative-language-support` 扩展:高亮、大纲、跨文件跳转与悬停、片段;命令「Check the Project's .dna Sources」

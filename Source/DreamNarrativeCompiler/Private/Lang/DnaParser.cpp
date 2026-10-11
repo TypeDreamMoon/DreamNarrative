@@ -1544,8 +1544,23 @@ namespace UE::DreamNarrative::Lang
 					{
 						if (!Tokens[Index + 1].Is(EDnaTokenKind::Identifier)) { return false; }
 						Duplicate(bSeenId, Token);
-						Out.Id = Tokens[Index + 1].Text;
-						Index += 2;
+						// An id may go on with dots, the way generated ones do (`老周_初见.3`, `老周_初见.c2`): the
+						// pieces written against each other, with no space between, are one id.
+						const int32 IdStart = Tokens[Index + 1].Span.Offset;
+						int32 IdEnd = Tokens[Index + 1].Span.End();
+						int32 Next = Index + 2;
+						while (Tokens[Next].Span.Offset == IdEnd && !Tokens[Next].Is(EDnaTokenKind::EndOfInput))
+						{
+							const bool bDotted = Tokens[Next].Is(EDnaTokenKind::Dot) && Tokens[Next + 1].Span.Offset == Tokens[Next].Span.End()
+								&& (Tokens[Next + 1].Is(EDnaTokenKind::Identifier) || Tokens[Next + 1].Is(EDnaTokenKind::Int));
+							// `.3` lexes as a number of its own.
+							const bool bFraction = Tokens[Next].Is(EDnaTokenKind::Float) && Source.GetText()[Tokens[Next].Span.Offset] == TEXT('.');
+							if (bDotted) { IdEnd = Tokens[Next + 1].Span.End(); Next += 2; }
+							else if (bFraction) { IdEnd = Tokens[Next].Span.End(); Next += 1; }
+							else { break; }
+						}
+						Out.Id = Source.GetText().Mid(IdStart, IdEnd - IdStart);
+						Index = Next;
 						continue;
 					}
 					if (Token.Is(EDnaTokenKind::At))

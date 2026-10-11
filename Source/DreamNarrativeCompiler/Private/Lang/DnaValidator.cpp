@@ -1,6 +1,7 @@
 // Copyright DreamMoon. All Rights Reserved.
 
 #include "Lang/DnaValidator.h"
+#include "DreamNarrativeSettings.h"
 #include "Lang/DnaLexer.h"
 #include "Lang/DnaStageCompiler.h"
 
@@ -705,11 +706,14 @@ namespace UE::DreamNarrative::Lang
 				case EDnaLineKind::Speech:
 					RequireCharacter(P.Name, Line.Raw.Span, /*bIsSpeaker=*/true);
 					CheckTextLine(Line);
+					RequireStableId(Line);
 					break;
 				case EDnaLineKind::Narration:
 					CheckTextLine(Line);
+					RequireStableId(Line);
 					break;
 				case EDnaLineKind::Choice:
+					RequireStableId(Line);
 					CheckText(P.Text);
 					CheckModifiers(P.Modifiers);
 					CheckDialogueBlock(Line);
@@ -730,6 +734,14 @@ namespace UE::DreamNarrative::Lang
 					break;
 				default:
 					break;
+				}
+			}
+
+			void RequireStableId(const FDnaLineNode& Line)
+			{
+				if (UDreamNarrativeSettings::Get()->bRequireLineIds && Line.Payload.Modifiers.Id.IsEmpty())
+				{
+					Fail(TEXT("DNS6006"), Line.Raw.Span, LOCTEXT("NoStableId", "This line has no #id, and the project requires one on every line: run `dnc freeze`, or write one"));
 				}
 			}
 

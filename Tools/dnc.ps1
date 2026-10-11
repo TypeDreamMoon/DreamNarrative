@@ -8,6 +8,8 @@
       build   compile every .dna under the project's source directory into script assets
       lint    parse and validate only; nothing is written
       dump    print the syntax tree of one file (or all)
+      freeze  write `#id` onto every line and choice that has none, keeping the id it has now
+              (all files, or -File's); do it before recording or translating
       check   the static checks (Tools/StaticChecks.ps1) over this repository
       test    static checks, build, then one preset of the automation tests in a headless editor
 
@@ -48,10 +50,10 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory, Position = 0)]
-    [ValidateSet('build', 'lint', 'dump', 'check', 'test')]
+    [ValidateSet('build', 'lint', 'dump', 'freeze', 'check', 'test')]
     [string]$Command,
 
-    # build / lint / dump: one source file (absolute, or relative to the project directory).
+    # build / lint / dump / freeze: one source file (absolute, or relative to the project directory).
     [string]$File,
 
     # build / lint / dump: source directory override (default: Project Settings > Dream Narrative).
@@ -233,12 +235,13 @@ function Invoke-Editor([string[]]$Arguments, [string[]]$KeepPatterns) {
     return $code
 }
 
-if ($Command -in 'build', 'lint', 'dump') {
+if ($Command -in 'build', 'lint', 'dump', 'freeze') {
     if (Get-EditorsOnProject $uproject) {
         Write-Warning "An editor has $uproject open. A build that writes assets will fight it over the packages."
     }
     $arguments = @('-run=DreamNarrative')
-    if ($Command -ne 'build') { $arguments += '-Lint' }
+    if ($Command -in 'lint', 'dump') { $arguments += '-Lint' }
+    if ($Command -eq 'freeze') { $arguments += '-FreezeIds' }
     if ($Command -eq 'dump') { $arguments += '-Dump' }
     if ($File) { $arguments += "-File=$File" }
     if ($Root) { $arguments += "-Root=$Root" }

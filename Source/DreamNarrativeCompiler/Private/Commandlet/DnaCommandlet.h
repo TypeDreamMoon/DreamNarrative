@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "Commandlets/Commandlet.h"
+#include "Lang/DnaDiagnostic.h"
+#include "Lang/DnaModel.h"
 #include "DnaCommandlet.generated.h"
 
 /**
@@ -17,6 +19,8 @@
  *   -Lint          parse and validate only; write nothing
  *   -NoSave        generate in memory without writing packages
  *   -Dump          print each file's syntax tree
+ *   -FreezeIds     write `#id` onto every line and choice that has none, with the id it has now;
+ *                  with -File only that file is written (the whole program is still read)
  *
  * Exit code is the error count, so a CI gate tests for zero.
  */
@@ -29,4 +33,7 @@ public:
 	UDreamNarrativeCommandlet();
 
 	virtual int32 Main(const FString& Params) override;
+
+private:
+	int32 FreezeIds(const UE::DreamNarrative::Lang::FDnaProgram& Program, const FString& OnlyFile, UE::DreamNarrative::Lang::FDnaDiagnosticSink& Diagnostics);
 };

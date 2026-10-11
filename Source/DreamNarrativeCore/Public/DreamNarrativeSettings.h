@@ -45,6 +45,14 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Dialogue", meta = (ClampMin = "0.0"))
 	float AutoAdvanceMinimumSeconds = 1.5f;
 
+	/**
+	 * Every line and choice must carry its own `#id` (DNS6006). Turn on once the ids are frozen
+	 * (`dnc freeze`) and recording or translation has begun: a line without one would move the ids
+	 * of the lines after it, and with them their voices, translations and what saves remember.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Dialogue")
+	bool bRequireLineIds = false;
+
 	/** Content paths a stage's bare asset names (`montage AM_咆哮`) are looked for under, in order. A name that starts with `/` is a path already. */
 	UPROPERTY(Config, EditAnywhere, Category = "Stage")
 	TArray<FString> StageAssetRoots = { TEXT("/Game") };
