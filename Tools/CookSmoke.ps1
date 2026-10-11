@@ -14,7 +14,8 @@
       1. Builds Tests/Cook/CookProbe.dna into the project's asset directory (dnc build).
       2. For each configuration: RunUAT BuildCookRun -build -cook -stage -pak into
          <project>\Saved\CookSmoke\<configuration>.
-      3. The cook output has to hold the probe script and the Niagara system its stage spawns.
+      3. The cook output has to hold the probe script, the Niagara system its stage spawns and the
+         sound its stage plays and its first line speaks with.
       4. Development only (Shipping has no console to drive it): starts the staged game headless with
          `dn.load`, `dn.talk 守灯人`, `dn.next`, `quit`. Its log has to show the scripts registered
          and no stage asset missing.
@@ -49,6 +50,8 @@ $HostProject = 'I:\UnrealProject_Moon\DEV_58\DreamNarrativeTestHost\DreamNarrati
 $Probe = Join-Path $PluginDir 'Tests\Cook\CookProbe.dna'
 # What the probe's stage spawns, and where a cook of the engine's Niagara content puts it.
 $ProbeEffect = 'Engine\Plugins\FX\Niagara\Content\DefaultAssets\DefaultSystem.uasset'
+# The sound its stage plays and its first line speaks with.
+$ProbeSound = 'Engine\Content\EngineSounds\1kSineTonePing.uasset'
 
 function Write-Step([string]$Text) { Write-Host "==> $Text" -ForegroundColor Cyan }
 function Stop-Run([int]$Code, [string]$Text) { Write-Host "!!  $Text" -ForegroundColor Red; exit $Code }
@@ -110,7 +113,7 @@ foreach ($config in $Configuration) {
     }
 
     $cooked = Join-Path $projectDir 'Saved\Cooked\Windows'
-    foreach ($wanted in @("$projectName\Content\$assetDirectory\CookProbe.uasset", $ProbeEffect)) {
+    foreach ($wanted in @("$projectName\Content\$assetDirectory\CookProbe.uasset", $ProbeEffect, $ProbeSound)) {
         if (Test-Path -LiteralPath (Join-Path $cooked $wanted)) { Write-Host "    cooked: $wanted" }
         else { $failures.Add("$config : the cook left out $wanted") }
     }
@@ -148,7 +151,7 @@ foreach ($config in $Configuration) {
     } else {
         Write-Host "    $($registered.Line.Trim())"
     }
-    $missing = @(Select-String -LiteralPath $gameLog -Pattern 'Stage .*: no (effect|montage|level sequence) called')
+    $missing = @(Select-String -LiteralPath $gameLog -Pattern 'Stage .*: no (effect|montage|level sequence|sound|camera shake) called')
     foreach ($line in $missing) { $failures.Add("$config : $($line.Line.Trim())") }
     if (-not (Select-String -LiteralPath $gameLog -SimpleMatch '灯还亮着' -Quiet)) {
         $failures.Add("$config : the packaged game never spoke the probe's line")

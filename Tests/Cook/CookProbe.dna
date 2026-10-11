@@ -1,4 +1,4 @@
-// Cook 冒烟:打包出来的游戏里,脚本和它演出要播的资源都得在包里。演出里的效果按路径写,编译时记成脚本资产的软引用,
+// Cook 冒烟:打包出来的游戏里,脚本和它演出要播的资源都得在包里。演出里的效果、声音和台词的语音按路径写,编译时记成脚本资产的软引用,
 // Cook 顺着它带上;游戏里只靠扫目录加载脚本,没有别的东西引用它们。
 
 character 守灯人
@@ -7,8 +7,10 @@ stage 点灯
   duration 0.5s
   vfx
     0.0s..0.5s   spawn /Niagara/DefaultAssets/DefaultSystem
+  audio
+    0.0s         sound /Engine/EngineSounds/1kSineTonePing
 
 dialogue 守灯人_开场 for 守灯人
-  守灯人: 灯还亮着。
+  守灯人: 灯还亮着。 voice /Engine/EngineSounds/1kSineTonePing
   play 点灯
   守灯人: 回去吧。
