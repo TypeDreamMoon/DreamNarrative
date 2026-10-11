@@ -9,6 +9,7 @@
 #include "Lang/DnaDump.h"
 #include "Lang/DnaEditSession.h"
 #include "Lang/DnaIds.h"
+#include "Lang/DnaVoice.h"
 #include "Lang/DnaModel.h"
 #include "Lang/DnaParser.h"
 #include "Lang/DnaProject.h"
@@ -41,6 +42,60 @@ namespace
 			}
 		}
 	}
+}
+
+int32 UDreamNarrativeCommandlet::Voices(const FDnaProgram& Program, const FString& ScriptFile, FDnaDiagnosticSink& Diagnostics)
+{
+	FDnaGenerateResult Generated;
+	if (!Diagnostics.HasErrors())
+	{
+		FDnaGenerateOptions Options;
+		Options.bTransient = true;
+		Options.bSave = false;
+		Options.bReportVoiceOrphans = true;
+		GenerateDnaProgram(Program, Options, Generated, Diagnostics);
+	}
+	LogDiagnostics(Diagnostics);
+	if (Diagnostics.HasErrors())
+	{
+		return Diagnostics.NumErrors();
+	}
+	TArray<FDnaVoiceScriptRow> Rows;
+	CollectDnaVoiceScript(Program, Generated.Scripts, Rows);
+	if (!ScriptFile.IsEmpty())
+	{
+		FString Path = ScriptFile;
+		if (FPaths::IsRelative(Path)) { Path = FPaths::ProjectDir() / Path; }
+		// With a byte order mark: a spreadsheet opens it as UTF-8.
+		if (!FFileHelper::SaveStringToFile(WriteDnaVoiceScript(Rows), *Path, FFileHelper::EEncodingOptions::ForceUTF8))
+		{
+			UE_LOG(LogDreamNarrativeCompiler, Error, TEXT("Cannot write %s"), *Path);
+			return 1;
+		}
+		UE_LOG(LogDreamNarrativeCompiler, Display, TEXT("Wrote %d line(s) to %s"), Rows.Num(), *FPaths::ConvertRelativePathToFull(Path));
+	}
+	// Per character: lines, voiced, missing (the first few named).
+	TMap<FString, TArray<const FDnaVoiceScriptRow*>> ByCharacter;
+	for (const FDnaVoiceScriptRow& Row : Rows) { ByCharacter.FindOrAdd(Row.Character.IsEmpty() ? TEXT("(narration)") : Row.Character).Add(&Row); }
+	int32 Lines = 0, Found = 0, Missing = 0;
+	for (const TPair<FString, TArray<const FDnaVoiceScriptRow*>>& Pair : ByCharacter)
+	{
+		TArray<FString> Gaps;
+		int32 Voiced = 0;
+		for (const FDnaVoiceScriptRow* Row : Pair.Value)
+		{
+			if (Row->Status == TEXT("found")) { ++Voiced; }
+			else if (Row->Status == TEXT("missing")) { Gaps.Add(Row->LineId); }
+		}
+		Lines += Pair.Value.Num();
+		Found += Voiced;
+		Missing += Gaps.Num();
+		const FString Shown = FString::Join(TArrayView<const FString>(Gaps).Left(8), TEXT(", ")) + (Gaps.Num() > 8 ? TEXT(", ...") : TEXT(""));
+		UE_LOG(LogDreamNarrativeCompiler, Display, TEXT("%s: %d line(s), %d voiced, %d missing%s%s"), *Pair.Key, Pair.Value.Num(), Voiced, Gaps.Num(),
+			Gaps.Num() > 0 ? TEXT(": ") : TEXT(""), *Shown);
+	}
+	UE_LOG(LogDreamNarrativeCompiler, Display, TEXT("Voices: %d line(s), %d voiced, %d missing"), Lines, Found, Missing);
+	return 0;
 }
 
 int32 UDreamNarrativeCommandlet::FreezeIds(const FDnaProgram& Program, const FString& OnlyFile, FDnaDiagnosticSink& Diagnostics)
@@ -98,6 +153,9 @@ int32 UDreamNarrativeCommandlet::Main(const FString& Params)
 	const bool bNoSave = Switches.Contains(TEXT("NoSave"));
 	const bool bDump = Switches.Contains(TEXT("Dump"));
 	const bool bFreeze = Switches.Contains(TEXT("FreezeIds"));
+	const bool bVoStatus = Switches.Contains(TEXT("VoStatus"));
+	const FString VoScript = Values.Contains(TEXT("VoScript")) ? Values[TEXT("VoScript")] : FString();
+	const bool bWholeProgram = bFreeze || bVoStatus || !VoScript.IsEmpty();
 
 	// -- sources
 	const FString ProjectDir = FPaths::ProjectDir();
@@ -113,7 +171,7 @@ int32 UDreamNarrativeCommandlet::Main(const FString& Params)
 		OnlyFile = FPaths::ConvertRelativePathToFull(Path);
 	}
 	// Freezing reads the whole program: the ids come out of a compile, and a file alone may not compile.
-	if (!OnlyFile.IsEmpty() && !bFreeze)
+	if (!OnlyFile.IsEmpty() && !bWholeProgram)
 	{
 		Files.Add(OnlyFile);
 	}
@@ -144,6 +202,10 @@ int32 UDreamNarrativeCommandlet::Main(const FString& Params)
 	if (bFreeze)
 	{
 		return FreezeIds(Program, OnlyFile, Diagnostics);
+	}
+	if (bVoStatus || !VoScript.IsEmpty())
+	{
+		return Voices(Program, VoScript, Diagnostics);
 	}
 
 	// -- generate

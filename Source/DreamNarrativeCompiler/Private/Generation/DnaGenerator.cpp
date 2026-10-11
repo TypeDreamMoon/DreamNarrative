@@ -177,24 +177,8 @@ namespace UE::DreamNarrative::Lang
 				{
 					const FString Id = Line.Id.ToString();
 					Voices.LineIds.Add(Id);
-					EDnaVoiceLookup Lookup = Settings->DefaultVoiceLookup;
-					FString Root = Settings->DefaultVoiceRoot;
-					Root.RemoveFromEnd(TEXT("/"));
-					if (!Line.Speaker.IsNone())
-					{
-						Root /= Line.Speaker.ToString();
-						const FDnaCharacterInfo* Info = Program.Characters.Find(Line.Speaker.ToString());
-						if (Info && Info->VoiceRoot == TEXT("table"))
-						{
-							Lookup = EDnaVoiceLookup::Table;
-						}
-						else if (Info && !Info->VoiceRoot.IsEmpty())
-						{
-							Lookup = EDnaVoiceLookup::Convention;
-							Root = Info->VoiceRoot;
-							Root.RemoveFromEnd(TEXT("/"));
-						}
-					}
+					FString Root;
+					const EDnaVoiceLookup Lookup = GetDnaVoiceLookup(Program, Line.Speaker, Root);
 					FString Wanted;
 					FText Looked;
 					if (const FString* Own = Overrides.Find(Line.Id))

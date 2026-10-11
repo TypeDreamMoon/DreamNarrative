@@ -3,9 +3,14 @@
 #include "Lang/DnaVoice.h"
 #include "DreamNarrativeSettings.h"
 #include "DreamNarrativeVoice.h"
+#include "DreamNarrativeDialogue.h"
+#include "DreamNarrativeScript.h"
+#include "Lang/DnaModel.h"
+#include "Lang/DnaProject.h"
 #include "Engine/DataTable.h"
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
+#include "Algo/StableSort.h"
 
 #define LOCTEXT_NAMESPACE "DnaVoice"
 
@@ -165,6 +170,82 @@ namespace UE::DreamNarrative::Lang
 			}
 		}
 		Diagnostics.SetFilePath(FilePath);
+	}
+
+	EDnaVoiceLookup GetDnaVoiceLookup(const FDnaProgram& Program, FName Speaker, FString& OutRoot)
+	{
+		const UDreamNarrativeSettings* Settings = UDreamNarrativeSettings::Get();
+		OutRoot = Settings->DefaultVoiceRoot;
+		OutRoot.RemoveFromEnd(TEXT("/"));
+		if (Speaker.IsNone())
+		{
+			return Settings->DefaultVoiceLookup;
+		}
+		OutRoot /= Speaker.ToString();
+		const FDnaCharacterInfo* Info = Program.Characters.Find(Speaker.ToString());
+		if (Info && Info->VoiceRoot == TEXT("table"))
+		{
+			return EDnaVoiceLookup::Table;
+		}
+		if (Info && !Info->VoiceRoot.IsEmpty())
+		{
+			OutRoot = Info->VoiceRoot;
+			OutRoot.RemoveFromEnd(TEXT("/"));
+			return EDnaVoiceLookup::Convention;
+		}
+		return Settings->DefaultVoiceLookup;
+	}
+
+	void CollectDnaVoiceScript(const FDnaProgram& Program, const TArray<UDreamNarrativeScript*>& Scripts, TArray<FDnaVoiceScriptRow>& OutRows)
+	{
+		OutRows.Reset();
+		const FString SourceRoot = GetDnaSourceRoot() + TEXT("/");
+		for (const UDreamNarrativeScript* Script : Scripts)
+		{
+			const UDnaDialogueSection* Section = Script ? Script->FindSection<UDnaDialogueSection>() : nullptr;
+			if (!Section) { continue; }
+			FString Source = Script->SourcePath;
+			FPaths::NormalizeFilename(Source);
+			if (FPaths::IsUnderDirectory(Source, SourceRoot)) { FPaths::MakePathRelativeTo(Source, *SourceRoot); }
+			for (const FDnaDialogueNodeData& Node : Section->Nodes)
+			{
+				FString Previous;
+				for (const FDnaLineData& Line : Node.Lines)
+				{
+					FDnaVoiceScriptRow& Row = OutRows.AddDefaulted_GetRef();
+					Row.LineId = Line.Id.ToString();
+					Row.Voice = Line.Voice.IsNull() ? FString() : Line.Voice.ToSoftObjectPath().ToString();
+					Row.Character = Line.Speaker.IsNone() ? FString() : Line.Speaker.ToString();
+					Row.Text = Line.Text.ToString();
+					Row.Dialogue = Node.Name.ToString();
+					Row.Previous = Previous;
+					Row.Tags = FString::JoinBy(Line.Tags, TEXT(" "), [](const FName& Tag) { return Tag.ToString(); });
+					Row.For = Line.Duration;
+					FString Root;
+					const EDnaVoiceLookup Lookup = GetDnaVoiceLookup(Program, Line.Speaker, Root);
+					Row.Status = !Row.Voice.IsEmpty() ? TEXT("found") : Lookup == EDnaVoiceLookup::None ? TEXT("none") : TEXT("missing");
+					Row.Expected = Lookup == EDnaVoiceLookup::Convention ? Root / GetDnaVoiceAssetName(Row.LineId) : FString();
+					Row.Source = Source;
+					Row.SourceLine = Line.SourceLine;
+					Previous = Row.Text;
+				}
+			}
+		}
+		// By character (narration last), and within one in the order the dialogues have them.
+		Algo::StableSortBy(OutRows, [](const FDnaVoiceScriptRow& Row) { return Row.Character.IsEmpty() ? FString(TEXT("\uFFFF")) : Row.Character; });
+	}
+
+	FString WriteDnaVoiceScript(const TArray<FDnaVoiceScriptRow>& Rows)
+	{
+		FString Out = TEXT("LineId,Voice,Character,Text,Dialogue,Previous,Tags,For,Status,Expected,Source,SourceLine\n");
+		for (const FDnaVoiceScriptRow& Row : Rows)
+		{
+			const TArray<FString> Fields = { Row.LineId, Row.Voice, Row.Character, Row.Text, Row.Dialogue, Row.Previous, Row.Tags,
+				Row.For > 0.f ? FString::SanitizeFloat(Row.For) : FString(), Row.Status, Row.Expected, Row.Source, FString::FromInt(Row.SourceLine) };
+			Out += FString::JoinBy(Fields, TEXT(","), [](const FString& Field) { return QuoteDnaCsvField(Field); });
+			Out += TEXT("\n");
+		}
+		return Out;
 	}
 }
 

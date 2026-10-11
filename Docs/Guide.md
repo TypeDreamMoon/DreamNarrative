@@ -219,6 +219,9 @@ dialogue 老周_初见 for 老周
 - 自动推进的频道按语音长度(再加 `Voice Tail Seconds`)往下走;游戏的音频更清楚何时放完时,调 `Runner->NotifyVoiceFinished()`,
   或打开 `Wait For Voice Finished`,改成等游戏通知(超过长度加 `Voice Wait Grace Seconds` 仍没通知就照样往下走)。
 - 同一个人同一时刻只说一句:他在一个频道开口,别的频道上他正在说的语音先 `Stopped`(那一行还留在屏上)。
+- 录音台本:`dnc.ps1 vo-script [-Out 路径]` 导出每一行的 ID、说话人、原文、所在对话、上一句、情绪标签、语音状态和约定下
+  该叫的资源名(按角色排,UTF-8 带 BOM,表格软件直接打开)。表头前两列就是 `LineId,Voice`:外包录完把 `Voice` 列填上,改名成
+  `xxx.voice.csv` 放进源码目录,它就是语音表。`dnc.ps1 vo-status` 按角色列出有多少行、多少有语音、缺哪些。
 
 ## 5. 测
 

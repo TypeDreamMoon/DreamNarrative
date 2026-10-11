@@ -8,6 +8,9 @@
       build   compile every .dna under the project's source directory into script assets
       lint    parse and validate only; nothing is written
       dump    print the syntax tree of one file (or all)
+      vo-script  write the recording script (-Out, default Saved/DreamNarrative/VoiceScript.csv): every line,
+              its speaker, text, context and voice; with the Voice column filled in it reads back as a voice table
+      vo-status  how many lines of each character have a voice, and which lack one
       freeze  write `#id` onto every line and choice that has none, keeping the id it has now
               (all files, or -File's); do it before recording or translating
       check   the static checks (Tools/StaticChecks.ps1) over this repository
@@ -50,7 +53,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory, Position = 0)]
-    [ValidateSet('build', 'lint', 'dump', 'freeze', 'check', 'test')]
+    [ValidateSet('build', 'lint', 'dump', 'freeze', 'vo-script', 'vo-status', 'check', 'test')]
     [string]$Command,
 
     # build / lint / dump / freeze: one source file (absolute, or relative to the project directory).
@@ -61,6 +64,9 @@ param(
 
     # build: generate in memory without writing packages.
     [switch]$NoSave,
+
+    # vo-script: where the recording script goes (relative to the project directory).
+    [string]$Out = 'Saved/DreamNarrative/VoiceScript.csv',
 
     # test: which tests.
     [ValidateSet('Quick', 'Explore', 'Smoke', 'All')]
@@ -235,13 +241,15 @@ function Invoke-Editor([string[]]$Arguments, [string[]]$KeepPatterns) {
     return $code
 }
 
-if ($Command -in 'build', 'lint', 'dump', 'freeze') {
+if ($Command -in 'build', 'lint', 'dump', 'freeze', 'vo-script', 'vo-status') {
     if (Get-EditorsOnProject $uproject) {
         Write-Warning "An editor has $uproject open. A build that writes assets will fight it over the packages."
     }
     $arguments = @('-run=DreamNarrative')
     if ($Command -in 'lint', 'dump') { $arguments += '-Lint' }
     if ($Command -eq 'freeze') { $arguments += '-FreezeIds' }
+    if ($Command -eq 'vo-script') { $arguments += "-VoScript=$Out" }
+    if ($Command -eq 'vo-status') { $arguments += '-VoStatus' }
     if ($Command -eq 'dump') { $arguments += '-Dump' }
     if ($File) { $arguments += "-File=$File" }
     if ($Root) { $arguments += "-Root=$Root" }

@@ -51,6 +51,7 @@ namespace
 
 	struct FVoiceRun
 	{
+		FDnaProgram Program;
 		TArray<UDreamNarrativeScript*> Scripts;
 		FDnaDiagnosticSink Diagnostics;
 
@@ -79,7 +80,7 @@ namespace
 	{
 		const FString Path = TEXT("Voices.dna");
 		const TMap<FString, FString> Texts = { { Path, Source } };
-		FDnaProgram Program;
+		FDnaProgram& Program = Out.Program;
 		LoadDnaProgram({ Path }, Program, Out.Diagnostics, &Texts);
 		FDnaGenerateOptions Options;
 		Options.bTransient = true;
@@ -147,6 +148,25 @@ bool FDnaVoiceLookupTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a row no line answers is an orphan"), Run.LinesWith(TEXT("DNS6004")), TArray<int32>{ 4 });
 	TestEqual(TEXT("the script refers to its voices"), Run.Scripts[0]->AssetReferences.Num(), 3);
 	TestFalse(TEXT("warnings only"), Run.Diagnostics.HasErrors());
+
+	// The recording script: every line, where its voice stands; filled in, it reads back as a table.
+	TArray<FDnaVoiceScriptRow> Rows;
+	CollectDnaVoiceScript(Run.Program, Run.Scripts, Rows);
+	TMap<FString, FString> Status;
+	for (const FDnaVoiceScriptRow& Row : Rows) { Status.Add(Row.LineId, Row.Status); }
+	TestEqual(TEXT("one row per line"), Rows.Num(), 5);
+	TestEqual(TEXT("found"), Status.FindRef(TEXT("老周_初见.1")), FString(TEXT("found")));
+	TestEqual(TEXT("missing"), Status.FindRef(TEXT("小雾_4")), FString(TEXT("missing")));
+	TestEqual(TEXT("none"), Status.FindRef(TEXT("老周_初见.5")), FString(TEXT("none")));
+	const FDnaVoiceScriptRow* Convention = Rows.FindByPredicate([](const FDnaVoiceScriptRow& Row) { return Row.LineId == TEXT("老周_初见.1"); });
+	TestTrue(TEXT("the convention's asset is named for the studio"), Convention && Convention->Expected == Assets.Root / TEXT("老周/老周_初见_1"));
+	const FDnaVoiceScriptRow* SecondRow = Rows.FindByPredicate([](const FDnaVoiceScriptRow& Row) { return Row.LineId == TEXT("老周_二"); });
+	TestTrue(TEXT("with the line before it for context"), SecondRow && SecondRow->Previous == TEXT("一。"));
+	TMap<FString, FDnaVoiceEntry> ReadBack;
+	FDnaDiagnosticSink ReadDiagnostics;
+	ReadDnaVoiceTables({ { TEXT("Script.voice.csv"), WriteDnaVoiceScript(Rows) } }, false, ReadBack, ReadDiagnostics);
+	TestEqual(TEXT("the voiced rows read back as a table"), ReadBack.Num(), 3);
+	TestTrue(TEXT("with their voices"), ReadBack.Contains(TEXT("小雾_3")) && ReadBack[TEXT("小雾_3")].Voice == FromCsv);
 
 	// A project default of the convention reaches the speaker with no root of its own: <default root>/<角色>/<id>.
 	Settings->DefaultVoiceLookup = EDnaVoiceLookup::Convention;

@@ -8,7 +8,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "DreamNarrativeVoice.h"
 #include "Lang/DnaDiagnostic.h"
+
+class UDreamNarrativeScript;
 
 namespace UE::DreamNarrative::Lang
 {
@@ -42,4 +45,43 @@ namespace UE::DreamNarrative::Lang
 
 	/** One CSV field, quoted when it has to be. */
 	DREAMNARRATIVECOMPILER_API FString QuoteDnaCsvField(const FString& Field);
+
+	class FDnaProgram;
+
+	/**
+	 * How a speaker's lines find their voices: its declaration's `voice:` (a root, or `table`), else the
+	 * project's default. OutRoot is the convention's root: the declared one, else `<default root>/<speaker>`
+	 * (`<default root>` for narration, Speaker None).
+	 */
+	DREAMNARRATIVECOMPILER_API EDnaVoiceLookup GetDnaVoiceLookup(const FDnaProgram& Program, FName Speaker, FString& OutRoot);
+
+	/** One row of a recording script: a line, who says it, what it says, and where its voice stands. */
+	struct FDnaVoiceScriptRow
+	{
+		FString LineId;
+		/** The voice found, as a content path; empty when none was. */
+		FString Voice;
+		/** The speaker; empty for narration. */
+		FString Character;
+		FString Text;
+		FString Dialogue;
+		/** The line before it in the same dialogue, for the actor's sake. */
+		FString Previous;
+		/** Speaker tags (`老周(皱眉)`), space separated. */
+		FString Tags;
+		/** `for` seconds; 0 when the line has none. */
+		float For = 0.f;
+		/** `found`, `missing`, or `none` (the speaker's lines look for no voice). */
+		FString Status;
+		/** Under the convention: the asset the voice is looked for as. */
+		FString Expected;
+		FString Source;
+		int32 SourceLine = 0;
+	};
+
+	/** The recording script of the compiled scripts: every spoken or narrated line, by character, in the order the dialogues have them. */
+	DREAMNARRATIVECOMPILER_API void CollectDnaVoiceScript(const FDnaProgram& Program, const TArray<UDreamNarrativeScript*>& Scripts, TArray<FDnaVoiceScriptRow>& OutRows);
+
+	/** The rows as CSV, `LineId` and `Voice` first: filled in, the same file reads back as a voice table. */
+	DREAMNARRATIVECOMPILER_API FString WriteDnaVoiceScript(const TArray<FDnaVoiceScriptRow>& Rows);
 }

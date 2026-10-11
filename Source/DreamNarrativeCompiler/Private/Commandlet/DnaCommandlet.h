@@ -19,6 +19,8 @@
  *   -Lint          parse and validate only; write nothing
  *   -NoSave        generate in memory without writing packages
  *   -Dump          print each file's syntax tree
+ *   -VoScript=<file>  write the recording script (every line, its speaker, text and voice) as CSV
+ *   -VoStatus      how many lines of each character have a voice, and which do not
  *   -FreezeIds     write `#id` onto every line and choice that has none, with the id it has now;
  *                  with -File only that file is written (the whole program is still read)
  *
@@ -35,5 +37,6 @@ public:
 	virtual int32 Main(const FString& Params) override;
 
 private:
+	int32 Voices(const UE::DreamNarrative::Lang::FDnaProgram& Program, const FString& ScriptFile, UE::DreamNarrative::Lang::FDnaDiagnosticSink& Diagnostics);
 	int32 FreezeIds(const UE::DreamNarrative::Lang::FDnaProgram& Program, const FString& OnlyFile, UE::DreamNarrative::Lang::FDnaDiagnosticSink& Diagnostics);
 };
