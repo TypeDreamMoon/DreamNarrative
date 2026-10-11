@@ -57,7 +57,7 @@ param(
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 
-$TemplateVersion = 3
+$TemplateVersion = 4
 $PluginName = 'DreamNarrative'
 $HostName = 'DreamNarrativeTestHost'
 $TemplateDir = Join-Path $PSScriptRoot 'Template'
