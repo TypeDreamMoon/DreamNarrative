@@ -1,6 +1,7 @@
 // Copyright DreamMoon. All Rights Reserved.
 //
-// Rebuilds the scripts when a `.dna` file under the project's source folder changes. With several
+// Rebuilds the scripts when a `.dna` file (or a `*.voice.csv`) under the project's source folder changes,
+// or a voice DataTable the settings list is saved. With several
 // editors open on the project only one rebuilds -- the first to take the lock file in Saved -- so two
 // processes never save the same packages (the second one would silently win). A build with errors
 // writes nothing: the assets stay as the last good build left them, and the errors go to the log.
@@ -11,6 +12,8 @@
 #include "Containers/Ticker.h"
 
 struct FFileChangeData;
+class FObjectPostSaveContext;
+class UPackage;
 class IFileHandle;
 
 namespace UE::DreamNarrative::Editor
@@ -39,12 +42,14 @@ namespace UE::DreamNarrative::Editor
 
 	private:
 		void HandleChanges(const TArray<FFileChangeData>& Changes);
+		void HandlePackageSaved(const FString& Filename, UPackage* Package, FObjectPostSaveContext Context);
 		bool Tick(float DeltaTime);
 		void RebuildNow();
 
 		FString Root;
 		FDelegateHandle WatchHandle;
 		FTSTicker::FDelegateHandle TickHandle;
+		FDelegateHandle SavedHandle;
 		TUniquePtr<IFileHandle> Lock;
 		/** When the last change came in; a burst of saves rebuilds once, half a second after the last. */
 		double DueAt = 0.0;

@@ -152,6 +152,7 @@ int32 UDreamNarrativeCommandlet::Main(const FString& Params)
 	{
 		FDnaGenerateOptions Options;
 		Options.bSave = !bNoSave;
+		Options.bReportVoiceOrphans = OnlyFile.IsEmpty();
 		GenerateDnaProgram(Program, Options, Result, Diagnostics);
 	}
 

@@ -234,6 +234,8 @@ namespace UE::DreamNarrative::Lang
 		double DurationSeconds = 0.0;
 		FString Stage;
 		FString Id;
+		/** `voice 资源`: the line's own voice, a content path or a name; overrides the speaker's lookup. */
+		FString Voice;
 		/** Offset (into the source) where the modifier tail starts; INDEX_NONE when there is none. */
 		int32 TailOffset = INDEX_NONE;
 	};

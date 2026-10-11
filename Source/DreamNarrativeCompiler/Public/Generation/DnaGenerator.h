@@ -22,6 +22,15 @@ namespace UE::DreamNarrative::Lang
 		bool bTransient = false;
 		/** Content path override; empty uses UDreamNarrativeSettings::AssetDirectory. */
 		FString AssetDirectory;
+
+		/** Voice tables standing in for the project's: CSV path -> text. Unset, the `*.voice.csv` under the source directory are read. */
+		const TMap<FString, FString>* VoiceCsvTexts = nullptr;
+
+		/** Read the voice DataTables the settings list. */
+		bool bReadVoiceDataTables = true;
+
+		/** Voice table entries no line answers to are DNS6004: only when the whole program is generated. */
+		bool bReportVoiceOrphans = false;
 	};
 
 	struct FDnaGenerateResult
@@ -37,6 +46,9 @@ namespace UE::DreamNarrative::Lang
 	 *   DNS4006  a value that must be a constant (fact default, implied fact) is not one
 	 *   DNS6001  (warning) a stage plays an asset no asset answers to; it is looked for again when it plays
 	 *   DNS6002  (warning) a stage plays a bare name several assets answer to
+	 *   DNS6003  a line whose voice is looked for has none (a warning, or an error when the settings say so)
+	 *   DNS6004  (warning) a voice table answers a line id no line has
+	 *   DNS6005  a line id answered twice by the voice tables
 	 *   DNS8001  conflicting source basenames, or the package could not be created or saved
 	 */
 	DREAMNARRATIVECOMPILER_API bool GenerateDnaProgram(const FDnaProgram& Program, const FDnaGenerateOptions& Options, FDnaGenerateResult& OutResult, FDnaDiagnosticSink& Diagnostics);

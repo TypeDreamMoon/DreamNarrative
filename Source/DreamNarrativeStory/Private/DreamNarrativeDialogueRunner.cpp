@@ -276,6 +276,8 @@ void UDreamNarrativeDialogueRunner::Run()
 			CurrentLine.Text = FormatText(Line.Text, Line.TextArgs);
 			CurrentLine.Duration = Line.Duration;
 			CurrentLine.Stage = Line.Stage;
+			CurrentLine.Voice = Line.Voice;
+			CurrentLine.VoiceSeconds = Line.VoiceSeconds;
 			CurrentLine.bNarration = Line.Speaker.IsNone();
 			CurrentLine.Channel = Channel;
 			Transcript.Add(Line.Speaker.IsNone()

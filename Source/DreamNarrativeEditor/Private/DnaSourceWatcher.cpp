@@ -1,6 +1,9 @@
 // Copyright DreamMoon. All Rights Reserved.
 
 #include "DnaSourceWatcher.h"
+#include "DreamNarrativeSettings.h"
+#include "UObject/Package.h"
+#include "UObject/ObjectSaveContext.h"
 #include "DirectoryWatcherModule.h"
 #include "DreamNarrativeEditorModule.h"
 #include "Generation/DnaGenerator.h"
@@ -47,6 +50,7 @@ namespace UE::DreamNarrative::Editor
 				WatchHandle, IDirectoryWatcher::WatchOptions::IncludeDirectoryChanges);
 		}
 		TickHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FDnaSourceWatcher::Tick), 0.1f);
+		SavedHandle = UPackage::PackageSavedWithContextEvent.AddRaw(this, &FDnaSourceWatcher::HandlePackageSaved);
 		UE_LOG(LogDreamNarrativeEditor, Log, TEXT("Watching %s%s"), *Root, IsOwner() ? TEXT("") : TEXT(" (another editor rebuilds)"));
 	}
 
@@ -68,6 +72,8 @@ namespace UE::DreamNarrative::Editor
 			FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
 			TickHandle.Reset();
 		}
+		UPackage::PackageSavedWithContextEvent.Remove(SavedHandle);
+		SavedHandle.Reset();
 		Lock.Reset();
 	}
 
@@ -75,7 +81,21 @@ namespace UE::DreamNarrative::Editor
 	{
 		for (const FFileChangeData& Change : Changes)
 		{
-			if (Change.Filename.EndsWith(TEXT(".dna")))
+			if (Change.Filename.EndsWith(TEXT(".dna")) || Change.Filename.EndsWith(TEXT(".voice.csv")))
+			{
+				DueAt = FPlatformTime::Seconds() + 0.5;
+				return;
+			}
+		}
+	}
+
+	void FDnaSourceWatcher::HandlePackageSaved(const FString& Filename, UPackage* Package, FObjectPostSaveContext Context)
+	{
+		// A voice DataTable the settings list changed: the lines it answers find their voices again.
+		const FString Name = Package ? Package->GetName() : FString();
+		for (const FSoftObjectPath& Table : UDreamNarrativeSettings::Get()->VoiceTables)
+		{
+			if (Table.GetLongPackageName() == Name)
 			{
 				DueAt = FPlatformTime::Seconds() + 0.5;
 				return;
@@ -144,6 +164,7 @@ namespace UE::DreamNarrative::Editor
 		Lang::FDnaGenerateOptions Options;
 		Options.bSave = bSave;
 		Options.bTransient = !bSave;
+		Options.bReportVoiceOrphans = true;
 		Lang::FDnaGenerateResult Result;
 		if (!Lang::GenerateDnaProgram(Program, Options, Result, Diagnostics))
 		{

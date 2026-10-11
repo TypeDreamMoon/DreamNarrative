@@ -1477,7 +1477,7 @@ namespace UE::DreamNarrative::Lang
 					const TCHAR Char = NormalizeDnaPunctuation(Content[Index]);
 					const bool bIsIf = WordAt(Content, Index, TEXT("if"));
 					const bool bCandidate = Char == TEXT('#') || Char == TEXT('@') || bIsIf
-						|| WordAt(Content, Index, TEXT("once")) || WordAt(Content, Index, TEXT("for"));
+						|| WordAt(Content, Index, TEXT("once")) || WordAt(Content, Index, TEXT("for")) || WordAt(Content, Index, TEXT("voice"));
 					if (!bCandidate)
 					{
 						continue;
@@ -1520,7 +1520,7 @@ namespace UE::DreamNarrative::Lang
 					return false;
 				}
 
-				bool bSeenIf = false, bSeenOnce = false, bSeenFor = false, bSeenStage = false, bSeenId = false;
+				bool bSeenIf = false, bSeenOnce = false, bSeenFor = false, bSeenStage = false, bSeenId = false, bSeenVoice = false;
 				auto Duplicate = [&](bool& bSeen, const FDnaToken& Token)
 				{
 					if (bSeen)
@@ -1588,6 +1588,20 @@ namespace UE::DreamNarrative::Lang
 						Out.bHasDuration = true;
 						Out.DurationSeconds = Tokens[Index + 1].Real;
 						Index += 2;
+						continue;
+					}
+					if (Token.Is(EDnaTokenKind::Identifier) && Token.Text == TEXT("voice") && !Tokens[Index + 1].Is(EDnaTokenKind::EndOfInput))
+					{
+						// A path or a name, read as written up to the next space: `/Game/VO/老周/开场`, `VO_特殊版`.
+						const FString& Text = Source.GetText();
+						const int32 Start = Tokens[Index + 1].Span.Offset;
+						int32 End = Start;
+						while (End < Text.Len() && !IsDnaSpace(Text[End]) && Text[End] != TEXT('\n') && Text[End] != TEXT('\r')) { ++End; }
+						if (Allowed != EModifierSet::Text) { NotAllowed(Token); }
+						Duplicate(bSeenVoice, Token);
+						Out.Voice = Text.Mid(Start, End - Start);
+						Index += 1;
+						while (!Tokens[Index].Is(EDnaTokenKind::EndOfInput) && Tokens[Index].Span.Offset < End) { ++Index; }
 						continue;
 					}
 					if (Token.IsKeyword(EDnaKeyword::If))

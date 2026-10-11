@@ -17,6 +17,7 @@
 #include "DreamNarrativeDialogueRunner.generated.h"
 
 class IDnaStageHost;
+class USoundBase;
 class UDreamNarrativeLedger;
 class UDreamNarrativeStory;
 
@@ -63,6 +64,14 @@ struct DREAMNARRATIVESTORY_API FDnaLineView
 
 	UPROPERTY(BlueprintReadOnly, Category = "Narrative")
 	FName Stage;
+
+	/** The line's voice; none when it has none. The game plays it (OnVoice says when). */
+	UPROPERTY(BlueprintReadOnly, Category = "Narrative")
+	TSoftObjectPtr<USoundBase> Voice;
+
+	/** How long the voice runs, when known; a channel that moves on by itself waits this long. */
+	UPROPERTY(BlueprintReadOnly, Category = "Narrative")
+	float VoiceSeconds = 0.f;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Narrative")
 	bool bNarration = false;

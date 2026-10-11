@@ -12,6 +12,9 @@
 #include "Lang/DnaLexer.h"
 #include "Lang/DnaProject.h"
 #include "Lang/DnaStageCompiler.h"
+#include "Lang/DnaVoice.h"
+#include "Misc/FileHelper.h"
+#include "Sound/SoundBase.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 #include "UObject/Package.h"
@@ -52,6 +55,70 @@ namespace UE::DreamNarrative::Lang
 		}
 
 		/**
+		 * Before a search: a commandlet (a build, a cook) discovers no assets by itself, and an editor may
+		 * still be discovering them in the background. Directory is scanned now, once.
+		 */
+		void ScanForSearch(IAssetRegistry& Registry, const FString& Directory)
+		{
+			if (!IsRunningCommandlet() && !Registry.IsLoadingAssets())
+			{
+				return;
+			}
+			static TSet<FString> Scanned;
+			bool bAlready = false;
+			Scanned.Add(Directory, &bAlready);
+			if (!bAlready)
+			{
+				Registry.ScanPathsSynchronous({ Directory }, /*bForceRescan=*/false);
+			}
+		}
+
+		/** The assets answering to NameOrPath, of Class or a class under it: a content path directly, a bare name anywhere under Roots. */
+		TArray<FAssetData> FindDnaAssets(const FString& NameOrPath, const FTopLevelAssetPath& Class, const TArray<FString>& Roots)
+		{
+			TArray<FAssetData> Found;
+			IAssetRegistry* Registry = IAssetRegistry::Get();
+			if (!Registry || NameOrPath.IsEmpty() || !Class.IsValid())
+			{
+				return Found;
+			}
+			const UClass* ClassObject = FindObject<UClass>(Class);
+			auto IsWanted = [ClassObject, &Class](const FAssetData& Asset)
+			{
+				return ClassObject ? Asset.IsInstanceOf(ClassObject) : Asset.AssetClassPath == Class;
+			};
+			if (NameOrPath.StartsWith(TEXT("/")))
+			{
+				FString Path = NameOrPath;
+				if (!Path.Contains(TEXT(".")))
+				{
+					Path += TEXT(".") + FPackageName::GetShortName(Path);
+				}
+				ScanForSearch(*Registry, FPackageName::GetLongPackagePath(Path));
+				const FAssetData Asset = Registry->GetAssetByObjectPath(FSoftObjectPath(Path));
+				if (Asset.IsValid() && IsWanted(Asset)) { Found.Add(Asset); }
+				return Found;
+			}
+			const FName Wanted(*NameOrPath);
+			for (const FString& Root : Roots)
+			{
+				ScanForSearch(*Registry, Root);
+				FARFilter Filter;
+				Filter.PackagePaths.Add(FName(*Root));
+				Filter.bRecursivePaths = true;
+				Filter.ClassPaths.Add(Class);
+				Filter.bRecursiveClasses = true;
+				TArray<FAssetData> Assets;
+				Registry->GetAssets(Filter, Assets);
+				for (const FAssetData& Asset : Assets)
+				{
+					if (Asset.AssetName == Wanted) { Found.AddUnique(Asset); }
+				}
+			}
+			return Found;
+		}
+
+		/**
 		 * Finds a stage entry's asset now, so the script names it by path: a cook takes it along, and a
 		 * playing stage loads it without searching. A bare name is looked for under the stage asset roots;
 		 * one not found stays as written and is looked for again when the stage plays.
@@ -59,66 +126,13 @@ namespace UE::DreamNarrative::Lang
 		void ResolveStageAsset(FDnaStageEntry& Entry, const FString& Stage, bool bReport, TArray<FSoftObjectPath>& OutReferences, FDnaDiagnosticSink& Diagnostics)
 		{
 			const FTopLevelAssetPath Class = StageAssetClass(Entry.Verb);
-			IAssetRegistry* Registry = IAssetRegistry::Get();
-			if (!Class.IsValid() || Entry.Asset.IsEmpty() || !Registry)
+			if (!Class.IsValid() || Entry.Asset.IsEmpty())
 			{
 				return;
 			}
-			// The editor discovers assets in the background: one still being discovered is left to be found
-			// when the stage plays. A commandlet (a build, a cook) discovers nothing by itself: the directories
-			// looked in are scanned first, once each.
-			if (Registry->IsLoadingAssets() && !IsRunningCommandlet())
-			{
-				return;
-			}
-			auto Scan = [Registry](const FString& Directory)
-			{
-				static TSet<FString> Scanned;
-				bool bAlready = false;
-				Scanned.Add(Directory, &bAlready);
-				if (IsRunningCommandlet() && !bAlready)
-				{
-					Registry->ScanPathsSynchronous({ Directory }, /*bForceRescan=*/false);
-				}
-			};
-			const UClass* ClassObject = FindObject<UClass>(Class);
-			auto IsWanted = [ClassObject, &Class](const FAssetData& Asset)
-			{
-				return ClassObject ? Asset.IsInstanceOf(ClassObject) : Asset.AssetClassPath == Class;
-			};
+			const TArray<FAssetData> Found = FindDnaAssets(Entry.Asset, Class, UDreamNarrativeSettings::Get()->StageAssetRoots);
 			FDnaSpan Span;
 			Span.Line = FMath::Max(1, Entry.SourceLine);
-			TArray<FAssetData> Found;
-			if (Entry.Asset.StartsWith(TEXT("/")))
-			{
-				FString Path = Entry.Asset;
-				if (!Path.Contains(TEXT(".")))
-				{
-					Path += TEXT(".") + FPackageName::GetShortName(Path);
-				}
-				Scan(FPackageName::GetLongPackagePath(Path));
-				const FAssetData Asset = Registry->GetAssetByObjectPath(FSoftObjectPath(Path));
-				if (Asset.IsValid() && IsWanted(Asset)) { Found.Add(Asset); }
-			}
-			else
-			{
-				const FName Wanted(*Entry.Asset);
-				for (const FString& Root : UDreamNarrativeSettings::Get()->StageAssetRoots)
-				{
-					Scan(Root);
-					FARFilter Filter;
-					Filter.PackagePaths.Add(FName(*Root));
-					Filter.bRecursivePaths = true;
-					Filter.ClassPaths.Add(Class);
-					Filter.bRecursiveClasses = true;
-					TArray<FAssetData> Assets;
-					Registry->GetAssets(Filter, Assets);
-					for (const FAssetData& Asset : Assets)
-					{
-						if (Asset.AssetName == Wanted) { Found.AddUnique(Asset); }
-					}
-				}
-			}
 			if (Found.Num() == 0)
 			{
 				if (bReport)
@@ -137,6 +151,95 @@ namespace UE::DreamNarrative::Lang
 			}
 			Entry.Asset = Found[0].GetObjectPathString();
 			OutReferences.AddUnique(Found[0].GetSoftObjectPath());
+		}
+
+		/** The voice tables of one generation, and which line ids the program has. */
+		struct FVoiceContext
+		{
+			TMap<FString, FDnaVoiceEntry> Entries;
+			TSet<FString> LineIds;
+		};
+
+		/**
+		 * Finds the voice of every line of a dialogue section and writes it, with its length, into the
+		 * line: the line's own `voice`, else the speaker's lookup -- the convention under its root, or
+		 * the voice tables -- else the project's default. A line whose voice is looked for and not
+		 * found is DNS6003.
+		 */
+		void ResolveVoices(UDnaDialogueSection& Section, const TMap<FName, FString>& Overrides, const FDnaProgram& Program, FVoiceContext& Voices,
+			TArray<FSoftObjectPath>& OutReferences, FDnaDiagnosticSink& Diagnostics)
+		{
+			const UDreamNarrativeSettings* Settings = UDreamNarrativeSettings::Get();
+			const FTopLevelAssetPath SoundClass(TEXT("/Script/Engine"), TEXT("SoundBase"));
+			for (FDnaDialogueNodeData& Node : Section.Nodes)
+			{
+				for (FDnaLineData& Line : Node.Lines)
+				{
+					const FString Id = Line.Id.ToString();
+					Voices.LineIds.Add(Id);
+					EDnaVoiceLookup Lookup = Settings->DefaultVoiceLookup;
+					FString Root = Settings->DefaultVoiceRoot;
+					Root.RemoveFromEnd(TEXT("/"));
+					if (!Line.Speaker.IsNone())
+					{
+						Root /= Line.Speaker.ToString();
+						const FDnaCharacterInfo* Info = Program.Characters.Find(Line.Speaker.ToString());
+						if (Info && Info->VoiceRoot == TEXT("table"))
+						{
+							Lookup = EDnaVoiceLookup::Table;
+						}
+						else if (Info && !Info->VoiceRoot.IsEmpty())
+						{
+							Lookup = EDnaVoiceLookup::Convention;
+							Root = Info->VoiceRoot;
+							Root.RemoveFromEnd(TEXT("/"));
+						}
+					}
+					FString Wanted;
+					FText Looked;
+					if (const FString* Own = Overrides.Find(Line.Id))
+					{
+						Wanted = *Own;
+						Looked = FText::Format(LOCTEXT("VoiceOwn", "its own voice '{0}'"), FText::FromString(Wanted));
+					}
+					else if (Lookup == EDnaVoiceLookup::Convention)
+					{
+						Wanted = Root / GetDnaVoiceAssetName(Id);
+						Looked = FText::Format(LOCTEXT("VoiceConvention", "'{0}'"), FText::FromString(Wanted));
+					}
+					else if (Lookup == EDnaVoiceLookup::Table)
+					{
+						if (const FDnaVoiceEntry* Entry = Voices.Entries.Find(Id))
+						{
+							Wanted = Entry->Voice;
+							Looked = FText::Format(LOCTEXT("VoiceTable", "'{0}' (from {1})"), FText::FromString(Wanted), FText::FromString(Entry->Source));
+						}
+						else
+						{
+							Looked = LOCTEXT("VoiceNoRow", "a row in the voice tables");
+						}
+					}
+					else
+					{
+						continue;
+					}
+					const TArray<FAssetData> Found = Wanted.IsEmpty() ? TArray<FAssetData>() : FindDnaAssets(Wanted, SoundClass, { Root, Settings->DefaultVoiceRoot });
+					if (Found.Num() == 0)
+					{
+						FDnaSpan Span;
+						Span.Line = FMath::Max(1, Line.SourceLine);
+						const FText Message = FText::Format(LOCTEXT("VoiceMissing", "Line '{0}' has no voice: looked for {1}"), FText::FromString(Id), Looked);
+						if (Settings->bMissingVoiceIsError) { Diagnostics.Error(TEXT("DNS6003"), Span, Message); }
+						else { Diagnostics.Warning(TEXT("DNS6003"), Span, Message); }
+						continue;
+					}
+					Line.Voice = TSoftObjectPtr<USoundBase>(Found[0].GetSoftObjectPath());
+					float Seconds = 0.f;
+					Found[0].GetTagValue(TEXT("Duration"), Seconds);
+					Line.VoiceSeconds = FMath::Max(0.f, Seconds);
+					OutReferences.AddUnique(Found[0].GetSoftObjectPath());
+				}
+			}
 		}
 
 		/** A run of text parts becomes one FText pattern plus the expressions its placeholders take. */
@@ -418,6 +521,9 @@ namespace UE::DreamNarrative::Lang
 				Emit(EDnaOpCode::End, Root.LineNumber());
 			}
 
+			/** Lines that named their own voice (`voice 资源`), by id. */
+			TMap<FName, FString> VoiceOverrides;
+
 		private:
 			FDnaExprCompiler& Exprs;
 			const FDnaProgram& Program;
@@ -515,6 +621,7 @@ namespace UE::DreamNarrative::Lang
 				Out.Duration = P.Modifiers.bHasDuration ? static_cast<float>(P.Modifiers.DurationSeconds) : 0.f;
 				Out.Stage = P.Modifiers.Stage.IsEmpty() ? NAME_None : FName(*P.Modifiers.Stage);
 				Out.SourceLine = Line.LineNumber();
+				if (!P.Modifiers.Voice.IsEmpty()) { VoiceOverrides.Add(Out.Id, P.Modifiers.Voice); }
 
 				At(Emit(EDnaOpCode::Line, Line.LineNumber())).Index = Data->Lines.Num() - 1;
 			}
@@ -597,7 +704,7 @@ namespace UE::DreamNarrative::Lang
 			}
 		};
 
-		bool GenerateDocument(const FDnaProgram& Program, FDnaDocument& Document, const FDnaGenerateOptions& Options, FDnaGenerateResult& Result, FDnaDiagnosticSink& Diagnostics)
+		bool GenerateDocument(const FDnaProgram& Program, FDnaDocument& Document, const FDnaGenerateOptions& Options, FVoiceContext& Voices, FDnaGenerateResult& Result, FDnaDiagnosticSink& Diagnostics)
 		{
 			Diagnostics.SetFilePath(Document.Path);
 			bool bOk = true;
@@ -895,6 +1002,7 @@ namespace UE::DreamNarrative::Lang
 					FDnaDialogueNodeData& Node = Section->Nodes.AddDefaulted_GetRef();
 					Compiler.CompileNode(*Root, Node);
 				}
+				ResolveVoices(*Section, Compiler.VoiceOverrides, Program, Voices, Script->AssetReferences, Diagnostics);
 				Script->Sections.Add(Section);
 			}
 
@@ -1000,12 +1108,39 @@ namespace UE::DreamNarrative::Lang
 				SourcesByPackage.Add(PackageKey, Document->Path);
 			}
 		}
-		bool bOk = true;
+		// The voice tables, read once for the whole program.
+		FVoiceContext Voices;
+		{
+			TMap<FString, FString> ProjectCsv;
+			if (!Options.VoiceCsvTexts)
+			{
+				TArray<FString> Files;
+				FindDnaVoiceCsvFiles(GetDnaSourceRoot(), Files);
+				for (const FString& File : Files)
+				{
+					FString Text;
+					if (FFileHelper::LoadFileToString(Text, *File)) { ProjectCsv.Add(File, MoveTemp(Text)); }
+				}
+			}
+			ReadDnaVoiceTables(Options.VoiceCsvTexts ? *Options.VoiceCsvTexts : ProjectCsv, Options.bReadVoiceDataTables, Voices.Entries, Diagnostics);
+		}
+		bool bOk = !Diagnostics.HasErrors();
 		for (const TSharedPtr<FDnaDocument>& Document : Program.Documents)
 		{
 			if (Document.IsValid())
 			{
-				bOk &= GenerateDocument(Program, *Document, Options, OutResult, Diagnostics);
+				bOk &= GenerateDocument(Program, *Document, Options, Voices, OutResult, Diagnostics);
+			}
+		}
+		if (Options.bReportVoiceOrphans)
+		{
+			for (const TPair<FString, FDnaVoiceEntry>& Pair : Voices.Entries)
+			{
+				if (Voices.LineIds.Contains(Pair.Key)) { continue; }
+				FDnaSpan Span;
+				Span.Line = FMath::Max(1, Pair.Value.Line);
+				Diagnostics.SetFilePath(Pair.Value.Source);
+				Diagnostics.Warning(TEXT("DNS6004"), Span, FText::Format(LOCTEXT("VoiceOrphan", "The voice table answers '{0}', but no line has that id"), FText::FromString(Pair.Key)));
 			}
 		}
 		return bOk;

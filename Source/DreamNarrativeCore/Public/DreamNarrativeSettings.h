@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DeveloperSettings.h"
+#include "DreamNarrativeVoice.h"
 #include "DreamNarrativeSettings.generated.h"
 
 /** Project Settings > Plugins > Dream Narrative. */
@@ -52,6 +53,22 @@ public:
 	 */
 	UPROPERTY(Config, EditAnywhere, Category = "Dialogue")
 	bool bRequireLineIds = false;
+
+	/** Where lines find their voices when the speaker's declaration does not say (`voice: 路径` or `voice: table`). */
+	UPROPERTY(Config, EditAnywhere, Category = "Voice")
+	EDnaVoiceLookup DefaultVoiceLookup = EDnaVoiceLookup::None;
+
+	/** The convention's root for a speaker with none of its own: `<root>/<角色>/<line id>`; narration `<root>/<line id>`. */
+	UPROPERTY(Config, EditAnywhere, Category = "Voice")
+	FString DefaultVoiceRoot = TEXT("/Game/VO");
+
+	/** Voice DataTables (rows of FDnaVoiceRow, row name = line id), read along with the `*.voice.csv` beside the sources. */
+	UPROPERTY(Config, EditAnywhere, Category = "Voice", meta = (AllowedClasses = "/Script/Engine.DataTable"))
+	TArray<FSoftObjectPath> VoiceTables;
+
+	/** A line whose voice is looked for and not found is an error (DNS6003) rather than a warning: for release builds. */
+	UPROPERTY(Config, EditAnywhere, Category = "Voice")
+	bool bMissingVoiceIsError = false;
 
 	/** Content paths a stage's bare asset names (`montage AM_咆哮`) are looked for under, in order. A name that starts with `/` is a path already. */
 	UPROPERTY(Config, EditAnywhere, Category = "Stage")

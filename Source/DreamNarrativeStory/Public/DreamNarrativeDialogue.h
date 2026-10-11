@@ -11,6 +11,8 @@
 #include "DreamNarrativeScript.h"
 #include "DreamNarrativeDialogue.generated.h"
 
+class USoundBase;
+
 UENUM()
 enum class EDnaOpCode : uint8
 {
@@ -142,6 +144,14 @@ struct DREAMNARRATIVESTORY_API FDnaLineData
 	/** Stage attached with `@`, or None. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	FName Stage;
+
+	/** The line's voice, found when the script was compiled (the speaker's convention, a voice table or the line's own `voice`); none when it has none. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	TSoftObjectPtr<USoundBase> Voice;
+
+	/** How long the voice runs, as the asset registry knew it when compiling; 0 when unknown. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
+	float VoiceSeconds = 0.f;
 
 	UPROPERTY(VisibleAnywhere, Category = "Narrative")
 	int32 SourceLine = 0;
