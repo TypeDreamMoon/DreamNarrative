@@ -193,6 +193,33 @@ Story->GetLedger()->RaiseEvent(Storm);
   `dn.emit 事件`、`dn.channels`、`dn.quests`、`dn.accept / complete / fail 任务`、`dn.newgame`、`dn.select 章节`、
   `dn.checkpoints`、`dn.archive`、`dn.record start|stop`。
 
+### 4.1 语音
+
+插件不放声音:它在编译时给每行台词找到语音资源和时长,运行时告诉游戏什么时候放、什么时候停,播放交给游戏的音频系统。
+
+```
+character 老周
+  voice: /Game/VO/老周      // 按约定:/Game/VO/老周/<行 ID>,行 ID 里的点写成下划线
+character 小雾
+  voice: table              // 查语音表
+dialogue 老周_初见 for 老周
+  老周: 你就是新来的? #老周_初见.1
+  老周: 灯坏了三天了。 voice /Game/VO/特殊/灯坏了   // 这一行自己指定
+```
+
+- 两种方式按角色选;没写 `voice:` 的角色跟项目设置的 `Default Voice Lookup`(默认 None:不找语音、也不报缺)。
+- 语音表:源码目录里的 `*.voice.csv`(表头里有 `LineId` 和 `Voice` 两列,其余列不管)和设置里列出的 DataTable
+  (行结构 `FDnaVoiceRow`,行名就是行 ID)。同一行写两次报 DNS6005;找不到的语音报 DNS6003;表里多出来的行报 DNS6004。
+- 找到的语音写进脚本资产,打包时一起带上;时长取资源上记的 `Duration`。录音之前先 `dnc freeze`,行 ID 才不会再变。
+- 运行时:`Story->OnVoice(Runner, Event, Line, Speaker)` 收所有频道的语音事件(每个 runner 也有自己的 `OnVoice`):
+  - `Requested`:这一行上屏了,放 `Line.Voice`;暂停后重新上屏会再来一次,从头放;
+  - `Stopped`:没说完就被切了(玩家推进、暂停、对话结束、同一个人在别的频道开口),停掉;
+  - `Finished`:说完才走的(自动推进到时,或游戏调了 `NotifyVoiceFinished`)。
+- `Speaker` 是说话人的 actor:`Story->BindSpeaker(角色, Actor)` 绑定,没绑就找带这个角色名标签的 actor。口型、面部动画从这里接。
+- 自动推进的频道按语音长度(再加 `Voice Tail Seconds`)往下走;游戏的音频更清楚何时放完时,调 `Runner->NotifyVoiceFinished()`,
+  或打开 `Wait For Voice Finished`,改成等游戏通知(超过长度加 `Voice Wait Grace Seconds` 仍没通知就照样往下走)。
+- 同一个人同一时刻只说一句:他在一个频道开口,别的频道上他正在说的语音先 `Stopped`(那一行还留在屏上)。
+
 ## 5. 测
 
 ```

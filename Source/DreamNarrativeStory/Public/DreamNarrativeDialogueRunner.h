@@ -109,6 +109,20 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FDnaRunnerStageSignature, UDreamN
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDnaRunnerWaitSignature, UDreamNarrativeDialogueRunner*, Runner, float, Seconds);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDnaRunnerPausedSignature, UDreamNarrativeDialogueRunner*, Runner);
 
+/** What becomes of a line's voice. The game plays it; the runner says when. */
+UENUM(BlueprintType)
+enum class EDnaVoiceEvent : uint8
+{
+	/** The line is up: play its voice -- from the start, when a pause took the line down and it is up again. */
+	Requested,
+	/** Cut short -- the player moved on, the dialogue paused or ended, the speaker began a line elsewhere: stop it. */
+	Stopped,
+	/** The line moved on after its voice ran out (or the game said it had). */
+	Finished,
+};
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FDnaVoiceSignature, UDreamNarrativeDialogueRunner*, Runner, EDnaVoiceEvent, Event, const FDnaLineView&, Line, AActor*, Speaker);
+
 UCLASS(BlueprintType)
 class DREAMNARRATIVESTORY_API UDreamNarrativeDialogueRunner : public UObject
 {
@@ -185,12 +199,30 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Narrative|Dialogue")
 	const TArray<FDnaChoiceView>& GetChoices() const { return CurrentChoices; }
 
+	/**
+	 * The game's voice of the line up now ran out. A channel that moves on by itself does so at once; on
+	 * one the player moves on, the line stays up and the voice counts as finished.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Narrative|Dialogue")
+	void NotifyVoiceFinished();
+
+	/** Stops the voice of the line up now and leaves the line up: its speaker began a line on another channel. */
+	void StopVoice();
+
+	/** A voice was requested for the line up now and has not stopped or finished. */
+	UFUNCTION(BlueprintPure, Category = "Narrative|Dialogue")
+	bool IsVoicePlaying() const { return bVoiceActive; }
+
 	/** When set, `wait` does not start the clock; the game paces waits itself and calls NotifyWaitFinished(). */
 	UPROPERTY(BlueprintReadWrite, Category = "Narrative|Dialogue")
 	bool bManualWait = false;
 
 	UPROPERTY(BlueprintAssignable, Category = "Narrative|Dialogue")
 	FDnaRunnerLineSignature OnLine;
+
+	/** The voice of a line: play it, stop it, or it is over. The story's OnVoice hears every channel's. */
+	UPROPERTY(BlueprintAssignable, Category = "Narrative|Dialogue")
+	FDnaVoiceSignature OnVoice;
 
 	UPROPERTY(BlueprintAssignable, Category = "Narrative|Dialogue")
 	FDnaRunnerChoicesSignature OnChoices;
@@ -223,6 +255,12 @@ private:
 	/** Runs instructions until one yields or the node ends. */
 	void Run();
 	void Finish();
+	/** The line up now has a voice: the game is asked to play it. */
+	void RequestVoice();
+	/** The voice requested goes: Stopped when cut short, Finished when it had run out. */
+	void EndVoice(bool bCut);
+	/** Starts loading the voices of the dialogue entered, so each is in by its line. */
+	void PreloadVoices();
 	/** Takes a choice: its once mark, then on along its branch. */
 	void TakeChoice(const FDnaChoiceData& Option);
 	/** Commits the ledger batch a run of `set` instructions opened, if one is open. */
@@ -287,6 +325,10 @@ private:
 
 	bool bPaused = false;
 	bool bChoosing = false;
+	bool bVoiceActive = false;
+	/** The voice of the line up now ran out (its time passed, or the game said so). */
+	bool bVoiceDone = false;
+	TSharedPtr<struct FStreamableHandle> VoicePreload;
 	/** A choice made while a listener of OnChoiceMade paused the dialogue: taken when it resumes. */
 	TOptional<FDnaChoiceData> PendingChoice;
 	uint32 ExecutionSerial = 0;

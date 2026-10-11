@@ -203,6 +203,20 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Narrative|Story")
 	FDnaDialogueStartedSignature OnDialogueStarted;
 
+	/** Every channel's line voices: play, stop, over. One place for the game's audio to listen. */
+	UPROPERTY(BlueprintAssignable, Category = "Narrative|Story")
+	FDnaVoiceSignature OnVoice;
+
+	/** The actor a character speaks from (its voice's position, its face). Unbound, an actor tagged with the character's name. */
+	UFUNCTION(BlueprintCallable, Category = "Narrative|Story")
+	void BindSpeaker(FName Character, AActor* Actor);
+
+	UFUNCTION(BlueprintPure, Category = "Narrative|Story")
+	AActor* FindSpeaker(FName Character) const;
+
+	/** A runner's voice event: passed on to OnVoice; a speaker who begins a line stops their voice on any other channel. */
+	void HandleVoice(UDreamNarrativeDialogueRunner* Runner, EDnaVoiceEvent Event, const FDnaLineView& Line, AActor* Speaker);
+
 	/** TalkTo was called; the entry is picked right after, so anything it draws comes after this. */
 	FDnaTalkRequestedSignature OnTalkRequested;
 
@@ -393,6 +407,8 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UDreamNarrativeLedger> Ledger;
+
+	TMap<FName, TWeakObjectPtr<AActor>> Speakers;
 
 	bool bRegisteringScripts = false;
 

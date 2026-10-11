@@ -6,6 +6,7 @@
 #include "DreamNarrativeStory.h"
 #include "DreamNarrativeStoryModule.h"
 #include "DreamNarrativeTrace.h"
+#include "Engine/AssetManager.h"
 
 namespace
 {
@@ -134,6 +135,10 @@ float UDreamNarrativeDialogueRunner::LineSeconds(const FDnaLineView& Line)
 		return Line.Duration;
 	}
 	const UDreamNarrativeSettings* Settings = UDreamNarrativeSettings::Get();
+	if (Line.VoiceSeconds > 0.f)
+	{
+		return Line.VoiceSeconds + Settings->VoiceTailSeconds;
+	}
 	return FMath::Max(Settings->AutoAdvanceMinimumSeconds, Settings->AutoAdvanceSecondsPerCharacter * Line.Text.ToString().Len());
 }
 
@@ -153,6 +158,7 @@ bool UDreamNarrativeDialogueRunner::EnterNode(FName InNode)
 	Node = Found;
 	NodeName = InNode;
 	PC = 0;
+	PreloadVoices();
 	Transcript.Add(FString::Printf(TEXT("[enter %s]"), *InNode.ToString()));
 	return true;
 }
@@ -506,6 +512,7 @@ void UDreamNarrativeDialogueRunner::Advance()
 	}
 	CancelAutoAdvance();
 	StopLineStage();
+	EndVoice(/*bCut=*/true);
 	State = EDnaRunnerState::Idle;
 	Run();
 }
@@ -522,7 +529,14 @@ void UDreamNarrativeDialogueRunner::ShowLine()
 	// Scheduled before the broadcast, as a wait is: a listener that moves on at once cancels it.
 	ScheduleAutoAdvance();
 	PlayLineStage();
+	const uint32 Running = ExecutionSerial;
+	const int32 Shown = LinesShown;
 	OnLine.Broadcast(this, CurrentLine);
+	// A listener of OnLine may have moved on (and shown the next line), paused or ended the dialogue already.
+	if (Running == ExecutionSerial && Shown == LinesShown && State == EDnaRunnerState::ShowingLine && !bPaused)
+	{
+		RequestVoice();
+	}
 }
 
 IDnaStageHost* UDreamNarrativeDialogueRunner::HostFor(FName Stage) const
@@ -574,7 +588,14 @@ void UDreamNarrativeDialogueRunner::ScheduleAutoAdvance()
 	CancelAutoAdvance();
 	if (bAutoAdvance && !bPaused && Ledger && State == EDnaRunnerState::ShowingLine)
 	{
-		AdvanceHandle = Ledger->GetClock().Schedule(LineSeconds(CurrentLine), FSimpleDelegate::CreateUObject(this, &UDreamNarrativeDialogueRunner::HandleAutoAdvance));
+		const UDreamNarrativeSettings* Settings = UDreamNarrativeSettings::Get();
+		float Seconds = LineSeconds(CurrentLine);
+		// Waiting for the game's word on a voiced line: the length (or the estimate) is only the deadline.
+		if (Settings->bWaitForVoiceFinished && !CurrentLine.Voice.IsNull() && CurrentLine.Duration <= 0.f)
+		{
+			Seconds += Settings->VoiceWaitGraceSeconds;
+		}
+		AdvanceHandle = Ledger->GetClock().Schedule(Seconds, FSimpleDelegate::CreateUObject(this, &UDreamNarrativeDialogueRunner::HandleAutoAdvance));
 	}
 }
 
@@ -594,6 +615,8 @@ void UDreamNarrativeDialogueRunner::HandleAutoAdvance()
 	{
 		Tracer->OnEvent(TEXT("channel.auto-advance"));
 	}
+	// The line had its time: its voice is over, not cut.
+	bVoiceDone = true;
 	Advance();
 }
 
@@ -606,6 +629,8 @@ void UDreamNarrativeDialogueRunner::Pause()
 	bPaused = true;
 	CancelAutoAdvance();
 	StopLineStage();
+	// The line comes down; it is said again, voice and all, when the dialogue resumes.
+	EndVoice(/*bCut=*/true);
 	if (State == EDnaRunnerState::Waiting && WaitHandle.IsValid() && Ledger)
 	{
 		PausedWaitRemaining = FMath::Max(0.0, Ledger->GetClock().GetRemaining(WaitHandle));
@@ -757,6 +782,7 @@ void UDreamNarrativeDialogueRunner::Finish()
 	}
 	CancelAutoAdvance();
 	StopLineStage();
+	EndVoice(/*bCut=*/true);
 	if (StageTicket != 0)
 	{
 		// Cut off while a stage held it: the stage goes too.
@@ -772,12 +798,87 @@ void UDreamNarrativeDialogueRunner::Finish()
 	State = EDnaRunnerState::Ended;
 	++ExecutionSerial;
 	PendingChoice.Reset();
+	if (VoicePreload.IsValid())
+	{
+		VoicePreload->ReleaseHandle();
+		VoicePreload.Reset();
+	}
 	if (Ledger && !NodeName.IsNone())
 	{
 		Ledger->MarkVisited(NodeName);
 	}
 	Transcript.Add(TEXT("[end]"));
 	OnEnded.Broadcast(this);
+}
+
+void UDreamNarrativeDialogueRunner::PreloadVoices()
+{
+	if (VoicePreload.IsValid())
+	{
+		VoicePreload->ReleaseHandle();
+		VoicePreload.Reset();
+	}
+	TArray<FSoftObjectPath> Voices;
+	for (const FDnaLineData& Line : Node ? Node->Lines : TArray<FDnaLineData>())
+	{
+		if (!Line.Voice.IsNull() && !Line.Voice.IsValid()) { Voices.AddUnique(Line.Voice.ToSoftObjectPath()); }
+	}
+	if (Voices.Num() > 0 && UAssetManager::IsInitialized())
+	{
+		VoicePreload = UAssetManager::GetStreamableManager().RequestAsyncLoad(Voices, FStreamableDelegate(), FStreamableManager::AsyncLoadHighPriority);
+	}
+}
+
+void UDreamNarrativeDialogueRunner::RequestVoice()
+{
+	if (CurrentLine.Voice.IsNull())
+	{
+		return;
+	}
+	bVoiceActive = true;
+	bVoiceDone = false;
+	AActor* Speaker = Story && !CurrentLine.Speaker.IsNone() ? Story->FindSpeaker(CurrentLine.Speaker) : nullptr;
+	if (Story)
+	{
+		Story->HandleVoice(this, EDnaVoiceEvent::Requested, CurrentLine, Speaker);
+	}
+	OnVoice.Broadcast(this, EDnaVoiceEvent::Requested, CurrentLine, Speaker);
+}
+
+void UDreamNarrativeDialogueRunner::EndVoice(bool bCut)
+{
+	if (!bVoiceActive)
+	{
+		return;
+	}
+	bVoiceActive = false;
+	const EDnaVoiceEvent Ending = bCut && !bVoiceDone ? EDnaVoiceEvent::Stopped : EDnaVoiceEvent::Finished;
+	AActor* Speaker = Story && !CurrentLine.Speaker.IsNone() ? Story->FindSpeaker(CurrentLine.Speaker) : nullptr;
+	if (Story)
+	{
+		Story->HandleVoice(this, Ending, CurrentLine, Speaker);
+	}
+	OnVoice.Broadcast(this, Ending, CurrentLine, Speaker);
+}
+
+void UDreamNarrativeDialogueRunner::StopVoice()
+{
+	EndVoice(/*bCut=*/true);
+}
+
+void UDreamNarrativeDialogueRunner::NotifyVoiceFinished()
+{
+	if (!bVoiceActive || State != EDnaRunnerState::ShowingLine)
+	{
+		return;
+	}
+	bVoiceDone = true;
+	if (bAutoAdvance && !bPaused && CurrentLine.Duration <= 0.f)
+	{
+		Advance();
+		return;
+	}
+	EndVoice(/*bCut=*/false);
 }
 
 void UDreamNarrativeDialogueRunner::CloseBatch()

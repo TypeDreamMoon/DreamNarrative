@@ -8,6 +8,8 @@
 #include "DreamNarrativeStoryModule.h"
 #include "DreamNarrativeTrace.h"
 #include "Engine/GameInstance.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
 #include "Subsystems/SubsystemCollection.h"
 
 void UDreamNarrativeStory::Initialize(FSubsystemCollectionBase& Collection)
@@ -149,6 +151,48 @@ void UDreamNarrativeStory::RegisterScripts(const TArray<UDreamNarrativeScript*>&
 		CheckQuests();
 		CheckArchives();
 	}
+}
+
+void UDreamNarrativeStory::BindSpeaker(FName Character, AActor* Actor)
+{
+	if (Actor) { Speakers.Add(Character, Actor); }
+	else { Speakers.Remove(Character); }
+}
+
+AActor* UDreamNarrativeStory::FindSpeaker(FName Character) const
+{
+	if (const TWeakObjectPtr<AActor>* Bound = Speakers.Find(Character))
+	{
+		if (AActor* Actor = Bound->Get()) { return Actor; }
+	}
+	const UGameInstance* Instance = GetGameInstance();
+	UWorld* World = Instance ? Instance->GetWorld() : nullptr;
+	if (!World || Character.IsNone())
+	{
+		return nullptr;
+	}
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		if (It->ActorHasTag(Character)) { return *It; }
+	}
+	return nullptr;
+}
+
+void UDreamNarrativeStory::HandleVoice(UDreamNarrativeDialogueRunner* Runner, EDnaVoiceEvent Event, const FDnaLineView& Line, AActor* Speaker)
+{
+	// One mouth: a speaker who begins a line stops their voice on any other channel first.
+	if (Event == EDnaVoiceEvent::Requested && !Line.Speaker.IsNone())
+	{
+		for (const TPair<FName, FDnaChannelState>& Pair : Channels)
+		{
+			UDreamNarrativeDialogueRunner* Other = Pair.Value.Runner;
+			if (Other && Other != Runner && Other->IsVoicePlaying() && Other->GetCurrentLine().Speaker == Line.Speaker)
+			{
+				Other->StopVoice();
+			}
+		}
+	}
+	OnVoice.Broadcast(Runner, Event, Line, Speaker);
 }
 
 int32 UDreamNarrativeStory::LoadAllScripts()

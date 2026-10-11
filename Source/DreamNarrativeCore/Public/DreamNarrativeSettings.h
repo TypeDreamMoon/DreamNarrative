@@ -66,6 +66,21 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Voice", meta = (AllowedClasses = "/Script/Engine.DataTable"))
 	TArray<FSoftObjectPath> VoiceTables;
 
+	/** A voiced line on a channel that moves on by itself stays up this much longer than its voice. */
+	UPROPERTY(Config, EditAnywhere, Category = "Voice", meta = (ClampMin = "0.0"))
+	float VoiceTailSeconds = 0.3f;
+
+	/**
+	 * A voiced line on a channel that moves on by itself waits for the game's NotifyVoiceFinished rather
+	 * than the voice's length -- for a game whose audio knows better (streaming, localised voices of other
+	 * lengths). It moves on anyway VoiceWaitGraceSeconds past the length, should the game never say.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Voice")
+	bool bWaitForVoiceFinished = false;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Voice", meta = (ClampMin = "0.0", EditCondition = "bWaitForVoiceFinished"))
+	float VoiceWaitGraceSeconds = 5.f;
+
 	/** A line whose voice is looked for and not found is an error (DNS6003) rather than a warning: for release builds. */
 	UPROPERTY(Config, EditAnywhere, Category = "Voice")
 	bool bMissingVoiceIsError = false;
