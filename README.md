@@ -22,7 +22,7 @@ Version 0.1.0, beta. In place and covered by the automated suite (`Tools/dnc.ps1
 
 - **The language** — facts, characters, dialogue with choices and conditions, channels that talk side by side,
   events with parameters, quests, chapters with checkpoints and new playthroughs, archives, stages, and `test` /
-  `explore` blocks — with a validator whose every diagnostic is documented in `Docs/Diagnostics.md`.
+  `explore` blocks — with a validator whose every diagnostic is documented in the [diagnostic reference](Docs/diagnostics/reference.md).
 - **The runtime** — the ledger with its save scopes, dialogue runners, quests, chapters; the stage director with
   transactional restore, a watchdog, and camera, light, mask, effect, HUD, animation, game-time and level
   sequence tracks; the Gameplay Ability System bridge both ways and an ability task that plays a stage.
@@ -31,7 +31,9 @@ Version 0.1.0, beta. In place and covered by the automated suite (`Tools/dnc.ps1
 - **Tooling** — `dnc` build / lint / test, an exploring model checker, recording and replay, and a VS Code
   extension (`dreamnarrative-language-support`).
 
-Start with `Docs/Guide.md` (Chinese) and the example in `Examples/Lighthouse`.
+Start with the [English guide](Docs/getting-started/guide.md), the [documentation index](Docs/README.md),
+and the [Lighthouse example](Examples/Lighthouse). Plugin documentation is the English source;
+Chinese translations are maintained and reviewed in the documentation site repository.
 
 ## Modules
 

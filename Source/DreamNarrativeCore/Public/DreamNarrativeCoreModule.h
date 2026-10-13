@@ -26,7 +26,7 @@ namespace DreamNarrative
 
 	namespace Diagnostics
 	{
-		/** Prefix every diagnostic code carries, as in DNS1001. Reserved ranges live in Docs/Diagnostics. */
+		/** Prefix every diagnostic code carries, as in DNS1001. Reserved ranges live in Docs/diagnostics/index.md. */
 		inline const TCHAR* CodePrefix = TEXT("DNS");
 	}
 }
