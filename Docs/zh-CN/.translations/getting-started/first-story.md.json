@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "sourceFile": "Docs/getting-started/first-story.md",
+  "translationFile": "Docs/zh-CN/getting-started/first-story.md",
+  "sourceHash": null,
+  "importedSourceHash": "8df42814e82e71087a6ed63054dbdf5860ebea534ed75b2ef1e4d10dd185a681",
+  "sourceRevision": "d48e14e6ef1103a9ca13702a8d1e17e98c2a88a5",
+  "translationHash": "0415df3fbea38699abbccc4902bc2531665fe1a03bbde3074f187f0d5d232da0",
+  "origin": "website-import",
+  "importedFrom": [
+    "start/first-story"
+  ],
+  "pageMetadata": {
+    "start/first-story": {
+      "title": "第一个故事",
+      "description": "从一段对话到一个能测的任务。"
+    }
+  }
+}

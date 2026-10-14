@@ -60,3 +60,5 @@ EnhancedInput, Niagara — all stock. GameplayAbilities is optional and only the
 - Author: DreamMoon — https://dmstudio.top
 - GitHub: [TypeDreamMoon](https://github.com/TypeDreamMoon)
 - Email: 1067823908@qq.com
+
+Documentation: [English](Docs/README.md) · [简体中文](Docs/zh-CN/README.md) (imported translations awaiting review).

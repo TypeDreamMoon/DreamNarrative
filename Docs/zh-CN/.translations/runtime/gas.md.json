@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "sourceFile": "Docs/runtime/gas.md",
+  "translationFile": "Docs/zh-CN/runtime/gas.md",
+  "sourceHash": null,
+  "importedSourceHash": "3b50e2bfd70e591fe39a4bb948a838e8f3fba7c9db6751b2ff4b0df711dd035d",
+  "sourceRevision": "d48e14e6ef1103a9ca13702a8d1e17e98c2a88a5",
+  "translationHash": "4afae91794352341ad3d3c6948ce0d94b26add5f0cc45370363a063d15e8733c",
+  "origin": "website-import",
+  "importedFrom": [
+    "runtime/gas"
+  ],
+  "pageMetadata": {
+    "runtime/gas": {
+      "title": "Gameplay Ability System",
+      "description": "双向的桥与能力任务。"
+    }
+  }
+}

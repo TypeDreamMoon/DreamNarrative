@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "sourceFile": "Docs/language/tests.md",
+  "translationFile": "Docs/zh-CN/language/tests.md",
+  "sourceHash": null,
+  "importedSourceHash": "c15c3eef3674f80ca4bd4476bfb50177337c6abc4b2ed1b56a103d720513d2e9",
+  "sourceRevision": "d48e14e6ef1103a9ca13702a8d1e17e98c2a88a5",
+  "translationHash": "bcbe3817e51978b9e77f0d8aa6f3d0b6a25f36114d1c2d59bc764334408957e4",
+  "origin": "website-import",
+  "importedFrom": [
+    "language/tests"
+  ],
+  "pageMetadata": {
+    "language/tests": {
+      "title": "test 与 explore",
+      "description": "和故事写在一起的测试,与穷举走法的探索器。"
+    }
+  }
+}

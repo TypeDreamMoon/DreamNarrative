@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "sourceFile": "Docs/language/channels.md",
+  "translationFile": "Docs/zh-CN/language/channels.md",
+  "sourceHash": null,
+  "importedSourceHash": "bde072b9ca6215dc6e1af349187e7236144b43c0da9fe515c2c1c4be9b197fc5",
+  "sourceRevision": "d48e14e6ef1103a9ca13702a8d1e17e98c2a88a5",
+  "translationHash": "340626aa27c91b57d8ede73ca58516c81cca0cb032b09340264e8d0afac15af0",
+  "origin": "website-import",
+  "importedFrom": [
+    "language/channels"
+  ],
+  "pageMetadata": {
+    "language/channels": {
+      "title": "频道与事件",
+      "description": "边打边讲:几段对话并行,事件带参数。"
+    }
+  }
+}

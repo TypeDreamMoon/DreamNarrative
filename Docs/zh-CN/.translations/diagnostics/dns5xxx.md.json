@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "sourceFile": "Docs/diagnostics/dns5xxx.md",
+  "translationFile": "Docs/zh-CN/diagnostics/dns5xxx.md",
+  "sourceHash": null,
+  "importedSourceHash": "e0aaecbbb9f054021381108db3276b6c80664a78ff32c1656ac9c2a7cb173afe",
+  "sourceRevision": "d48e14e6ef1103a9ca13702a8d1e17e98c2a88a5",
+  "translationHash": "cefbcf8e309f25b3d1e4b0d8343fd6ce8c8a6f07fd907220d07b1023a2964de0",
+  "origin": "website-import",
+  "importedFrom": [
+    "diagnostics/dns5xxx"
+  ],
+  "pageMetadata": {
+    "diagnostics/dns5xxx": {
+      "title": "DNS5xxx · 图与可达性",
+      "description": "不可达、软锁、探索器的断言"
+    }
+  }
+}

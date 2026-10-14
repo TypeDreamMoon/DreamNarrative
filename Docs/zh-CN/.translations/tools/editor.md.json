@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "sourceFile": "Docs/tools/editor.md",
+  "translationFile": "Docs/zh-CN/tools/editor.md",
+  "sourceHash": null,
+  "importedSourceHash": "72e90ed4406d7d74feb56f4ec7a522577b14a887d5da696de7ce2c26116be38b",
+  "sourceRevision": "d48e14e6ef1103a9ca13702a8d1e17e98c2a88a5",
+  "translationHash": "17cde554825ead8c6655e53004077ced28b4b0ddbbca0ec981d26a2425edd784",
+  "origin": "website-import",
+  "importedFrom": [
+    "tools/editor"
+  ],
+  "pageMetadata": {
+    "tools/editor": {
+      "title": "编辑器",
+      "description": "故事视图、调试器、时间轴。"
+    }
+  }
+}

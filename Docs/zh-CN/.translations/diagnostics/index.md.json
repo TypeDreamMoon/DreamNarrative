@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "sourceFile": "Docs/diagnostics/index.md",
+  "translationFile": "Docs/zh-CN/diagnostics/index.md",
+  "sourceHash": null,
+  "importedSourceHash": "13aa930fe945ddb8b808ba33334e30501cdf0ee64bb3847ba703d56fdfc989cb",
+  "sourceRevision": "d48e14e6ef1103a9ca13702a8d1e17e98c2a88a5",
+  "translationHash": "89ea24f37b2f264a815f64de94ac3491ab8e2c716bde2a09cddce39703206888",
+  "origin": "website-import",
+  "importedFrom": [
+    "diagnostics/index"
+  ],
+  "pageMetadata": {
+    "diagnostics/index": {
+      "title": "诊断码",
+      "description": "编译器、校验器、测试与探索器报的每一个码。"
+    }
+  }
+}

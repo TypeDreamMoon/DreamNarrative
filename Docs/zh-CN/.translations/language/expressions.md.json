@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "sourceFile": "Docs/language/expressions.md",
+  "translationFile": "Docs/zh-CN/language/expressions.md",
+  "sourceHash": null,
+  "importedSourceHash": "edf6af59927625b3699782dde8ce7e918f2a2cf301d44d204d124f92a60b70ad",
+  "sourceRevision": "d48e14e6ef1103a9ca13702a8d1e17e98c2a88a5",
+  "translationHash": "da1e6b7ded371e9407b6931ca3d65d64578741c940162ecb1e8bd300a10368fc",
+  "origin": "website-import",
+  "importedFrom": [
+    "language/expressions"
+  ],
+  "pageMetadata": {
+    "language/expressions": {
+      "title": "表达式",
+      "description": "条件与插值里能写什么。"
+    }
+  }
+}

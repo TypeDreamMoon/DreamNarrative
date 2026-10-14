@@ -1,8 +1,10 @@
 # DreamNarrative documentation
 
+[English](README.md) · [简体中文](zh-CN/README.md)
+
 These English Markdown files are the maintained originals. Read them directly in the repository or
-on the documentation site. Chinese translations live in the site repository and are published only
-after their translation PRs are reviewed and merged.
+on the documentation site. Chinese translations live under `zh-CN/` in this plugin and are published only
+after their plugin translation PRs are reviewed and merged.
 
 ## Start here
 
@@ -37,3 +39,7 @@ after their translation PRs are reviewed and merged.
 
 The former `Docs/Website/`, combined `Guide.md` and `Diagnostics.md` have been organized into these
 topics. `Architecture.md` now lives under `contributing/`. Website page IDs remain unchanged.
+
+The `zh-CN/` tree mirrors English source paths. Imported translations are unreviewed; its README lists missing translations, and `.translations/` records source versions without treating an import as approval. Website-only notes remain in the website repository.
+
+Check translation status locally with `python -B Docs/translation-status.py`; add `--all` to include every source or `--json` for structured output. This read-only tool does not need the website repository or a Git checkout.
