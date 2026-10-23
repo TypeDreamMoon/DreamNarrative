@@ -23,6 +23,11 @@ def digest(text: str) -> str:
     return hashlib.sha256(text.replace('\r\n', '\n').encode('utf-8')).hexdigest()
 
 
+# Shared with the documentation site: navigation and compatibility pages are not
+# translation units of their own (Docs/README.md is site-excluded repository navigation).
+NOT_TRANSLATED = ('README.md', 'DuiLanguage.md', 'FontsAndPackaging.md', 'Migration.md')
+
+
 def plugin_statuses(plugin: Path) -> list[dict]:
     plugin = plugin.resolve()
     source_root = plugin / 'Docs'
@@ -39,7 +44,7 @@ def plugin_statuses(plugin: Path) -> list[dict]:
         relative = source.relative_to(source_root)
         if relative.parts[0] in ('zh-CN', 'Website'):
             continue
-        if relative.as_posix() in ('DuiLanguage.md', 'FontsAndPackaging.md', 'Migration.md'):
+        if relative.as_posix() in NOT_TRANSLATED:
             continue
         if not source.resolve().is_relative_to(source_root.resolve()):
             raise ValueError(f'Source escapes the Docs directory: {relative.as_posix()}')

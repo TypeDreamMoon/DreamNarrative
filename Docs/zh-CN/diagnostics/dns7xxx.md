@@ -3,8 +3,6 @@ title: "DNS7xxx · 演出"
 description: "时序、遮罩、恢复、单位与时间基"
 ---
 
-由 `scripts/gen-diagnostics.mjs` 从插件的 `Docs/Diagnostics.md` 生成。
-
 <a id="dns7001"></a>
 
 ## DNS7001

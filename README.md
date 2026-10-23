@@ -33,7 +33,8 @@ Version 0.1.0, beta. In place and covered by the automated suite (`Tools/dnc.ps1
 
 Start with the [English guide](Docs/getting-started/guide.md), the [documentation index](Docs/README.md),
 and the [Lighthouse example](Examples/Lighthouse). Plugin documentation is the English source;
-Chinese translations are maintained and reviewed in the documentation site repository.
+Chinese translations live in `Docs/zh-CN/` and are reviewed as pull requests to this repository before
+the documentation site publishes them.
 
 ## Modules
 

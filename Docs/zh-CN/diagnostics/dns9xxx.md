@@ -3,8 +3,6 @@ title: "DNS9xxx · 工具链"
 description: "命令行、文件访问、测试与探索"
 ---
 
-由 `scripts/gen-diagnostics.mjs` 从插件的 `Docs/Diagnostics.md` 生成。
-
 <a id="dns9002"></a>
 
 ## DNS9002

@@ -53,6 +53,8 @@
 
 ## 翻译记录
 
-`.translations/` 按英文源文件保存迁入记录。`sourceHash: null` 表示尚未核对；`importedSourceHash` 只记录迁入时看到的英文版本，不表示译文已经匹配该版本。这个导航页不是原文翻译，不建立伪造的审阅记录。
+`.translations/` 按英文源文件保存迁入记录。只有 `sourceHash` 参与状态判定：它为 `null` 表示尚未核对，等于当前英文全文指纹则记为 current。其余字段是记录用途，任何工具都不拿它们做校验——`importedSourceHash` 只记录迁入时看到的英文版本，`importedFrom`、`pageMetadata` 保存迁移来源，`translationHash` 是当时中文文件的指纹，供人工对比，不阻止后续人工修订。
+
+插件导航页 `Docs/README.md` 和本目录的 `README.md` / `TRANSLATIONS.md` 不是翻译单元（网站也把 `Docs/README.md` 排除在页面之外），状态工具会跳过它们。
 
 在插件根目录运行 `python -B Docs/translation-status.py` 可只读查看翻译状态；`--all` 列出全部原文，`--json` 输出结构化结果。无需文档站仓库，打包后没有 Git 的插件目录也可以运行。

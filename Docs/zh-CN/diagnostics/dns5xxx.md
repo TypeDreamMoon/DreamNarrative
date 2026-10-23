@@ -3,8 +3,6 @@ title: "DNS5xxx · 图与可达性"
 description: "不可达、软锁、探索器的断言"
 ---
 
-由 `scripts/gen-diagnostics.mjs` 从插件的 `Docs/Diagnostics.md` 生成。
-
 <a id="dns5008"></a>
 
 ## DNS5008

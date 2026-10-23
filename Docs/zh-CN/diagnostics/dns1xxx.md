@@ -3,8 +3,6 @@ title: "DNS1xxx · 词法"
 description: "非法字符、未闭合字符串、缩进不一致"
 ---
 
-由 `scripts/gen-diagnostics.mjs` 从插件的 `Docs/Diagnostics.md` 生成。
-
 <a id="dns1001"></a>
 
 ## DNS1001

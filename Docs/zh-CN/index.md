@@ -12,8 +12,8 @@ DreamNarrative 是 Unreal Engine 5.8 的叙事插件。剧情、任务、章节�
 可以**写测试**(`test` 块和故事写在一起),可以**穷举**(探索器把每条走法走一遍找软锁)。
 
 - [装上](getting-started/install.md)
-  - [第一个故事](getting-started/first-story.md)
-  - [语言](language/index.md)
-  - [演出](stage/index.md)
-  - [接进游戏](runtime/index.md)
-  - [诊断码](diagnostics/index.md)
+- [第一个故事](getting-started/first-story.md)
+- [语言](language/index.md)
+- [演出](stage/index.md)
+- [接进游戏](runtime/index.md)
+- [诊断码](diagnostics/index.md)

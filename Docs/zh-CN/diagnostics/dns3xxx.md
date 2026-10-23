@@ -3,8 +3,6 @@ title: "DNS3xxx · 名字与引用"
 description: "未声明的名字、找不到的目标、重名"
 ---
 
-由 `scripts/gen-diagnostics.mjs` 从插件的 `Docs/Diagnostics.md` 生成。
-
 <a id="dns3001"></a>
 
 ## DNS3001

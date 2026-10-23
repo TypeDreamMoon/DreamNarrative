@@ -3,8 +3,6 @@ title: "DNS4xxx · 表达式与类型"
 description: "类型不匹配、越界、不可比较"
 ---
 
-由 `scripts/gen-diagnostics.mjs` 从插件的 `Docs/Diagnostics.md` 生成。
-
 <a id="dns4001"></a>
 
 ## DNS4001
