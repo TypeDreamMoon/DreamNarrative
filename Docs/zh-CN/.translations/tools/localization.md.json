@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "sourceFile": "Docs/tools/localization.md",
+  "translationFile": "Docs/zh-CN/tools/localization.md",
+  "sourceHash": null,
+  "importedSourceHash": "620f0f8de7dd38b230c4ec9698863c7d3c7a4e5934f27f061d0d5e19127554c4",
+  "sourceRevision": "d48e14e6ef1103a9ca13702a8d1e17e98c2a88a5",
+  "translationHash": "62b91bee753dd02a159c40a48adb8bae54187afccd717e5640b671dfea6be3d9",
+  "origin": "website-import",
+  "importedFrom": [
+    "tools/localization"
+  ],
+  "pageMetadata": {
+    "tools/localization": {
+      "title": "本地化",
+      "description": "可本地化文本的命名空间与 key。"
+    }
+  }
+}

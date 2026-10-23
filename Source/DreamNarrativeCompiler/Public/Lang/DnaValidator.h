@@ -1,7 +1,7 @@
 // Copyright DreamMoon. All Rights Reserved.
 //
 // Reference and type checking over a whole program. Nothing here changes the tree; it only reports.
-// Codes raised (draft numbers, Docs/Diagnostics.md is authoritative once filled):
+// Codes raised (the maintained reference is Docs/diagnostics/reference.md):
 //
 //   DNS3001  a fact nobody declared
 //   DNS3002  a speaker that is not a declared character

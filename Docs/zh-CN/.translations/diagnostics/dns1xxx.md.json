@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "sourceFile": "Docs/diagnostics/dns1xxx.md",
+  "translationFile": "Docs/zh-CN/diagnostics/dns1xxx.md",
+  "sourceHash": null,
+  "importedSourceHash": "a5a8fbe1ad1da18b3c03225be420cbe4b84aa37215b1de524a9f1e16ea8eaff8",
+  "sourceRevision": "d48e14e6ef1103a9ca13702a8d1e17e98c2a88a5",
+  "translationHash": "0776772bd76b22a40372eac46447b9d00cc01da69df899dd522e51351d0eee23",
+  "origin": "website-import",
+  "importedFrom": [
+    "diagnostics/dns1xxx"
+  ],
+  "pageMetadata": {
+    "diagnostics/dns1xxx": {
+      "title": "DNS1xxx · 词法",
+      "description": "非法字符、未闭合字符串、缩进不一致"
+    }
+  }
+}

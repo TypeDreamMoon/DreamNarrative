@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "sourceFile": "Docs/index.md",
+  "translationFile": "Docs/zh-CN/index.md",
+  "sourceHash": null,
+  "importedSourceHash": "48d5978fcd0cc116b9e9024f2796747141fca69199a2680e160c4eed333faf39",
+  "sourceRevision": "d48e14e6ef1103a9ca13702a8d1e17e98c2a88a5",
+  "translationHash": "1557bfea77d9941ed62bed1b3a2b1f556ef58ec8860195f6505ee1943a528801",
+  "origin": "website-import",
+  "importedFrom": [
+    "index"
+  ],
+  "pageMetadata": {
+    "index": {
+      "title": "概览",
+      "description": "剧情、任务、章节、对话与演出写在文本里;编辑器只是文本的投影。"
+    }
+  }
+}

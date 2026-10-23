@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "sourceFile": "Docs/diagnostics/dns4xxx.md",
+  "translationFile": "Docs/zh-CN/diagnostics/dns4xxx.md",
+  "sourceHash": null,
+  "importedSourceHash": "085c034a568e0e653ca6dfb0ab72d459be9ad888afcf4df78e30a434d7974301",
+  "sourceRevision": "d48e14e6ef1103a9ca13702a8d1e17e98c2a88a5",
+  "translationHash": "5b2a5b758110e0cb958f720ca0767e39677d151497416b9bbd8f7a3317ced565",
+  "origin": "website-import",
+  "importedFrom": [
+    "diagnostics/dns4xxx"
+  ],
+  "pageMetadata": {
+    "diagnostics/dns4xxx": {
+      "title": "DNS4xxx · 表达式与类型",
+      "description": "类型不匹配、越界、不可比较"
+    }
+  }
+}

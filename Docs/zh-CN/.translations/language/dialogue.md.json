@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "sourceFile": "Docs/language/dialogue.md",
+  "translationFile": "Docs/zh-CN/language/dialogue.md",
+  "sourceHash": null,
+  "importedSourceHash": "cc661c5b25cd557beccf4616d88f6417a66fd7235c5b6061ffb2aef81992614a",
+  "sourceRevision": "d48e14e6ef1103a9ca13702a8d1e17e98c2a88a5",
+  "translationHash": "5bb2857e7ecef9fbec0703b83fff55e408c5f22b51991ce11959e712b16ce3f7",
+  "origin": "website-import",
+  "importedFrom": [
+    "language/dialogue"
+  ],
+  "pageMetadata": {
+    "language/dialogue": {
+      "title": "对话",
+      "description": "剧本的样子:说话人、选项、条件、命令。"
+    }
+  }
+}

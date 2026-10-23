@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "sourceFile": "Docs/diagnostics/dns9xxx.md",
+  "translationFile": "Docs/zh-CN/diagnostics/dns9xxx.md",
+  "sourceHash": null,
+  "importedSourceHash": "52502407949fe7ded62e8b2068c07a5e11233b973babf6d889afa507413af910",
+  "sourceRevision": "d48e14e6ef1103a9ca13702a8d1e17e98c2a88a5",
+  "translationHash": "5ffbeac4387e6b88645e7cb96e76f72d0b189fcc98a636508685838865a3ede2",
+  "origin": "website-import",
+  "importedFrom": [
+    "diagnostics/dns9xxx"
+  ],
+  "pageMetadata": {
+    "diagnostics/dns9xxx": {
+      "title": "DNS9xxx · 工具链",
+      "description": "命令行、文件访问、测试与探索"
+    }
+  }
+}

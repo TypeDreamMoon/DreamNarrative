@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "sourceFile": "Docs/stage/index.md",
+  "translationFile": "Docs/zh-CN/stage/index.md",
+  "sourceHash": null,
+  "importedSourceHash": "4797dd6ebdd14689cbf9cf108007a638825144dc6c8566db129acbacd90d5820",
+  "sourceRevision": "d48e14e6ef1103a9ca13702a8d1e17e98c2a88a5",
+  "translationHash": "2661538908b44563b6c0bfaee5faac3892b0f1856240d8c3ef82df879e2b8043",
+  "origin": "website-import",
+  "importedFrom": [
+    "stage/index"
+  ],
+  "pageMetadata": {
+    "stage/index": {
+      "title": "演出语言",
+      "description": "轨道、时间基、机位、恢复。"
+    }
+  }
+}

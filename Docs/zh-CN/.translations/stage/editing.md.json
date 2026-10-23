@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "sourceFile": "Docs/stage/editing.md",
+  "translationFile": "Docs/zh-CN/stage/editing.md",
+  "sourceHash": null,
+  "importedSourceHash": "996b33dfc05db5180c5b59b9f620515b16a789ce145a42505df17e763379447e",
+  "sourceRevision": "d48e14e6ef1103a9ca13702a8d1e17e98c2a88a5",
+  "translationHash": "6964dd97fe1ae10a2ca6082f22c48bbe0c6497defca4a7c26d9a7b41e0e236e3",
+  "origin": "website-import",
+  "importedFrom": [
+    "stage/editing"
+  ],
+  "pageMetadata": {
+    "stage/editing": {
+      "title": "时间轴、生成与导入",
+      "description": "Stage 时间轴、对话演出生成器、关卡序列导入。"
+    }
+  }
+}

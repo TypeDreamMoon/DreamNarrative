@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "sourceFile": "Docs/diagnostics/dns3xxx.md",
+  "translationFile": "Docs/zh-CN/diagnostics/dns3xxx.md",
+  "sourceHash": null,
+  "importedSourceHash": "c9a516d9d9f4c994ace52a370b915a76921768f537cfe75ff5ee24c3ff0029f8",
+  "sourceRevision": "d48e14e6ef1103a9ca13702a8d1e17e98c2a88a5",
+  "translationHash": "13bdebb17618a9c88741d47ca0665102d024499e08ebdc8f428e866e88ed2849",
+  "origin": "website-import",
+  "importedFrom": [
+    "diagnostics/dns3xxx"
+  ],
+  "pageMetadata": {
+    "diagnostics/dns3xxx": {
+      "title": "DNS3xxx · 名字与引用",
+      "description": "未声明的名字、找不到的目标、重名"
+    }
+  }
+}
