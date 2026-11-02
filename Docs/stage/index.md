@@ -24,6 +24,8 @@ stage 灯亮
 
 - Tracks include camera, light, mask, vfx, ui, anim, game, sequence, audio and blocking.
   See DNS7006 in the diagnostic reference for the verb list.
+- On-screen `text` is translated under `stage.<Stage>.text<n>`, numbered from 0 in time order;
+  `0.5s text 「…」 #id` names it `stage.<Stage>.<id>` instead, and `dnc freeze` writes the numbers in.
 - The default time base is seconds. A stage with `base: line` follows its attached dialogue line,
   uses percentages, and can only be attached with `@StageName`.
 - Shots are positioned by character name: the name is an actor tag, or can be bound through the

@@ -49,7 +49,7 @@ description: "时序、遮罩、恢复、单位与时间基"
 
 这条轨上没有这个动词,或者参数不对。
 
-每条轨只认自己的动词:camera 有 `blend from game / back / ->`、`cut ->`、`whip ->`、`push`;light 有 `ramp dark`、`restore`、`key`;mask 有 `distort`、`exposure`、`streaks`、`comic`、`cut black`、`fade black / white`;vfx 有 `spawn`、`stop`;ui 有 `hide hud`、`show hud`、`text`、`clear`;anim 有 `montage`;game 有 `input lock`、`hitstop`、`time`、`damage window`;sequence 有 `play`。消息里给出了这个动词该怎么写。同一个码也报这几种情况:演出属性只有 `base` 和 `gameplay`;机位要写 `local (x, y, z)`,可以再写 `rot (pitch, yaw, roll)`;`restore` 里只能放把世界放回去的条目(`camera blend back`、`light restore`、`light key 角色 off`、`ui show hud`、`ui clear`、`vfx stop`)。
+每条轨只认自己的动词:camera 有 `blend from game / back / ->`、`cut ->`、`whip ->`、`push`;light 有 `ramp dark`、`restore`、`key`;mask 有 `distort`、`exposure`、`streaks`、`comic`、`cut black`、`fade black / white`;vfx 有 `spawn`、`stop`;ui 有 `hide hud`、`show hud`、`text`、`clear`;anim 有 `montage`;game 有 `input lock`、`hitstop`、`time`、`damage window`;sequence 有 `play`。消息里给出了这个动词该怎么写。同一个码也报这几种情况:演出属性只有 `base` 和 `gameplay`;机位要写 `local (x, y, z)`,可以再写 `rot (pitch, yaw, roll)`;`restore` 里只能放把世界放回去的条目(`camera blend back`、`light restore`、`light key 角色 off`、`ui show hud`、`ui clear`、`vfx stop`)。只有 `text` 条目能在行尾写 `#id`(它的文字翻译时用的 key),别的条目写了也报这个码。
 
 <a id="dns7007"></a>
 

@@ -51,6 +51,8 @@ namespace UE::DreamNarrative::Lang
 			Text,
 			/** if, once, #id */
 			Choice,
+			/** #id alone: an objective's `show:` */
+			Id,
 		};
 
 		bool IsTrackName(const FString& Word)
@@ -365,10 +367,10 @@ namespace UE::DreamNarrative::Lang
 				case EContext::File:
 				case EContext::Character:
 				case EContext::Journal:
-				case EContext::Objective:
 				case EContext::Channel:
 					ClassifyPropertyOnly(Node);
 					break;
+				case EContext::Objective: ClassifyObjectiveProperty(Node); break;
 				case EContext::EventParams: ClassifyEventParam(Node); break;
 				case EContext::Archive: ClassifyArchiveLine(Node); break;
 				case EContext::TestChannel: ClassifyTestExpectation(Node, /*bInChannel=*/true); break;
@@ -455,7 +457,7 @@ namespace UE::DreamNarrative::Lang
 				ClassifyChildren(Node, EContext::Archive);
 			}
 
-			/** `title: 标题` or `entry [if 条件]` with its text in the lines under it. */
+			/** `title: 标题` or `entry [if 条件] [#id]` with its text in the lines under it. */
 			void ClassifyArchiveLine(FDnaLineNode& Node)
 			{
 				if (FirstWord(Node.Raw.Content) == TEXT("entry"))
@@ -470,6 +472,12 @@ namespace UE::DreamNarrative::Lang
 						++Index;
 						Node.Payload.Condition = ExpectExpression(Tokens, Index);
 						bHeaderOk = Node.Payload.Condition.IsValid();
+					}
+					// The key its text is translated under.
+					if (bHeaderOk && Tokens[Index].Is(EDnaTokenKind::Hash) && !ReadId(Tokens, Index, Node.Payload.Modifiers.Id))
+					{
+						Fail(TEXT("DNS2007"), Tokens[Index].Span, LOCTEXT("EntryId", "Expected an id after '#'"));
+						bHeaderOk = false;
 					}
 					if (bHeaderOk)
 					{
@@ -895,8 +903,11 @@ namespace UE::DreamNarrative::Lang
 
 			// ---------------------------------------------------------------- properties
 
-			/** `key: value`. Returns false (without reporting) when the line is not shaped like one. */
-			bool TryParseProperty(FDnaLineNode& Node)
+			/**
+			 * `key: value`. Returns false (without reporting) when the line is not shaped like one. With bTextTakesId
+			 * the value may end in an `#id`, which is not part of it.
+			 */
+			bool TryParseProperty(FDnaLineNode& Node, bool bTextTakesId = false)
 			{
 				const FString& Content = Node.Raw.Content;
 				const FString Word = FirstWord(Content);
@@ -912,8 +923,16 @@ namespace UE::DreamNarrative::Lang
 				Node.Kind = EDnaLineKind::Property;
 				Node.Payload.Name = Word;
 				const int32 ValueStart = SkipSpaces(Content, ColonAt + 1);
-				Node.Payload.Value = Content.Mid(ValueStart);
-				ParseText(Node, ValueStart, Content.Len(), Node.Payload.Text);
+				if (bTextTakesId)
+				{
+					ParseTextWithModifiers(Node, ValueStart, EModifierSet::Id);
+					Node.Payload.Value = Node.Payload.Text.Raw;
+				}
+				else
+				{
+					Node.Payload.Value = Content.Mid(ValueStart);
+					ParseText(Node, ValueStart, Content.Len(), Node.Payload.Text);
+				}
 				RequireNoChildren(Node);
 				return true;
 			}
@@ -921,6 +940,15 @@ namespace UE::DreamNarrative::Lang
 			void ClassifyPropertyOnly(FDnaLineNode& Node)
 			{
 				if (!TryParseProperty(Node))
+				{
+					Unexpected(Node, LOCTEXT("InPropertyBlock", "here; expected 'key: value'"));
+				}
+			}
+
+			/** An objective's properties; its `show:` text may end in an `#id`, the key it is translated under. */
+			void ClassifyObjectiveProperty(FDnaLineNode& Node)
+			{
+				if (!TryParseProperty(Node, /*bTextTakesId=*/FirstWord(Node.Raw.Content) == TEXT("show")))
 				{
 					Unexpected(Node, LOCTEXT("InPropertyBlock", "here; expected 'key: value'"));
 				}
@@ -1475,9 +1503,9 @@ namespace UE::DreamNarrative::Lang
 						continue;
 					}
 					const TCHAR Char = NormalizeDnaPunctuation(Content[Index]);
-					const bool bIsIf = WordAt(Content, Index, TEXT("if"));
-					const bool bCandidate = Char == TEXT('#') || Char == TEXT('@') || bIsIf
-						|| WordAt(Content, Index, TEXT("once")) || WordAt(Content, Index, TEXT("for")) || WordAt(Content, Index, TEXT("voice"));
+					const bool bIsIf = Allowed != EModifierSet::Id && WordAt(Content, Index, TEXT("if"));
+					const bool bCandidate = Char == TEXT('#') || (Allowed != EModifierSet::Id && (Char == TEXT('@') || bIsIf
+						|| WordAt(Content, Index, TEXT("once")) || WordAt(Content, Index, TEXT("for")) || WordAt(Content, Index, TEXT("voice"))));
 					if (!bCandidate)
 					{
 						continue;
@@ -1508,6 +1536,35 @@ namespace UE::DreamNarrative::Lang
 				}
 
 				ParseText(Node, TextStart, TextEnd, Node.Payload.Text);
+			}
+
+			/**
+			 * `#id` at Tokens[Index] (the `#`): false when no id follows. An id may go on with dots, the way generated
+			 * ones do (`老周_初见.3`, `老周_初见.c2`): the pieces written against each other, with no space between,
+			 * are one id. Index moves past it.
+			 */
+			bool ReadId(const TArray<FDnaToken>& Tokens, int32& Index, FString& OutId) const
+			{
+				if (!Tokens[Index].Is(EDnaTokenKind::Hash) || !Tokens[Index + 1].Is(EDnaTokenKind::Identifier))
+				{
+					return false;
+				}
+				const int32 IdStart = Tokens[Index + 1].Span.Offset;
+				int32 IdEnd = Tokens[Index + 1].Span.End();
+				int32 Next = Index + 2;
+				while (Tokens[Next].Span.Offset == IdEnd && !Tokens[Next].Is(EDnaTokenKind::EndOfInput))
+				{
+					const bool bDotted = Tokens[Next].Is(EDnaTokenKind::Dot) && Tokens[Next + 1].Span.Offset == Tokens[Next].Span.End()
+						&& (Tokens[Next + 1].Is(EDnaTokenKind::Identifier) || Tokens[Next + 1].Is(EDnaTokenKind::Int));
+					// `.3` lexes as a number of its own.
+					const bool bFraction = Tokens[Next].Is(EDnaTokenKind::Float) && Source.GetText()[Tokens[Next].Span.Offset] == TEXT('.');
+					if (bDotted) { IdEnd = Tokens[Next + 1].Span.End(); Next += 2; }
+					else if (bFraction) { IdEnd = Tokens[Next].Span.End(); Next += 1; }
+					else { break; }
+				}
+				OutId = Source.GetText().Mid(IdStart, IdEnd - IdStart);
+				Index = Next;
+				return true;
 			}
 
 			/** Tries to read Content[Start, end) as a complete modifier list. Diagnostics go to Sink so a failed attempt leaves no trace. */
@@ -1542,26 +1599,13 @@ namespace UE::DreamNarrative::Lang
 					const FDnaToken& Token = Tokens[Index];
 					if (Token.Is(EDnaTokenKind::Hash))
 					{
-						if (!Tokens[Index + 1].Is(EDnaTokenKind::Identifier)) { return false; }
+						if (!ReadId(Tokens, Index, Out.Id)) { return false; }
 						Duplicate(bSeenId, Token);
-						// An id may go on with dots, the way generated ones do (`老周_初见.3`, `老周_初见.c2`): the
-						// pieces written against each other, with no space between, are one id.
-						const int32 IdStart = Tokens[Index + 1].Span.Offset;
-						int32 IdEnd = Tokens[Index + 1].Span.End();
-						int32 Next = Index + 2;
-						while (Tokens[Next].Span.Offset == IdEnd && !Tokens[Next].Is(EDnaTokenKind::EndOfInput))
-						{
-							const bool bDotted = Tokens[Next].Is(EDnaTokenKind::Dot) && Tokens[Next + 1].Span.Offset == Tokens[Next].Span.End()
-								&& (Tokens[Next + 1].Is(EDnaTokenKind::Identifier) || Tokens[Next + 1].Is(EDnaTokenKind::Int));
-							// `.3` lexes as a number of its own.
-							const bool bFraction = Tokens[Next].Is(EDnaTokenKind::Float) && Source.GetText()[Tokens[Next].Span.Offset] == TEXT('.');
-							if (bDotted) { IdEnd = Tokens[Next + 1].Span.End(); Next += 2; }
-							else if (bFraction) { IdEnd = Tokens[Next].Span.End(); Next += 1; }
-							else { break; }
-						}
-						Out.Id = Source.GetText().Mid(IdStart, IdEnd - IdStart);
-						Index = Next;
 						continue;
+					}
+					if (Allowed == EModifierSet::Id)
+					{
+						return false;
 					}
 					if (Token.Is(EDnaTokenKind::At))
 					{
@@ -1715,6 +1759,14 @@ namespace UE::DreamNarrative::Lang
 				++Index;
 				for (; Index < Tokens.Num(); ++Index)
 				{
+					// A trailing `#id` is the key the entry's text is translated under, not an argument.
+					int32 After = Index;
+					FString Id;
+					if (Tokens[Index].Is(EDnaTokenKind::Hash) && ReadId(Tokens, After, Id) && Tokens[After].Is(EDnaTokenKind::EndOfInput))
+					{
+						P.Modifiers.Id = Id;
+						break;
+					}
 					if (!Tokens[Index].Is(EDnaTokenKind::EndOfInput)) { P.Args.Add(Tokens[Index]); }
 				}
 				RequireNoChildren(Node);

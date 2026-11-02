@@ -681,6 +681,15 @@ namespace UE::DreamNarrative::Lang
 					Fail(TEXT("DNS7006"), Line.Raw.Span, LOCTEXT("BackOnlyRestore", "`blocking back` belongs under `restore`: it is what the stage does as it ends"));
 					return;
 				}
+				if (!P.Modifiers.Id.IsEmpty())
+				{
+					if (Entry.Verb != EDnaStageVerb::Text)
+					{
+						Fail(TEXT("DNS7006"), Line.Raw.Span, LOCTEXT("IdOnlyText", "Only a `text` entry takes an `#id`: it names the key its text is translated under"));
+						return;
+					}
+					Entry.TextId = FName(*P.Modifiers.Id);
+				}
 
 				// -- a range where one is needed, a point where one is
 				bool bPointOnly = false, bRangeOnly = false;

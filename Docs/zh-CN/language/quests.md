@@ -28,3 +28,4 @@ quest 修灯
 - 每批写入之后检查 `fail if`、锁存达成的目标;必需目标齐了就完成。状态是账本里的隐藏 fact,存读档自然带上。
 - `priority: hidden`:可接即自启(记忆链、隐藏结局);`side` 的进度在选章时保留。
 - `gameplay:` 任务完成时 GAS 桥把这个 GameplayEvent 发给它盯着的能力系统。
+- 目标的文字翻译时的 key 是 `quest.<任务>.objective<n>`,按位置从 1 编号;写 `show: 文本 #id` 就改叫 `quest.<任务>.<id>`,`dnc freeze` 会把编号写进源码。

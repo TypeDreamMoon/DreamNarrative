@@ -22,3 +22,5 @@ and complete when all required objectives are latched. Their state lives in the 
 included in save and restore automatically.
 Quests with `priority: hidden` start as soon as they become available, which suits clue chains and
 hidden endings. `gameplay: Tag` makes the GAS bridge emit that GameplayEvent on completion.
+An objective's text is translated under `quest.<Quest>.objective<n>`, numbered from 1 by position;
+`show: Text #id` names it `quest.<Quest>.<id>` instead, and `dnc freeze` writes the numbers in.

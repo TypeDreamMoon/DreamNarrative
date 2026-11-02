@@ -68,7 +68,8 @@ The message shows the expected syntax. This code also covers invalid stage prope
 and `gameplay`), shots or marks missing `local (x, y, z)` (optionally followed by
 `rot (pitch, yaw, roll)`), and invalid `restore` entries. Restoration accepts only operations that
 release world state: `camera blend back`, `light restore`, `light key Character off`, `ui show hud`,
-`ui clear`, `vfx stop` and `blocking back`.
+`ui clear`, `vfx stop` and `blocking back`. Only a `text` entry may end in `#id` (the key its text is
+translated under); an `#id` on any other entry is reported here.
 
 ## DNS7007
 

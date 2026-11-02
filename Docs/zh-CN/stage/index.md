@@ -33,12 +33,13 @@ stage 灯亮
 | light | `ramp dark 时长 [to 比例]` · `restore 时长` · `key 角色 on/off` |
 | mask | `distort strength n` · `exposure peak +n ev` · `streaks` · `comic` · `cut black` · `fade black 时长` · `fade white 时长` |
 | vfx | `spawn /Game/路径 [at 角色] [persist]` · `stop` |
-| ui | `hide hud` · `show hud` · `text 「…」 [style 名]` · `clear` |
+| ui | `hide hud` · `show hud` · `text 「…」 [style 名] [#id]` · `clear` |
 | anim | `montage 名 [actor 角色] [warp 目标 角色]` |
 | game | `input lock` · `hitstop 0.2x` · `time 0.5x` · `damage window` |
 | sequence | `play /Game/关卡序列` |
 
 - **时间基**:默认秒;`base: line` 的演出跟着挂上的台词走,时间写百分比,只能 `@演出名` 挂在台词上。
+- **屏幕字的翻译 key**:`stage.<演出>.text<n>`,按时间顺序从 0 编号;行尾写 `#id` 就改叫 `stage.<演出>.<id>`,`dnc freeze` 会把编号写进源码。
 - **机位**:`local (x, y, z)` 在 `of 角色` 的本地空间(缺省是 look 的目标,再缺省是演出自己的 actor);`look 角色` 看着它,
   或 `rot (pitch, yaw, roll)` 给出朝向;没有 actor 应答的锚点就是世界坐标。角色名就是 actor 的 tag,或用导演的 `BindActor` 绑。
 - **切镜头**必须落在遮罩最强的那一刻(DNS7001);过场里本来就该看见的硬切写 `hard`。

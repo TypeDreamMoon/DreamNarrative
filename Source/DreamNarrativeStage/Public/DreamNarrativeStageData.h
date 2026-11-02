@@ -211,6 +211,9 @@ struct DREAMNARRATIVESTAGE_API FDnaStageEntry
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	FText Text;
 
+	/** The `#id` a `text` entry gave its text's key; None when it is numbered by position. Only while compiling: not saved. */
+	FName TextId;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Narrative")
 	FName Style;
 

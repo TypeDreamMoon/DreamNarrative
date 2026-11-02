@@ -13,3 +13,4 @@ archive 守夜日志 profile
 ```
 
 条件第一次成立时解锁,解锁了就一直在;`profile` 的资料跨存档、跨周目(武器故事、图鉴)。
+条目的文字翻译时的 key 是 `archive.<资料>.entry<n>`,按位置从 0 编号;写 `entry [if 条件] #id` 就改叫 `archive.<资料>.<id>`,`dnc freeze` 会把编号写进源码。
