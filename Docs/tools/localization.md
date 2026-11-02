@@ -30,6 +30,12 @@ never lands on a frozen key; run `dnc.ps1 freeze` again to fix it as well. Then 
 `Require Line Ids` in project settings: lines without `#id` produce DNS6006. IDs can contain dots, for
 example `#老周_初见.3`.
 
+## Voices in other languages
+
+Voices are not translation entries. Each language's recording is the engine's localized asset at the
+same path under `Content/L10N/<culture>/`; a game loads it in place of the source-language voice (the
+editor and PIE do not). See [Voice](../runtime/index.md).
+
 ## Notes for translators
 
 `///` comment lines right above a line, a choice or any other text are its note:

@@ -73,6 +73,11 @@ dialogue 老周_初见 for 老周
   `Voice Wait Grace Seconds`, advancement proceeds anyway.
 - A speaker has only one active voice at a time. Starting in another channel first issues `Stopped`
   for their previous voice; the previous line can remain on screen.
+- Voices in other languages are the engine's localized assets: put each at the same path under
+  `Content/L10N/<culture>/` (`/Game/VO/老周/老周_初见_1` → `/Game/L10N/en/VO/老周/老周_初见_1`). Lines keep
+  referring to the source-language asset; a game, standalone or packaged, loads the localized one for
+  the current language. The editor and PIE play the source language. Durations come from the source
+  asset, so enable `Wait For Voice Finished` when languages differ in length.
 - `dnc.ps1 vo-script [-Out Path]` exports a recording script containing line ID, speaker, source text,
   dialogue, preceding line, emotion, voice status and expected conventional asset name. It is sorted
   by speaker and encoded as UTF-8 with BOM for spreadsheet applications. The first columns are
