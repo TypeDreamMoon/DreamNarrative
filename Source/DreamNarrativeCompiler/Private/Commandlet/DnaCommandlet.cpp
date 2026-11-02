@@ -65,15 +65,14 @@ int32 UDreamNarrativeCommandlet::Voices(const FDnaProgram& Program, const FStrin
 	CollectDnaVoiceScript(Program, Generated.Scripts, Rows);
 	if (!ScriptFile.IsEmpty())
 	{
-		FString Path = ScriptFile;
-		if (FPaths::IsRelative(Path)) { Path = FPaths::ProjectDir() / Path; }
+		const FString Path = ResolveDnaProjectPath(ScriptFile);
 		// With a byte order mark: a spreadsheet opens it as UTF-8.
 		if (!FFileHelper::SaveStringToFile(WriteDnaVoiceScript(Rows), *Path, FFileHelper::EEncodingOptions::ForceUTF8))
 		{
 			UE_LOG(LogDreamNarrativeCompiler, Error, TEXT("Cannot write %s"), *Path);
 			return 1;
 		}
-		UE_LOG(LogDreamNarrativeCompiler, Display, TEXT("Wrote %d line(s) to %s"), Rows.Num(), *FPaths::ConvertRelativePathToFull(Path));
+		UE_LOG(LogDreamNarrativeCompiler, Display, TEXT("Wrote %d line(s) to %s"), Rows.Num(), *Path);
 	}
 	// Per character: lines, voiced, missing (the first few named).
 	TMap<FString, TArray<const FDnaVoiceScriptRow*>> ByCharacter;
@@ -146,7 +145,7 @@ int32 UDreamNarrativeCommandlet::FreezeIds(const FDnaProgram& Program, const FSt
 
 int32 UDreamNarrativeCommandlet::Translations(const FDnaProgram& Program, const TMap<FString, FString>& Values, FDnaDiagnosticSink& Diagnostics)
 {
-	auto PathOf = [](FString Path) { return FPaths::ConvertRelativePathToFull(FPaths::IsRelative(Path) ? FPaths::ProjectDir() / Path : Path); };
+	auto PathOf = [](const FString& Path) { return ResolveDnaProjectPath(Path); };
 	const FString Culture = Values.FindRef(TEXT("Culture"));
 	FDnaLocTarget Target = GetDnaLocTarget(Values.Contains(TEXT("Target")) ? Values[TEXT("Target")] : FString(TEXT("Game")));
 	Target.NativeCulture = Values.FindRef(TEXT("NativeCulture"));
@@ -223,17 +222,13 @@ int32 UDreamNarrativeCommandlet::Main(const FString& Params)
 	const bool bWholeProgram = bFreeze || bVoStatus || !VoScript.IsEmpty() || bTranslations;
 
 	// -- sources
-	const FString ProjectDir = FPaths::ProjectDir();
-	FString Root = Values.Contains(TEXT("Root")) ? Values[TEXT("Root")] : ProjectDir / UDreamNarrativeSettings::Get()->SourceDirectory;
-	if (FPaths::IsRelative(Root)) { Root = ProjectDir / Root; }
+	const FString Root = Values.Contains(TEXT("Root")) ? ResolveDnaProjectPath(Values[TEXT("Root")]) : GetDnaSourceRoot();
 
 	TArray<FString> Files;
 	FString OnlyFile;
 	if (const FString* File = Values.Find(TEXT("File")))
 	{
-		FString Path = *File;
-		if (FPaths::IsRelative(Path)) { Path = ProjectDir / Path; }
-		OnlyFile = FPaths::ConvertRelativePathToFull(Path);
+		OnlyFile = ResolveDnaProjectPath(*File);
 	}
 	// Freezing reads the whole program: the ids come out of a compile, and a file alone may not compile.
 	if (!OnlyFile.IsEmpty() && !bWholeProgram)

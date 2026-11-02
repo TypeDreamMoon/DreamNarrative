@@ -115,6 +115,23 @@ bool FDnaLocalizationTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaProjectPathTest, "DreamNarrative.Lang.ProjectPaths", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FDnaProjectPathTest::RunTest(const FString& Parameters)
+{
+	using namespace UE::DreamNarrative::Lang;
+	// With engine and project on one drive the engine's project directory is relative to its binaries;
+	// joined twice it named a directory that is not there, and nothing under it was found.
+	AddInfo(FString::Printf(TEXT("the engine's project directory: %s"), *FPaths::ProjectDir()));
+	const FString Project = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+	const FString Resolved = ResolveDnaProjectPath(TEXT("DNarrative/Ch01/灯塔.dna"));
+	TestFalse(TEXT("a relative path comes out absolute"), FPaths::IsRelative(Resolved));
+	TestTrue(TEXT("under the project, once"), FPaths::IsSamePath(Resolved, Project / TEXT("DNarrative/Ch01/灯塔.dna")));
+	TestTrue(TEXT("an absolute path stays as it is"), FPaths::IsSamePath(ResolveDnaProjectPath(Project / TEXT("Elsewhere/甲.dna")), Project / TEXT("Elsewhere/甲.dna")));
+	TestFalse(TEXT("the source directory is absolute"), FPaths::IsRelative(GetDnaSourceRoot()));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDnaLocManifestTest, "DreamNarrative.Lang.LocalizationManifest", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FDnaLocManifestTest::RunTest(const FString& Parameters)

@@ -1277,7 +1277,7 @@ namespace UE::DreamNarrative::Lang
 				}
 				FAssetRegistryModule::AssetCreated(Script);
 				++Result.NumSaved;
-				UE_LOG(LogDreamNarrativeCompiler, Display, TEXT("Wrote %s"), *FileName);
+				UE_LOG(LogDreamNarrativeCompiler, Display, TEXT("Wrote %s"), *FPaths::ConvertRelativePathToFull(FileName));
 				// What it gives to translate, for a translation tool; a file outside the source directory has none.
 				if (!SaveDnaLocManifest(Manifest))
 				{

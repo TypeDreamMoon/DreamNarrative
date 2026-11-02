@@ -14,6 +14,13 @@ namespace UE::DreamNarrative::Lang
 	/** The project's source directory, absolute: <project>/<Project Settings > Dream Narrative > Source Directory>. */
 	DREAMNARRATIVECOMPILER_API FString GetDnaSourceRoot();
 
+	/**
+	 * Path made absolute: a relative one is taken from the project directory. The engine's own project
+	 * directory is relative to its binaries when engine and project share a drive, so it cannot be joined
+	 * as it is.
+	 */
+	DREAMNARRATIVECOMPILER_API FString ResolveDnaProjectPath(const FString& Path);
+
 	/** Every .dna under Root, absolute and sorted. */
 	DREAMNARRATIVECOMPILER_API void FindDnaSources(const FString& Root, TArray<FString>& OutFiles);
 

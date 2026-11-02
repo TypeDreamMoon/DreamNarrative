@@ -12,7 +12,13 @@ namespace UE::DreamNarrative::Lang
 {
 	FString GetDnaSourceRoot()
 	{
-		return FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / UDreamNarrativeSettings::Get()->SourceDirectory);
+		return ResolveDnaProjectPath(UDreamNarrativeSettings::Get()->SourceDirectory);
+	}
+
+	FString ResolveDnaProjectPath(const FString& Path)
+	{
+		const FString Absolute = FPaths::IsRelative(Path) ? FPaths::ConvertRelativePathToFull(FPaths::ProjectDir()) / Path : Path;
+		return FPaths::ConvertRelativePathToFull(Absolute);
 	}
 
 	void FindDnaSources(const FString& Root, TArray<FString>& OutFiles)
