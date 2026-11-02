@@ -235,6 +235,8 @@ namespace UE::DreamNarrative::Lang
 		{
 			FString Pattern;
 			TArray<int32> Args;
+			/** Where each placeholder's expression is written, for translators. */
+			TArray<FDnaSpan> ArgSpans;
 
 			void Append(const FDnaText& Text, FDnaExprCompiler& Compiler)
 			{
@@ -244,6 +246,7 @@ namespace UE::DreamNarrative::Lang
 					{
 						Pattern += FString::Printf(TEXT("{%d}"), Args.Num());
 						Args.Add(Compiler.Compile(Part.Expr));
+						ArgSpans.Add(Part.Expr->Span);
 					}
 					else
 					{
@@ -258,13 +261,137 @@ namespace UE::DreamNarrative::Lang
 			}
 		};
 
-		FText MakeLocalizable(const FString& Namespace, const FString& Key, const FString& Source)
+		/**
+		 * Makes the localizable texts of one document and notes each down for its extraction manifest: what
+		 * the text is, where it is, the `///` lines above it, whether its key holds still.
+		 */
+		class FLocRecorder
 		{
-#if WITH_EDITOR
-			return FText::AsLocalizable_Advanced(FTextKey(Namespace), FTextKey(Key), *Source);
+		public:
+			FLocRecorder(const FDnaDocument& InDocument, FDnaLocManifest& InManifest, FDnaDiagnosticSink& InDiagnostics)
+				: Document(InDocument), Manifest(InManifest), Diagnostics(InDiagnostics)
+			{
+			}
+
+			/** The text Entry describes (its Key and Source in this document's namespace), noted down. */
+			FText Make(FDnaLocEntry&& Entry)
+			{
+				Entry.Note = NoteAbove(Entry.SourceLine);
+				if (const int32* Other = Lines.Find(Entry.Key))
+				{
+					FDnaSpan Span;
+					Span.Line = FMath::Max(1, Entry.SourceLine);
+					Diagnostics.Error(TEXT("DNS6007"), Span, FText::Format(LOCTEXT("DuplicateKey", "Another text of this file, on line {1}, is translated under the key '{0}' too; give one of them another #id"),
+						FText::FromString(Entry.Key), FText::AsNumber(*Other)));
+					bClash = true;
+				}
+				else
+				{
+					Lines.Add(Entry.Key, Entry.SourceLine);
+				}
+#if WITH_EDITORONLY_DATA
+				const FText Text = FText::AsLocalizable_Advanced(FTextKey(Manifest.Namespace), FTextKey(Entry.Key), *Entry.Source, DevNotesOf(Entry));
 #else
-			return FText::FromString(Source);
+				const FText Text = FText::AsLocalizable_Advanced(FTextKey(Manifest.Namespace), FTextKey(Entry.Key), *Entry.Source);
 #endif
+				Manifest.Entries.Add(MoveTemp(Entry));
+				return Text;
+			}
+
+			/** The placeholders' expressions as written, for Entry.Args. */
+			TArray<FString> ArgsOf(const TArray<FDnaSpan>& Spans) const
+			{
+				TArray<FString> Out;
+				for (const FDnaSpan& Span : Spans) { Out.Add(Document.Source.Slice(Span).TrimStartAndEnd()); }
+				return Out;
+			}
+
+			FDnaLocEntry* Find(const FString& Key)
+			{
+				return Manifest.Entries.FindByPredicate([&Key](const FDnaLocEntry& Each) { return Each.Key == Key; });
+			}
+
+			/** Two texts were given the same key (DNS6007). */
+			bool HasClash() const { return bClash; }
+
+		private:
+			/** The `///` lines right above Line, in order, without their slashes. */
+			FString NoteAbove(int32 Line) const
+			{
+				TArray<FString> Notes;
+				for (int32 Above = Line - 1; Above >= 1; --Above)
+				{
+					const FString Text = Document.Source.GetLineText(Above).TrimStart();
+					if (!Text.StartsWith(TEXT("///")) || Text.StartsWith(TEXT("////")))
+					{
+						break;
+					}
+					Notes.Insert(Text.Mid(3).TrimStartAndEnd(), 0);
+				}
+				return FString::Join(Notes, TEXT("\n"));
+			}
+
+			/** The engine's gather keeps these with the text: the note and the context on one line. */
+			static FString DevNotesOf(const FDnaLocEntry& Entry)
+			{
+				TArray<FString> Parts;
+				if (!Entry.Note.IsEmpty()) { Parts.Add(Entry.Note.Replace(TEXT("\n"), TEXT(" "))); }
+				for (const TPair<FString, FString>& Pair : Entry.Context) { Parts.Add(Pair.Key + TEXT(": ") + Pair.Value); }
+				for (int32 Index = 0; Index < Entry.Args.Num(); ++Index) { Parts.Add(FString::Printf(TEXT("{%d}: %s"), Index, *Entry.Args[Index])); }
+				return FString::Join(Parts, TEXT(" | "));
+			}
+
+			const FDnaDocument& Document;
+			FDnaLocManifest& Manifest;
+			FDnaDiagnosticSink& Diagnostics;
+			/** The keys made so far and the lines they are on. */
+			TMap<FString, int32> Lines;
+			bool bClash = false;
+		};
+
+		/** An entry for the recorder: the fields every kind of text has. */
+		FDnaLocEntry MakeLocEntry(const FString& Key, const FString& Source, const FString& Kind, const FString& At, int32 SourceLine)
+		{
+			FDnaLocEntry Entry;
+			Entry.Key = Key;
+			Entry.Source = Source;
+			Entry.Kind = Kind;
+			Entry.At = At;
+			Entry.SourceLine = SourceLine;
+			return Entry;
+		}
+
+		/** Numbered by position (no `#id`): the key moves when a text is added before it; FreezeId fixes it. */
+		void MarkPositional(FDnaLocEntry& Entry, const FString& FreezeId)
+		{
+			Entry.bStable = false;
+			Entry.FreezeId = FreezeId;
+		}
+
+		/**
+		 * The id Make gives the Number-th text, else the next number no `#id` among Taken has: a text added to a
+		 * frozen block must not take the id a frozen one wrote down. Number moves on to the one given.
+		 */
+		FString NumberedId(TFunctionRef<FString(int32)> Make, int32& Number, const TSet<FString>& Taken)
+		{
+			FString Id = Make(Number);
+			while (Taken.Contains(Id))
+			{
+				Id = Make(++Number);
+			}
+			return Id;
+		}
+
+		/** The `#id`s written on the lines and choices under Node, at any depth. */
+		void CollectDialogueIds(const FDnaLineNode& Node, TSet<FString>& Out)
+		{
+			for (const FDnaLineNodePtr& Child : Node.Children)
+			{
+				if (!Child.IsValid()) { continue; }
+				const bool bText = Child->Kind == EDnaLineKind::Speech || Child->Kind == EDnaLineKind::Narration || Child->Kind == EDnaLineKind::Choice;
+				if (bText && !Child->Payload.Modifiers.Id.IsEmpty()) { Out.Add(Child->Payload.Modifiers.Id); }
+				CollectDialogueIds(*Child, Out);
+			}
 		}
 
 		/** One command line (`set`, `accept`, `play`, ...) as an instruction at the end of Code. */
@@ -313,34 +440,53 @@ namespace UE::DreamNarrative::Lang
 			}
 		}
 
-		FDnaQuestText MakeQuestText(const FDnaText& Text, FDnaExprCompiler& Exprs, const FString& Namespace, const FString& Key)
+		/** A quest's text: Entry says its key and where it is; its source is Text's pattern. */
+		FDnaQuestText MakeQuestText(const FDnaText& Text, FDnaExprCompiler& Exprs, FLocRecorder& Loc, FDnaLocEntry&& Entry)
 		{
 			FTextBuilder Builder;
 			Builder.Append(Text, Exprs);
+			Entry.Source = Builder.Pattern;
+			Entry.Args = Loc.ArgsOf(Builder.ArgSpans);
 			FDnaQuestText Out;
-			Out.Text = MakeLocalizable(Namespace, Key, Builder.Pattern);
+			Out.Text = Loc.Make(MoveTemp(Entry));
 			Out.Args = MoveTemp(Builder.Args);
 			return Out;
 		}
 
+		/** The `title:` line among Lines; null when there is none. */
+		const FDnaLineNode* FindTitleLine(const TArray<FDnaLineNode*>& Lines)
+		{
+			const FDnaLineNode* const* Found = Lines.FindByPredicate([](const FDnaLineNode* Line)
+			{
+				return Line->Kind == EDnaLineKind::Property && Line->Payload.Name == TEXT("title");
+			});
+			return Found ? *Found : nullptr;
+		}
+
 		/** An archive's title and entries, from its block. */
-		void CompileArchive(const FDnaLineNode& Root, FDnaArchiveData& Out, FDnaExprCompiler& Exprs, const FString& Namespace)
+		void CompileArchive(const FDnaLineNode& Root, FDnaArchiveData& Out, FDnaExprCompiler& Exprs, FLocRecorder& Loc)
 		{
 			const FDnaLinePayload& P = Root.Payload;
 			const FString Key = TEXT("archive.") + P.Name;
 			Out.Name = FName(*P.Name);
-			Out.Title = FText::FromString(P.Name);
 			Out.bProfile = P.bProfile;
 			Out.SourceLine = Root.LineNumber();
 			TArray<FDnaLineNode*> Lines;
 			Root.GetContentChildren(Lines);
+			// Without a title the archive shows its name, translated like a title.
+			const FDnaLineNode* TitleLine = FindTitleLine(Lines);
+			FDnaLocEntry Title = MakeLocEntry(Key + TEXT(".title"), TitleLine ? TitleLine->Payload.Value : P.Name, TEXT("archive"), Key + TEXT("#title"),
+				TitleLine ? TitleLine->LineNumber() : Root.LineNumber());
+			Title.Context.Emplace(TEXT("archive"), P.Name);
+			Out.Title = Loc.Make(MoveTemp(Title));
+			TSet<FString> Taken;
 			for (const FDnaLineNode* Line : Lines)
 			{
-				if (Line->Kind == EDnaLineKind::Property && Line->Payload.Name == TEXT("title"))
-				{
-					Out.Title = MakeLocalizable(Namespace, Key + TEXT(".title"), Line->Payload.Value);
-					continue;
-				}
+				if (Line->Kind == EDnaLineKind::ArchiveEntry && !Line->Payload.Modifiers.Id.IsEmpty()) { Taken.Add(Line->Payload.Modifiers.Id); }
+			}
+			int32 Position = 0;
+			for (const FDnaLineNode* Line : Lines)
+			{
 				if (Line->Kind != EDnaLineKind::ArchiveEntry)
 				{
 					continue;
@@ -363,23 +509,53 @@ namespace UE::DreamNarrative::Lang
 					}
 				};
 				Append(*Line);
-				Entry.Text.Text = MakeLocalizable(Namespace, FString::Printf(TEXT("%s.entry%d"), *Key, Out.Entries.Num() - 1), Builder.Pattern);
+				const FString Numbered = NumberedId([](int32 Number) { return FString::Printf(TEXT("entry%d"), Number); }, Position, Taken);
+				++Position;
+				const FString& Id = Line->Payload.Modifiers.Id;
+				FDnaLocEntry Text = MakeLocEntry(Key + TEXT(".") + (Id.IsEmpty() ? Numbered : Id), Builder.Pattern, TEXT("archive"),
+					Key + TEXT("#") + (Id.IsEmpty() ? Numbered : Id), Line->LineNumber());
+				if (Id.IsEmpty()) { MarkPositional(Text, Numbered); }
+				Text.Context.Emplace(TEXT("archive"), P.Name);
+				Text.Args = Loc.ArgsOf(Builder.ArgSpans);
+				Entry.Text.Text = Loc.Make(MoveTemp(Text));
 				Entry.Text.Args = MoveTemp(Builder.Args);
 			}
 		}
 
 		/** A quest's rules, from its block. Validation already checked every name and value. */
-		void CompileQuest(const FDnaLineNode& Root, FDnaQuestData& Out, FDnaExprCompiler& Exprs, const FDnaProgram& Program, const FString& Namespace)
+		void CompileQuest(const FDnaLineNode& Root, FDnaQuestData& Out, FDnaExprCompiler& Exprs, const FDnaProgram& Program, FLocRecorder& Loc)
 		{
 			const FDnaLinePayload& P = Root.Payload;
 			const FString Key = TEXT("quest.") + P.Name;
 			Out.Name = FName(*P.Name);
-			Out.Title = FText::FromString(P.Name);
 			Out.SourceLine = Root.LineNumber();
 			Out.WasName = P.WasName.IsEmpty() ? NAME_None : FName(*P.WasName);
 
+			// Every text of the quest: renamed with `was`, its keys had the old name.
+			auto QuestEntry = [&](const FString& Suffix, const FString& Source, const FString& At, int32 SourceLine)
+			{
+				FDnaLocEntry Made = MakeLocEntry(Key + TEXT(".") + Suffix, Source, TEXT("quest"), Key + TEXT("#") + At, SourceLine);
+				if (!P.WasName.IsEmpty()) { Made.RenamedFrom = TEXT("quest.") + P.WasName + TEXT(".") + Suffix; }
+				Made.Context.Emplace(TEXT("quest"), P.Name);
+				return Made;
+			};
+
 			TArray<FDnaLineNode*> Lines;
 			Root.GetContentChildren(Lines);
+			// Without a title the quest shows its name, translated like a title.
+			const FDnaLineNode* TitleLine = FindTitleLine(Lines);
+			Out.Title = Loc.Make(QuestEntry(TEXT("title"), TitleLine ? TitleLine->Payload.Value : P.Name, TEXT("title"), TitleLine ? TitleLine->LineNumber() : Root.LineNumber()));
+			// The ids objectives wrote down: numbering steps over them.
+			TSet<FString> Taken;
+			for (const FDnaLineNode* Line : Lines)
+			{
+				if (Line->Kind != EDnaLineKind::Objective) { continue; }
+				for (const FDnaLineNodePtr& Show : Line->Children)
+				{
+					if (Show.IsValid() && !Show->Payload.Modifiers.Id.IsEmpty()) { Taken.Add(Show->Payload.Modifiers.Id); }
+				}
+			}
+			int32 ObjectiveNumber = 0;
 			for (const FDnaLineNode* Line : Lines)
 			{
 				const FDnaLinePayload& L = Line->Payload;
@@ -388,11 +564,7 @@ namespace UE::DreamNarrative::Lang
 				switch (Line->Kind)
 				{
 				case EDnaLineKind::Property:
-					if (L.Name == TEXT("title"))
-					{
-						Out.Title = MakeLocalizable(Namespace, Key + TEXT(".title"), L.Value);
-					}
-					else if (L.Name == TEXT("priority"))
+					if (L.Name == TEXT("priority"))
 					{
 						Out.Priority = L.Value == TEXT("main") ? EDnaQuestPriority::Main : L.Value == TEXT("hidden") ? EDnaQuestPriority::Hidden : EDnaQuestPriority::Side;
 					}
@@ -416,15 +588,15 @@ namespace UE::DreamNarrative::Lang
 					Out.FailIf = Exprs.Compile(L.Condition);
 					break;
 				case EDnaLineKind::Journal:
-					for (const FDnaLineNode* Entry : Children)
+					for (const FDnaLineNode* Journal : Children)
 					{
-						if (Entry->Kind != EDnaLineKind::Property) { continue; }
-						const FString& Which = Entry->Payload.Name;
+						if (Journal->Kind != EDnaLineKind::Property) { continue; }
+						const FString& Which = Journal->Payload.Name;
 						FDnaQuestText* Slot = Which == TEXT("accepted") ? &Out.JournalAccepted : Which == TEXT("going") ? &Out.JournalGoing
 							: Which == TEXT("completed") ? &Out.JournalCompleted : Which == TEXT("failed") ? &Out.JournalFailed : nullptr;
 						if (Slot)
 						{
-							*Slot = MakeQuestText(Entry->Payload.Text, Exprs, Namespace, Key + TEXT(".journal.") + Which);
+							*Slot = MakeQuestText(Journal->Payload.Text, Exprs, Loc, QuestEntry(TEXT("journal.") + Which, FString(), TEXT("journal.") + Which, Journal->LineNumber()));
 						}
 					}
 					break;
@@ -434,11 +606,17 @@ namespace UE::DreamNarrative::Lang
 					Objective.Condition = Exprs.Compile(L.Condition);
 					Objective.bOptional = L.bOptional;
 					Objective.SourceLine = Line->LineNumber();
-					for (const FDnaLineNode* Entry : Children)
+					++ObjectiveNumber;
+					for (const FDnaLineNode* Show : Children)
 					{
-						if (Entry->Kind == EDnaLineKind::Property && Entry->Payload.Name == TEXT("show"))
+						if (Show->Kind == EDnaLineKind::Property && Show->Payload.Name == TEXT("show"))
 						{
-							Objective.Show = MakeQuestText(Entry->Payload.Text, Exprs, Namespace, FString::Printf(TEXT("%s.objective%d"), *Key, Out.Objectives.Num()));
+							// Numbered from 1, the way objectives always were; `show: 文本 #id` names it instead.
+							const FString Numbered = NumberedId([](int32 Number) { return FString::Printf(TEXT("objective%d"), Number); }, ObjectiveNumber, Taken);
+							const FString& Id = Show->Payload.Modifiers.Id;
+							FDnaLocEntry Text = QuestEntry(Id.IsEmpty() ? Numbered : Id, FString(), Id.IsEmpty() ? Numbered : Id, Show->LineNumber());
+							if (Id.IsEmpty()) { MarkPositional(Text, Numbered); }
+							Objective.Show = MakeQuestText(Show->Payload.Text, Exprs, Loc, MoveTemp(Text));
 						}
 					}
 					break;
@@ -479,8 +657,8 @@ namespace UE::DreamNarrative::Lang
 		class FDialogueCompiler
 		{
 		public:
-			FDialogueCompiler(FDnaExprCompiler& InExprs, const FDnaProgram& InProgram, const FString& InNamespace)
-				: Exprs(InExprs), Program(InProgram), Namespace(InNamespace)
+			FDialogueCompiler(FDnaExprCompiler& InExprs, const FDnaProgram& InProgram, FLocRecorder& InLoc)
+				: Exprs(InExprs), Program(InProgram), Loc(InLoc)
 			{
 			}
 
@@ -502,6 +680,9 @@ namespace UE::DreamNarrative::Lang
 				Out.WasName = P.WasName.IsEmpty() ? NAME_None : FName(*P.WasName);
 				LineOrdinal = 0;
 				ChoiceOrdinal = 0;
+				LastText.Reset();
+				Taken.Reset();
+				CollectDialogueIds(Root, Taken);
 
 				TArray<FDnaLineNode*> Lines;
 				Root.GetContentChildren(Lines);
@@ -515,10 +696,32 @@ namespace UE::DreamNarrative::Lang
 		private:
 			FDnaExprCompiler& Exprs;
 			const FDnaProgram& Program;
-			FString Namespace;
+			FLocRecorder& Loc;
 			FDnaDialogueNodeData* Data = nullptr;
 			int32 LineOrdinal = 0;
 			int32 ChoiceOrdinal = 0;
+			/** The text of the line compiled last, in source order: a translator's "the line before". */
+			FString LastText;
+			/** The ids the dialogue's lines and choices wrote down: numbering steps over them. */
+			TSet<FString> Taken;
+
+			/** The entry of a line or a choice: the dialogue it is in, its channel, and the key it had before a `was` rename. */
+			FDnaLocEntry DialogueEntry(const FString& Id, bool bExplicitId, const FString& Ordinal, const FString& Source, const FString& Kind, int32 SourceLine) const
+			{
+				const FString Dialogue = Data->Name.ToString();
+				FDnaLocEntry Entry = MakeLocEntry(Id, Source, Kind, Dialogue + TEXT("#") + Id, SourceLine);
+				if (!bExplicitId)
+				{
+					MarkPositional(Entry, Id);
+					if (!Data->WasName.IsNone()) { Entry.RenamedFrom = Data->WasName.ToString() + TEXT(".") + Ordinal; }
+				}
+				return Entry;
+			}
+
+			void AddChannel(FDnaLocEntry& Entry) const
+			{
+				if (!Data->Channel.IsNone()) { Entry.Context.Emplace(TEXT("channel"), Data->Channel.ToString()); }
+			}
 
 			int32 Emit(EDnaOpCode Op, int32 SourceLine)
 			{
@@ -586,8 +789,9 @@ namespace UE::DreamNarrative::Lang
 				const FDnaLinePayload& P = Line.Payload;
 				FDnaLineData& Out = Data->Lines.AddDefaulted_GetRef();
 				++LineOrdinal;
+				const FString Dialogue = Data->Name.ToString();
 				Out.Id = P.Modifiers.Id.IsEmpty()
-					? FName(*FString::Printf(TEXT("%s.%d"), *Data->Name.ToString(), LineOrdinal))
+					? FName(*NumberedId([&Dialogue](int32 Number) { return FString::Printf(TEXT("%s.%d"), *Dialogue, Number); }, LineOrdinal, Taken))
 					: FName(*P.Modifiers.Id);
 				Out.bExplicitId = !P.Modifiers.Id.IsEmpty();
 				Out.Speaker = Line.Kind == EDnaLineKind::Speech ? FName(*P.Name) : NAME_None;
@@ -603,7 +807,21 @@ namespace UE::DreamNarrative::Lang
 						Builder.Append(Child->Payload.Text, Exprs);
 					}
 				}
-				Out.Text = MakeLocalizable(Namespace, Out.Id.ToString(), Builder.Pattern);
+				FDnaLocEntry Entry = DialogueEntry(Out.Id.ToString(), Out.bExplicitId, FString::FromInt(LineOrdinal), Builder.Pattern, TEXT("line"), Line.LineNumber());
+				if (!Out.Speaker.IsNone())
+				{
+					const FDnaCharacterInfo* Speaker = Program.Characters.Find(P.Name);
+					Entry.Context.Emplace(TEXT("speaker"), P.Name);
+					Entry.Context.Emplace(TEXT("speakerDisplay"), Speaker && !Speaker->Display.IsEmpty() ? Speaker->Display : P.Name);
+				}
+				Entry.Context.Emplace(TEXT("dialogue"), Data->Name.ToString());
+				if (!LastText.IsEmpty()) { Entry.Context.Emplace(TEXT("previous"), LastText); }
+				if (P.SpeakerTags.Num() > 0) { Entry.Context.Emplace(TEXT("tags"), FString::Join(P.SpeakerTags, TEXT(" "))); }
+				AddChannel(Entry);
+				if (P.Modifiers.bHasDuration) { Entry.Context.Emplace(TEXT("for"), FString::SanitizeFloat(P.Modifiers.DurationSeconds)); }
+				Entry.Args = Loc.ArgsOf(Builder.ArgSpans);
+				LastText = Builder.Pattern;
+				Out.Text = Loc.Make(MoveTemp(Entry));
 				Out.TextArgs = MoveTemp(Builder.Args);
 				Out.Condition = Exprs.Compile(P.Modifiers.Condition);
 				Out.Duration = P.Modifiers.bHasDuration ? static_cast<float>(P.Modifiers.DurationSeconds) : 0.f;
@@ -618,6 +836,8 @@ namespace UE::DreamNarrative::Lang
 			{
 				const int32 GroupIndex = Data->ChoiceGroups.AddDefaulted();
 				At(Emit(EDnaOpCode::Choice, Lines[Start]->LineNumber())).Index = GroupIndex;
+				// Every option follows the line before the group, not the body of the option before it.
+				const FString Before = LastText;
 
 				TArray<int32> BodyJumps;
 				for (int32 Index = Start; Index < End; ++Index)
@@ -627,13 +847,19 @@ namespace UE::DreamNarrative::Lang
 
 					FDnaChoiceData Option;
 					++ChoiceOrdinal;
+					const FString Dialogue = Data->Name.ToString();
 					Option.Id = P.Modifiers.Id.IsEmpty()
-						? FName(*FString::Printf(TEXT("%s.c%d"), *Data->Name.ToString(), ChoiceOrdinal))
+						? FName(*NumberedId([&Dialogue](int32 Number) { return FString::Printf(TEXT("%s.c%d"), *Dialogue, Number); }, ChoiceOrdinal, Taken))
 						: FName(*P.Modifiers.Id);
 					Option.bExplicitId = !P.Modifiers.Id.IsEmpty();
 					FTextBuilder Builder;
 					Builder.Append(P.Text, Exprs);
-					Option.Label = MakeLocalizable(Namespace, Option.Id.ToString(), Builder.Pattern);
+					FDnaLocEntry Entry = DialogueEntry(Option.Id.ToString(), Option.bExplicitId, FString::Printf(TEXT("c%d"), ChoiceOrdinal), Builder.Pattern, TEXT("choice"), Line.LineNumber());
+					Entry.Context.Emplace(TEXT("dialogue"), Data->Name.ToString());
+					if (!Before.IsEmpty()) { Entry.Context.Emplace(TEXT("previous"), Before); }
+					AddChannel(Entry);
+					Entry.Args = Loc.ArgsOf(Builder.ArgSpans);
+					Option.Label = Loc.Make(MoveTemp(Entry));
 					Option.LabelArgs = MoveTemp(Builder.Args);
 					Option.Condition = Exprs.Compile(P.Modifiers.Condition);
 					Option.bOnce = P.Modifiers.bOnce;
@@ -735,7 +961,10 @@ namespace UE::DreamNarrative::Lang
 			Script->SchemaVersion = 1;
 
 			FDnaExprCompiler Exprs(Program, *Script);
-			const FString Namespace = TEXT("DNA/") + BaseName;
+			FDnaLocManifest& Manifest = Result.Localization.AddDefaulted_GetRef();
+			Manifest.SourcePath = Document.Path;
+			Manifest.Namespace = TEXT("DNA/") + BaseName;
+			FLocRecorder Loc(Document, Manifest, Diagnostics);
 
 			// -- declarations that belong to this document
 			for (const TPair<FString, FDnaCharacterInfo>& Pair : Program.Characters)
@@ -744,7 +973,11 @@ namespace UE::DreamNarrative::Lang
 				if (Info.Document != &Document) { continue; }
 				FDnaCharacterDecl& Decl = Script->Characters.AddDefaulted_GetRef();
 				Decl.Name = FName(*Info.Name);
-				Decl.Display = Info.Display.IsEmpty() ? FText::FromString(Info.Name) : MakeLocalizable(Namespace, TEXT("character.") + Info.Name, Info.Display);
+				// Without `display:` the name is what shows, so it is translated too.
+				FDnaLocEntry Display = MakeLocEntry(TEXT("character.") + Info.Name, Info.Display.IsEmpty() ? Info.Name : Info.Display, TEXT("character"),
+					TEXT("character.") + Info.Name, Info.Node ? Info.Node->LineNumber() : 0);
+				if (!Info.WasName.IsEmpty()) { Display.RenamedFrom = TEXT("character.") + Info.WasName; }
+				Decl.Display = Loc.Make(MoveTemp(Display));
 				Decl.bPlayer = Info.bPlayer;
 				Decl.VoiceRoot = Info.VoiceRoot;
 				for (const TPair<FString, FString>& Meta : Info.Meta) { Decl.Meta.Add(FName(*Meta.Key), Meta.Value); }
@@ -839,7 +1072,11 @@ namespace UE::DreamNarrative::Lang
 				FDnaChapterDecl& Decl = Script->Chapters.AddDefaulted_GetRef();
 				Decl.Name = FName(*Info->Name);
 				Decl.After = Info->After.IsEmpty() ? NAME_None : FName(*Info->After);
-				Decl.Title = Info->Title.IsEmpty() ? FText::FromString(Info->Name) : MakeLocalizable(Namespace, TEXT("chapter.") + Info->Name, Info->Title);
+				// Without `title:` the name is what shows, so it is translated too.
+				FDnaLocEntry Title = MakeLocEntry(TEXT("chapter.") + Info->Name, Info->Title.IsEmpty() ? Info->Name : Info->Title, TEXT("chapter"),
+					TEXT("chapter.") + Info->Name, Info->Node ? Info->Node->LineNumber() : 0);
+				if (!Info->WasName.IsEmpty()) { Title.RenamedFrom = TEXT("chapter.") + Info->WasName; }
+				Decl.Title = Loc.Make(MoveTemp(Title));
 				Decl.WasName = Info->WasName.IsEmpty() ? NAME_None : FName(*Info->WasName);
 
 				TArray<FDnaLineNode*> Lines;
@@ -885,7 +1122,7 @@ namespace UE::DreamNarrative::Lang
 				for (const FDnaLineNode* Root : QuestRoots)
 				{
 					FDnaQuestData& Quest = Section->Quests.AddDefaulted_GetRef();
-					CompileQuest(*Root, Quest, Exprs, Program, Namespace);
+					CompileQuest(*Root, Quest, Exprs, Program, Loc);
 
 					FDnaFactDecl& State = Script->Facts.AddDefaulted_GetRef();
 					State.Name = ::DreamNarrative::QuestStateFact(Quest.Name);
@@ -923,7 +1160,7 @@ namespace UE::DreamNarrative::Lang
 					const FDnaArchiveInfo* Info = Program.Archives.Find(Root->Payload.Name);
 					if (!Info || Info->Node != Root) { continue; }
 					FDnaArchiveData& Archive = Section->Archives.AddDefaulted_GetRef();
-					CompileArchive(*Root, Archive, Exprs, Namespace);
+					CompileArchive(*Root, Archive, Exprs, Loc);
 
 					FDnaFactDecl& Unlocked = Script->Facts.AddDefaulted_GetRef();
 					Unlocked.Name = ::DreamNarrative::ArchiveFact(Archive.Name);
@@ -950,11 +1187,24 @@ namespace UE::DreamNarrative::Lang
 					FDnaStageData& Stage = Section->Stages.AddDefaulted_GetRef();
 					CompileDnaStage(*Root, Stage, Checked);
 					int32 TextIndex = 0;
+					const FString StageKey = TEXT("stage.") + Info->Name;
+					TSet<FString> Taken;
+					for (const FDnaStageEntry& Entry : Stage.Entries)
+					{
+						if (!Entry.TextId.IsNone()) { Taken.Add(Entry.TextId.ToString()); }
+					}
 					for (FDnaStageEntry& Entry : Stage.Entries)
 					{
 						if (Entry.Verb == EDnaStageVerb::Text)
 						{
-							Entry.Text = MakeLocalizable(Namespace, FString::Printf(TEXT("stage.%s.text%d"), *Info->Name, TextIndex++), Entry.Text.ToString());
+							// Numbered in the order of time; `text 「…」 #id` names it instead.
+							const FString Numbered = NumberedId([](int32 Number) { return FString::Printf(TEXT("text%d"), Number); }, TextIndex, Taken);
+							++TextIndex;
+							const FString Id = Entry.TextId.IsNone() ? Numbered : Entry.TextId.ToString();
+							FDnaLocEntry Text = MakeLocEntry(StageKey + TEXT(".") + Id, Entry.Text.ToString(), TEXT("stage"), StageKey + TEXT("#") + Id, Entry.SourceLine);
+							if (Entry.TextId.IsNone()) { MarkPositional(Text, Numbered); }
+							Text.Context.Emplace(TEXT("stage"), Info->Name);
+							Entry.Text = Loc.Make(MoveTemp(Text));
 						}
 						ResolveStageAsset(Entry, Info->Name, !Options.bTransient, Script->AssetReferences, Diagnostics);
 					}
@@ -984,15 +1234,31 @@ namespace UE::DreamNarrative::Lang
 					Channel.bPauseDuringStage = Info->bPauseDuringStage;
 					Channel.SourceLine = Root->LineNumber();
 				}
-				FDialogueCompiler Compiler(Exprs, Program, Namespace);
+				FDialogueCompiler Compiler(Exprs, Program, Loc);
 				for (const FDnaLineNode* Root : DialogueRoots)
 				{
 					FDnaDialogueNodeData& Node = Section->Nodes.AddDefaulted_GetRef();
 					Compiler.CompileNode(*Root, Node);
 				}
 				ResolveVoices(*Section, Compiler.VoiceOverrides, Program, Voices, Script->AssetReferences, Diagnostics);
+				// The voice a translator hears the line in: the one found, else the name the convention looks for.
+				for (const FDnaDialogueNodeData& Node : Section->Nodes)
+				{
+					for (const FDnaLineData& Line : Node.Lines)
+					{
+						FDnaLocEntry* Entry = Loc.Find(Line.Id.ToString());
+						FString VoiceRoot;
+						if (!Entry) { continue; }
+						if (!Line.Voice.IsNull()) { Entry->Context.Emplace(TEXT("voice"), Line.Voice.ToSoftObjectPath().ToString()); }
+						else if (GetDnaVoiceLookup(Program, Line.Speaker, VoiceRoot) == EDnaVoiceLookup::Convention)
+						{
+							Entry->Context.Emplace(TEXT("voice"), VoiceRoot / GetDnaVoiceAssetName(Line.Id.ToString()));
+						}
+					}
+				}
 				Script->Sections.Add(Section);
 			}
+			bOk &= !Loc.HasClash();
 
 			Result.Scripts.Add(Script);
 
@@ -1012,6 +1278,11 @@ namespace UE::DreamNarrative::Lang
 				FAssetRegistryModule::AssetCreated(Script);
 				++Result.NumSaved;
 				UE_LOG(LogDreamNarrativeCompiler, Display, TEXT("Wrote %s"), *FileName);
+				// What it gives to translate, for a translation tool; a file outside the source directory has none.
+				if (!SaveDnaLocManifest(Manifest))
+				{
+					UE_LOG(LogDreamNarrativeCompiler, Warning, TEXT("Cannot write the localization manifest of %s"), *Document.Path);
+				}
 			}
 #endif
 			return bOk;

@@ -55,7 +55,7 @@ namespace UE::DreamNarrative::Tests
 	 * out the scripts. Error diagnostics fail the test and make this return false.
 	 */
 	bool CompileDnaSources(FAutomationTestBase& Test, const TArray<FDnaTestSource>& Sources, const Lang::FDnaGenerateOptions& Options,
-		Lang::FDnaProgram& OutProgram, TArray<UDreamNarrativeScript*>& OutScripts);
+		Lang::FDnaProgram& OutProgram, TArray<UDreamNarrativeScript*>& OutScripts, TArray<Lang::FDnaLocManifest>* OutLocalization = nullptr);
 
 	class FDnaTestWorld : public FGCObject
 	{

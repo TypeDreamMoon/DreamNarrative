@@ -116,7 +116,7 @@ int32 UDreamNarrativeCommandlet::FreezeIds(const FDnaProgram& Program, const FSt
 		return Diagnostics.NumErrors();
 	}
 	TMap<FString, TMap<int32, FString>> BySource;
-	CollectDnaGeneratedIds(Generated.Scripts, BySource);
+	CollectDnaGeneratedIds(Generated.Localization, BySource);
 	int32 Errors = 0, Total = 0, Written = 0;
 	for (const TPair<FString, TMap<int32, FString>>& Pair : BySource)
 	{

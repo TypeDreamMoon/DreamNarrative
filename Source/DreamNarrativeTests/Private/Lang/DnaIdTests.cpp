@@ -47,22 +47,50 @@ namespace
 		return Out;
 	}
 
-	bool Compile(FAutomationTestBase& Test, const TArray<FDnaTestSource>& Sources, TArray<UDreamNarrativeScript*>& OutScripts)
+	bool Compile(FAutomationTestBase& Test, const TArray<FDnaTestSource>& Sources, TArray<UDreamNarrativeScript*>& OutScripts, TArray<FDnaLocManifest>* OutLocalization = nullptr)
 	{
 		FDnaGenerateOptions Options;
 		Options.bSave = false;
 		Options.bTransient = true;
 		FDnaProgram Program;
 		OutScripts.Reset();
-		return CompileDnaSources(Test, Sources, Options, Program, OutScripts);
+		if (OutLocalization) { OutLocalization->Reset(); }
+		return CompileDnaSources(Test, Sources, Options, Program, OutScripts, OutLocalization);
+	}
+
+	/** Every translation key of the manifests, with its source text. */
+	TMap<FString, FString> CollectKeys(const TArray<FDnaLocManifest>& Manifests)
+	{
+		TMap<FString, FString> Out;
+		for (const FDnaLocManifest& Manifest : Manifests)
+		{
+			for (const FDnaLocEntry& Entry : Manifest.Entries) { Out.Add(Manifest.Namespace + TEXT("/") + Entry.Key, Entry.Source); }
+		}
+		return Out;
 	}
 
 	const TCHAR* SmallSource = TEXT(
 		"character 老周\n"
+		"fact 零件: int\n"
 		"stage 推近\n"
 		"  base: line\n"
 		"  camera\n"
 		"    0%       push 30cm over 100%\n"
+		"stage 字幕\n"
+		"  duration 1.0s\n"
+		"  ui\n"
+		"    0.0s..1.0s   text 「灯亮了」\n"
+		"quest 修灯\n"
+		"  title: 修好灯塔\n"
+		"  objective 零件 >= 3\n"
+		"    show: 找齐零件\n"
+		"  objective 零件 >= 5 optional\n"
+		"    show: 多带几个 #备用零件\n"
+		"archive 守夜日志\n"
+		"  entry\n"
+		"    第一天。\n"
+		"  entry #第二天\n"
+		"    第二天。\n"
 		"dialogue 老周_初见 for 老周\n"
 		"  老周: 你就是新来的?\n"
 		"  老周(皱眉): 灯坏了三天了。 for 2s @推近\n"
@@ -84,11 +112,18 @@ bool FDnaFreezeIdsTest::RunTest(const FString& Parameters)
 	Sources.Add({ TEXT("Freeze.dna"), SmallSource });
 
 	TArray<UDreamNarrativeScript*> Before;
-	if (!Compile(*this, Sources, Before)) { return false; }
+	TArray<FDnaLocManifest> LocBefore;
+	if (!Compile(*this, Sources, Before, &LocBefore)) { return false; }
 	const TMap<FString, FSpoken> SpokenBefore = CollectSpoken(Before);
+	const TMap<FString, FString> KeysBefore = CollectKeys(LocBefore);
+	int32 Numbered = 0;
+	for (const FDnaLocManifest& Manifest : LocBefore)
+	{
+		Numbered += static_cast<int32>(Algo::CountIf(Manifest.Entries, [](const FDnaLocEntry& Entry) { return !Entry.bStable; }));
+	}
 
 	TMap<FString, TMap<int32, FString>> Generated;
-	CollectDnaGeneratedIds(Before, Generated);
+	CollectDnaGeneratedIds(LocBefore, Generated);
 	TArray<FDnaTestSource> Frozen = Sources;
 	int32 Total = 0;
 	for (FDnaTestSource& Source : Frozen)
@@ -103,12 +138,22 @@ bool FDnaFreezeIdsTest::RunTest(const FString& Parameters)
 		Source.Text = Session.GetText();
 	}
 	TestTrue(TEXT("ids were written"), Total > 0);
-	TestEqual(TEXT("one id per line and choice that had none"), Total,
-		static_cast<int32>(Algo::CountIf(SpokenBefore, [](const TPair<FString, FSpoken>& Pair) { return !Pair.Value.bExplicit; })));
+	TestEqual(TEXT("one id per text numbered by position"), Total, Numbered);
+	TestTrue(TEXT("lines and choices among them"), Numbered > static_cast<int32>(Algo::CountIf(SpokenBefore, [](const TPair<FString, FSpoken>& Pair) { return !Pair.Value.bExplicit; })));
 
 	TArray<UDreamNarrativeScript*> After;
-	if (!Compile(*this, Frozen, After)) { return false; }
+	TArray<FDnaLocManifest> LocAfter;
+	if (!Compile(*this, Frozen, After, &LocAfter)) { return false; }
 	const TMap<FString, FSpoken> SpokenAfter = CollectSpoken(After);
+	TestTrue(TEXT("every translation key and its text are as they were"), CollectKeys(LocAfter).OrderIndependentCompareEqual(KeysBefore));
+	for (const FDnaLocManifest& Manifest : LocAfter)
+	{
+		for (const FDnaLocEntry& Entry : Manifest.Entries) { TestTrue(*FString::Printf(TEXT("%s holds still now"), *Entry.Key), Entry.bStable); }
+	}
+	TestTrue(TEXT("an objective's text is frozen on its show line"), Frozen.Last().Text.Contains(TEXT("show: 找齐零件 #objective1\n")));
+	TestTrue(TEXT("one with an id of its own is left alone"), Frozen.Last().Text.Contains(TEXT("show: 多带几个 #备用零件\n")));
+	TestTrue(TEXT("an archive entry on its entry line"), Frozen.Last().Text.Contains(TEXT("  entry #entry0\n")));
+	TestTrue(TEXT("a stage's text on its line"), Frozen.Last().Text.Contains(TEXT("text 「灯亮了」 #text0\n")));
 	TestEqual(TEXT("as many lines and choices as before"), SpokenAfter.Num(), SpokenBefore.Num());
 	for (const TPair<FString, FSpoken>& Pair : SpokenBefore)
 	{
@@ -124,7 +169,8 @@ bool FDnaFreezeIdsTest::RunTest(const FString& Parameters)
 	FDnaTestSource& Small = Frozen.Last();
 	Small.Text = Small.Text.Replace(TEXT("dialogue 老周_初见 for 老周\n"), TEXT("dialogue 老周_初见 for 老周\n  老周: 新加的一句。\n"));
 	TArray<UDreamNarrativeScript*> Edited;
-	if (!Compile(*this, Frozen, Edited)) { return false; }
+	TArray<FDnaLocManifest> LocEdited;
+	if (!Compile(*this, Frozen, Edited, &LocEdited)) { return false; }
 	const TMap<FString, FSpoken> SpokenEdited = CollectSpoken(Edited);
 	for (const TPair<FString, FSpoken>& Pair : SpokenAfter)
 	{
@@ -132,7 +178,7 @@ bool FDnaFreezeIdsTest::RunTest(const FString& Parameters)
 		TestTrue(*FString::Printf(TEXT("%s stays put"), *Pair.Key), Now && Now->Text == Pair.Value.Text);
 	}
 	TMap<FString, TMap<int32, FString>> Again;
-	CollectDnaGeneratedIds(Edited, Again);
+	CollectDnaGeneratedIds(LocEdited, Again);
 	TestEqual(TEXT("only the new line is left to freeze"), Again.FindRef(TEXT("Freeze.dna")).Num(), 1);
 	return !HasAnyErrors();
 }

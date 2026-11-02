@@ -16,6 +16,13 @@ dialogue 老周_初见 for 老周 if not 见过老周
   control whether an entry can open again.
 - Line suffixes include `if Condition`, `once`, `for 3s` (the duration for automatic advancement),
   `@Stage` (a stage attached to the line), and `#id` (a stable line ID).
+- `///` comment lines right above a line or a choice are a note for translators. They go into the
+  text's [localization manifest](../tools/localization.md) and the engine's gather; `//` comments do not.
+
+  ```dna
+    /// First meeting: curt, not polite small talk
+    老周(皱眉): 你就是新来的守夜人?
+  ```
 - Commands include `set`, `accept / complete / fail Quest`, `advance Chapter`, `play Stage [async]`,
   `emit Event(Parameter = Value)`, `wait 2s`, and `-> Dialogue`.
 - Use `{Expression}` for interpolation. Conditions can use `visited(Dialogue)`, `random(1, 6)`,

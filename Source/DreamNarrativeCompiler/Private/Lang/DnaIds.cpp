@@ -1,8 +1,6 @@
 // Copyright DreamMoon. All Rights Reserved.
 
 #include "Lang/DnaIds.h"
-#include "DreamNarrativeDialogue.h"
-#include "DreamNarrativeScript.h"
 #include "Lang/DnaEditSession.h"
 #include "Lang/DnaPrinter.h"
 
@@ -10,29 +8,14 @@
 
 namespace UE::DreamNarrative::Lang
 {
-	void CollectDnaGeneratedIds(const TArray<UDreamNarrativeScript*>& Scripts, TMap<FString, TMap<int32, FString>>& OutBySource)
+	void CollectDnaGeneratedIds(const TArray<FDnaLocManifest>& Manifests, TMap<FString, TMap<int32, FString>>& OutBySource)
 	{
-		for (const UDreamNarrativeScript* Script : Scripts)
+		for (const FDnaLocManifest& Manifest : Manifests)
 		{
-			const UDnaDialogueSection* Section = Script ? Script->FindSection<UDnaDialogueSection>() : nullptr;
-			if (!Section)
+			TMap<int32, FString>& Ids = OutBySource.FindOrAdd(Manifest.SourcePath);
+			for (const FDnaLocEntry& Entry : Manifest.Entries)
 			{
-				continue;
-			}
-			TMap<int32, FString>& Ids = OutBySource.FindOrAdd(Script->SourcePath);
-			for (const FDnaDialogueNodeData& Node : Section->Nodes)
-			{
-				for (const FDnaLineData& Line : Node.Lines)
-				{
-					if (!Line.bExplicitId && Line.SourceLine > 0) { Ids.Add(Line.SourceLine, Line.Id.ToString()); }
-				}
-				for (const FDnaChoiceGroupData& Group : Node.ChoiceGroups)
-				{
-					for (const FDnaChoiceData& Option : Group.Options)
-					{
-						if (!Option.bExplicitId && Option.SourceLine > 0) { Ids.Add(Option.SourceLine, Option.Id.ToString()); }
-					}
-				}
+				if (!Entry.FreezeId.IsEmpty() && Entry.SourceLine > 0) { Ids.Add(Entry.SourceLine, Entry.FreezeId); }
 			}
 		}
 	}

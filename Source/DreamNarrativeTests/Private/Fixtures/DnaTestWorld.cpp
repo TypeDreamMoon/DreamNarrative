@@ -261,7 +261,7 @@ namespace UE::DreamNarrative::Tests
 	}
 
 	bool CompileDnaSources(FAutomationTestBase& Test, const TArray<FDnaTestSource>& Sources, const FDnaGenerateOptions& Options,
-		FDnaProgram& OutProgram, TArray<UDreamNarrativeScript*>& OutScripts)
+		FDnaProgram& OutProgram, TArray<UDreamNarrativeScript*>& OutScripts, TArray<FDnaLocManifest>* OutLocalization)
 	{
 		// The first pass collects every declared name, as the commandlet does, so the text-tail `if`
 		// rule sees names from all the sources.
@@ -290,6 +290,7 @@ namespace UE::DreamNarrative::Tests
 			FDnaGenerateResult Result;
 			GenerateDnaProgram(OutProgram, Options, Result, Diagnostics);
 			OutScripts.Append(Result.Scripts);
+			if (OutLocalization) { OutLocalization->Append(MoveTemp(Result.Localization)); }
 		}
 
 		for (const FDnaDiagnostic& Diagnostic : Diagnostics.GetDiagnostics())

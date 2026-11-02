@@ -8,6 +8,7 @@
 
 #include "CoreMinimal.h"
 #include "Lang/DnaDiagnostic.h"
+#include "Lang/DnaLocalization.h"
 #include "Lang/DnaModel.h"
 
 class UDreamNarrativeScript;
@@ -37,6 +38,11 @@ namespace UE::DreamNarrative::Lang
 	{
 		TArray<UDreamNarrativeScript*> Scripts;
 		int32 NumSaved = 0;
+		/**
+		 * What each document gives to translate, in the order of Scripts. A saved document's manifest is
+		 * written too, when the file is in the source directory (see SaveDnaLocManifest).
+		 */
+		TArray<FDnaLocManifest> Localization;
 	};
 
 	/**
@@ -49,6 +55,7 @@ namespace UE::DreamNarrative::Lang
 	 *   DNS6003  a line whose voice is looked for has none (a warning, or an error when the settings say so)
 	 *   DNS6004  (warning) a voice table answers a line id no line has
 	 *   DNS6005  a line id answered twice by the voice tables
+	 *   DNS6007  two texts of one file are translated under the same key
 	 *   DNS8001  conflicting source basenames, or the package could not be created or saved
 	 */
 	DREAMNARRATIVECOMPILER_API bool GenerateDnaProgram(const FDnaProgram& Program, const FDnaGenerateOptions& Options, FDnaGenerateResult& OutResult, FDnaDiagnosticSink& Diagnostics);

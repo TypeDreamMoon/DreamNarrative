@@ -71,3 +71,13 @@ A line lacks a stable `#id` required by the project.
 `Dialogue.c2`). Inserting a line shifts later IDs and can misalign translations, voice and saved once
 records. With `Require Line Ids` enabled, every line needs `#id`. Run `dnc freeze` to write existing IDs
 unchanged into source. Assign IDs to new lines or run `dnc freeze` again.
+
+## DNS6007
+
+Two texts of one file are translated under the same key.
+
+**Explanation:** Every localizable text of a file shares its namespace (`DNA/<FileName>`), so each needs
+its own key. The usual cause is the same `#id` written on two lines, two choices, two objectives or two
+stage texts, or an `#id` that matches a key the compiler gives another text (such as `title` on an
+objective). The message names the line of the other text. Give one of them another `#id`; the asset is
+not generated until the keys differ.
