@@ -10,5 +10,8 @@
     "DNS\\d{4}"
   ],
   "keep": [],
-  "site": "TypeDreamMoon/narrative.toolchain.64hz.cn"
+  "site": "TypeDreamMoon/narrative.toolchain.64hz.cn",
+  "manual": [
+    "README.md"
+  ]
 }

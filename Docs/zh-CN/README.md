@@ -2,9 +2,9 @@
 
 [English](../README.md) · 简体中文
 
-本页是插件仓库内的中文导航，不随网站发布，也不作为翻译单元；网站中文页的状态以 `python -B Docs/translation-status.py` 或文档站仓库的翻译状态 Issue 为准。原有迁入、缺译和待核对清单已完整保存在 [首次迁移快照](TRANSLATIONS.md)。
+本页是插件仓库内的中文导航，不随网站发布，也不作为翻译单元；各页中文的状态以 `dreamdocs status --plugin .` 为准。
 
-这些文档从原文档站迁入，目前均为**待核对的旧译文**，尚未确认与当前英文一致。英文仍是技术内容的原文；中文修订由插件仓库中的翻译 PR 审阅，合并后再同步到网站。
+这些文档从原文档站迁入，目前均为**待核对的旧译文**，尚未确认与当前英文一致。英文仍是技术内容的原文；中文修订和其他改动一样在插件仓库中审阅，合并后再同步到网站。
 
 网站独有页面和 `docs-sync:notes` 补充保留在网站，不属于这里的翻译。
 
@@ -53,6 +53,6 @@
 
 ## 翻译记录
 
-`.translations/` 按英文源文件保存迁入记录。`sourceHash: null` 表示尚未核对；`importedSourceHash` 只记录迁入时看到的英文版本，不表示译文已经匹配该版本。这个导航页不是原文翻译，不建立伪造的审阅记录。
+`.align/` 按英文源文件记录每段中文是从哪一段英文译来的；迁入时没有对应英文的段落记为未核对，不表示译文已经匹配当前英文。这个导航页不是原文翻译，在 `dreamdocs.json` 里标为 `manual`，由人工维护。
 
-在插件根目录运行 `python -B Docs/translation-status.py` 可只读查看翻译状态；`--all` 列出全部原文，`--json` 输出结构化结果。无需文档站仓库，打包后没有 Git 的插件目录也可以运行。
+翻译和检查用 [dreamdocs](https://github.com/TypeDreamMoon/dreamdocs)：`dreamdocs status` 列出过期和缺失的段落，`dreamdocs translate` 翻译它们，`dreamdocs check --plugin .` 是 CI 运行的检查。
