@@ -1,0 +1,21 @@
+{
+  "fact": "fact",
+  "fact ledger": "账本",
+  "ledger": "账本",
+  "dialogue": "对话",
+  "channel": "频道",
+  "quest": "任务",
+  "chapter": "章节",
+  "playthrough": "周目",
+  "checkpoint": "检查点",
+  "archive": "资料库",
+  "stage": "演出",
+  "director": "导演",
+  "watchdog": "看门狗",
+  "softlock": "软锁",
+  "explorer": "探索器",
+  "validator": "校验器",
+  "mask": "mask",
+  "story view": "故事视图",
+  "stage timeline": "演出时间轴"
+}
