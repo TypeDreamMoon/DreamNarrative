@@ -61,12 +61,6 @@ dialogue 老周_初见 for 老周
 
 同样的备注和上下文也作为开发者备注交给引擎采集。
 
-## CSV 导出导入
+## 翻译
 
-`dnc.ps1 loc-export [-Out 路径] [-Culture en] [-Target Game]` 把每条可本地化文本导成带 BOM 的 UTF-8 CSV,列是 `Namespace,Key,Source,Translation`,后面是上下文:类别、说话人、对话、上一句、情绪、文件与行号。写了 `-Culture` 就把本地化目标里已有的译文填进 `Translation`。译好之后:
-
-1. 在本地化面板里采集目标(默认 `Game`),Asset Directory 要在采集范围里;
-2. 关着编辑器跑 `dnc.ps1 loc-import -File 译文.csv -Culture en`,译文写进 `Content/Localization/Game/en/Game.archive`。目标没采集到的 key、导出之后原文改过的行不导入,逐条列出;没填译文的跳过;
-3. 回到面板「Compile Text」。
-
-目标的母语从它的 `.locmeta` 读,还没编译过的目标用 `-NativeCulture` 指定。
+DreamLoc 读这些清单:`dloc sync` 按源文件和语言生成 `.dloc`,和工程里别的译文放在一起,它的翻译源把译文交给游戏显示。旧版本 `dnc loc-export` / `loc-import` 的 CSV 用 `dloc import -In 译文.csv -Culture en` 一次导进去:导出之后原文改过的行算过期,已经不存在的 key 会列出来。不用 DreamLoc 时,脚本资产照样能用引擎的本地化面板采集。

@@ -9,7 +9,6 @@
 #include "Lang/DnaDump.h"
 #include "Lang/DnaEditSession.h"
 #include "Lang/DnaIds.h"
-#include "Lang/DnaLocalization.h"
 #include "Lang/DnaVoice.h"
 #include "Lang/DnaModel.h"
 #include "Lang/DnaParser.h"
@@ -143,69 +142,6 @@ int32 UDreamNarrativeCommandlet::FreezeIds(const FDnaProgram& Program, const FSt
 	return Errors;
 }
 
-int32 UDreamNarrativeCommandlet::Translations(const FDnaProgram& Program, const TMap<FString, FString>& Values, FDnaDiagnosticSink& Diagnostics)
-{
-	auto PathOf = [](const FString& Path) { return ResolveDnaProjectPath(Path); };
-	const FString Culture = Values.FindRef(TEXT("Culture"));
-	FDnaLocTarget Target = GetDnaLocTarget(Values.Contains(TEXT("Target")) ? Values[TEXT("Target")] : FString(TEXT("Game")));
-	Target.NativeCulture = Values.FindRef(TEXT("NativeCulture"));
-
-	if (const FString* In = Values.Find(TEXT("LocImport")))
-	{
-		const FString Path = PathOf(*In);
-		FString Text;
-		TArray<FDnaLocRow> Rows;
-		FText Error;
-		if (Culture.IsEmpty())
-		{
-			UE_LOG(LogDreamNarrativeCompiler, Error, TEXT("Import: say which culture the translations are in (-Culture=en)"));
-			return 1;
-		}
-		if (!FFileHelper::LoadFileToString(Text, *Path) || !ReadDnaLocCsv(Text, Rows, Error))
-		{
-			UE_LOG(LogDreamNarrativeCompiler, Error, TEXT("%s: %s"), *Path, Error.IsEmpty() ? TEXT("cannot read the file") : *Error.ToString());
-			return 1;
-		}
-		FDnaLocImport Import;
-		if (!ImportDnaLocTranslations(Target, Culture, Rows, Import, Error))
-		{
-			UE_LOG(LogDreamNarrativeCompiler, Error, TEXT("Import: %s"), *Error.ToString());
-			return 1;
-		}
-		for (const FString& Skipped : Import.Skipped) { UE_LOG(LogDreamNarrativeCompiler, Warning, TEXT("Not imported: %s"), *Skipped); }
-		UE_LOG(LogDreamNarrativeCompiler, Display, TEXT("Import into %s/%s: %d imported, %d unchanged, %d without a translation, %d not imported"),
-			*Target.Name, *Culture, Import.Imported, Import.Unchanged, Import.Empty, Import.Skipped.Num());
-		return 0;
-	}
-
-	FDnaGenerateResult Generated;
-	if (!Diagnostics.HasErrors())
-	{
-		FDnaGenerateOptions Options;
-		Options.bTransient = true;
-		Options.bSave = false;
-		GenerateDnaProgram(Program, Options, Generated, Diagnostics);
-	}
-	LogDiagnostics(Diagnostics);
-	if (Diagnostics.HasErrors())
-	{
-		return Diagnostics.NumErrors();
-	}
-	TArray<FDnaLocRow> Rows;
-	CollectDnaLocTexts(Generated.Scripts, Rows);
-	const int32 Filled = Culture.IsEmpty() ? 0 : FillDnaLocTranslations(Target, Culture, Rows);
-	const FString Path = PathOf(Values[TEXT("LocExport")]);
-	// With a byte order mark: a spreadsheet opens it as UTF-8.
-	if (!FFileHelper::SaveStringToFile(WriteDnaLocCsv(Rows), *Path, FFileHelper::EEncodingOptions::ForceUTF8))
-	{
-		UE_LOG(LogDreamNarrativeCompiler, Error, TEXT("Cannot write %s"), *Path);
-		return 1;
-	}
-	UE_LOG(LogDreamNarrativeCompiler, Display, TEXT("Wrote %d text(s) to %s%s"), Rows.Num(), *Path,
-		Culture.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(", %d already translated into %s"), Filled, *Culture));
-	return 0;
-}
-
 int32 UDreamNarrativeCommandlet::Main(const FString& Params)
 {
 	TArray<FString> Tokens, Switches;
@@ -218,8 +154,7 @@ int32 UDreamNarrativeCommandlet::Main(const FString& Params)
 	const bool bFreeze = Switches.Contains(TEXT("FreezeIds"));
 	const bool bVoStatus = Switches.Contains(TEXT("VoStatus"));
 	const FString VoScript = Values.Contains(TEXT("VoScript")) ? Values[TEXT("VoScript")] : FString();
-	const bool bTranslations = Values.Contains(TEXT("LocExport")) || Values.Contains(TEXT("LocImport"));
-	const bool bWholeProgram = bFreeze || bVoStatus || !VoScript.IsEmpty() || bTranslations;
+	const bool bWholeProgram = bFreeze || bVoStatus || !VoScript.IsEmpty();
 
 	// -- sources
 	const FString Root = Values.Contains(TEXT("Root")) ? ResolveDnaProjectPath(Values[TEXT("Root")]) : GetDnaSourceRoot();
@@ -266,10 +201,6 @@ int32 UDreamNarrativeCommandlet::Main(const FString& Params)
 	if (bVoStatus || !VoScript.IsEmpty())
 	{
 		return Voices(Program, VoScript, Diagnostics);
-	}
-	if (bTranslations)
-	{
-		return Translations(Program, Values, Diagnostics);
 	}
 
 	// -- generate

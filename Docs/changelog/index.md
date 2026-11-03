@@ -11,6 +11,7 @@ description: What each version contains.
 - Objective texts, archive entries and stage text take `#id`, and `dnc freeze` writes theirs too.
 - Characters, quests, archives and chapters without a display name or title translate their name.
 - DNS6007: two texts of one file under the same key.
+- `dnc loc-export` / `loc-import` are gone: DreamLoc translates from the manifests and imports their CSV.
 
 ## 0.1.0
 

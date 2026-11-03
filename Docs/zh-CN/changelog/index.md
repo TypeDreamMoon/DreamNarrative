@@ -9,6 +9,7 @@ description: 每个版本有什么。
 - 任务目标、资料条目、演出屏幕字可以写 `#id`,`dnc freeze` 也会给它们写上。
 - 没写显示名或标题的角色、任务、资料、章节,名字本身也能翻。
 - DNS6007:同一个文件里两条文字用了同一个 key。
+- 去掉了 `dnc loc-export` / `loc-import`:由 DreamLoc 按清单翻译,旧 CSV 用它导入。
 
 <a id="010"></a>
 

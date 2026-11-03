@@ -21,13 +21,9 @@
  *   -Dump          print each file's syntax tree
  *   -VoScript=<file>  write the recording script (every line, its speaker, text and voice) as CSV
  *   -VoStatus      how many lines of each character have a voice, and which do not
- *   -FreezeIds     write `#id` onto every line and choice that has none, with the id it has now;
+ *   -FreezeIds     write `#id` onto every line, choice, objective text, archive entry and stage text
+ *                  that has none, with the id it has now;
  *                  with -File only that file is written (the whole program is still read)
- *   -LocExport=<file>  write every localizable text, with who says it and where, as CSV; with
- *                  -Culture=<c> the target's translations into c fill the Translation column
- *   -LocImport=<file>  read a translated CSV into the target's archive for -Culture=<c>
- *   -Target=<name> the localization target (Content/Localization/<name>); Game by default
- *   -NativeCulture=<c>  the target's native culture, when its .locmeta does not say
  *
  * Exit code is the error count, so a CI gate tests for zero.
  */
@@ -44,5 +40,4 @@ public:
 private:
 	int32 Voices(const UE::DreamNarrative::Lang::FDnaProgram& Program, const FString& ScriptFile, UE::DreamNarrative::Lang::FDnaDiagnosticSink& Diagnostics);
 	int32 FreezeIds(const UE::DreamNarrative::Lang::FDnaProgram& Program, const FString& OnlyFile, UE::DreamNarrative::Lang::FDnaDiagnosticSink& Diagnostics);
-	int32 Translations(const UE::DreamNarrative::Lang::FDnaProgram& Program, const TMap<FString, FString>& Values, UE::DreamNarrative::Lang::FDnaDiagnosticSink& Diagnostics);
 };
