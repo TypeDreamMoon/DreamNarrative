@@ -1,7 +1,6 @@
----
-title: 对话
-description: 剧本的样子:说话人、选项、条件、命令。
----
+<a id="dialogue"></a>
+
+# 对话
 
 ```dna
 dialogue 老周_初见 for 老周 if not 见过老周
@@ -14,19 +13,13 @@ dialogue 老周_初见 for 老周 if not 见过老周
   set 见过老周 = true
 ```
 
-**入口**:`for 角色` 是这个角色的入口;同一角色有多段时,条件成立且优先级高(`priority n`,缺省是条件项数)的先,同级按声明顺序。
-`once`、`cooldown 30s` 管入口能不能再开;`on 事件` 由事件打开。
+- `for Character` 声明一个角色入口。若有多条匹配，`priority n` 最高者胜出；默认优先级为条件项的数量。`once` 和 `cooldown 30s` 控制入口能否再次打开。
+- 行尾修饰包括 `if Condition`、`once`、`for 3s`（自动推进的时长）、`@Stage`（附加到该行的演出）以及 `#id`（稳定的行 ID）。
+- 紧贴在台词或选项上一行的 `///` 注释是给译者的备注。它们会进入该文本的[本地化清单](../tools/localization.md) 和引擎的采集；`//` 注释则不会。
 
-**行尾修饰**:`if 条件`、`once`、`for 3s`(自己往下说的频道上停多久)、`@演出`(跟着这一行的演出)、`#id`(稳定行 ID,存档 / 本地化 / 演出的挂点)。
-
-**给译者的备注**:紧贴在台词或选项上一行的 `///` 注释,进这条文字的[提取清单](../tools/localization.md)和引擎采集;普通 `//` 注释不算。
-
-```dna
-  /// 第一次见面,语气冷淡,别翻成客套话
-  老周(皱眉): 你就是新来的守夜人?
-```
-
-**命令**:`set fact = 值`(`+=`、`-=`)、`accept / complete / fail 任务`、`advance 章节`、`play 演出 [async]`、
-`emit 事件(参数 = 值)`、`wait 2s`、`-> 对话`。
-
-**插值**:`{表达式}`,如 `还差 {3 - 找到的零件} 个`。
+  ```dna
+    /// First meeting: curt, not polite small talk
+    老周(皱眉): 你就是新来的守夜人?
+  ```
+- 命令包括 `set`、`accept / complete / fail Quest`、`advance Chapter`、`play Stage [async]`、`emit Event(Parameter = Value)`、`wait 2s` 和 `-> Dialogue`。
+- 使用 `{Expression}` 进行插值。条件可以使用 `visited(Dialogue)`、`random(1, 6)`、`chance(0.3)`、`chapter == Chapter` 和 `Quest.active`。

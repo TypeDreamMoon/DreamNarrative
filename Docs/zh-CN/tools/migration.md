@@ -1,10 +1,10 @@
 ---
 title: 从 DreamGameplayTask 迁移
-description: 把蓝图任务迁成 .dna 任务。
+description: 把蓝图任务定义转换为 .dna 任务。
 ---
 
-`dn.migratedgt` 用反射读项目里 `DreamTask` 的蓝图子类的默认值(项目不必链接 DGT),写到源码目录的 `Migrated/DreamGameplayTask.dna`:
+`dn.migratedgt` 反射项目的 `DreamTask` 蓝图子类的默认值，无需依赖 DGT 链接。输出为 `<SourceDirectory>/Migrated/DreamGameplayTask.dna`：
 
-- 每个任务一个 `quest`:标题、描述作接下时的日志、High / Urgent 为 main、时限、子任务与自动接;
-- 每个条件一个游戏写的计数 fact(组名 `<任务>_计数`)与一条目标;`Any` 合成一条 `or` 目标;
-- 迁不过来的(蓝图图表里的逻辑、N 选 M 的完成方式)列在日志里,照着改写进 `on accept` / `on complete` / `on fail`。
+- 每个任务对应一个 `quest`：标题、描述作为接受时的日志、High/Urgent 使用 main 优先级、时限、子任务与自动接受。
+- 每个条件在 `<Quest>_计数` 中成为一个由游戏写入的计数 fact，并对应一条目标。`Any` 会把多个条件合并成一条 `or` 目标。
+- 不受支持的行为（包括蓝图图表逻辑与 N 选 M 的完成方式）会列在迁移日志中，供手动改写进 `on accept`、`on complete` 或 `on fail` 块。

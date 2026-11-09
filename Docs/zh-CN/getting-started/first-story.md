@@ -1,45 +1,14 @@
----
-title: 第一个故事
-description: 从一段对话到一个能测的任务。
----
+<a id="write-your-first-story"></a>
 
-在 `DNarrative/` 下建一个 `灯塔.dna`:
+# 编写你的第一个故事
 
-```dna
-character 守夜人 player
-character 老周
+一个文件可以混合使用所有顶层块。名称在整个项目中唯一：角色、事实、对话、任务、章节、阶段、频道、事件和档案共用一个命名空间。缩进定义嵌套；`//` 引入注释。支持中文标识符和全角标点。按照下面的各个章节，一步一步构建灯塔故事。
 
-fact 见过老周: bool
-fact 找到的零件: int extern range 0..3
+1. [角色与事实](../language/facts.md)
+2. [对话](../language/dialogue.md)
+3. [频道与事件](../language/channels.md)
+4. [任务](../language/quests.md)
+5. [章节与周目](../language/chapters.md)
+6. [档案](../language/archives.md)
 
-dialogue 老周_初见 for 老周 if not 见过老周
-  老周: 你就是新来的守夜人?
-  - 我去修。
-      accept 修灯
-  - 先歇一会儿。
-  set 见过老周 = true
-
-quest 修灯
-  title: 修好灯塔
-  objective 找到的零件 >= 3
-    show: 零件 {找到的零件}/3
-
-test 零件齐了任务就完成
-  talk 老周
-    老周: 你就是新来的守夜人?
-    - 我去修。
-  set 找到的零件 = 3
-  expect 修灯.completed
-```
-
-保存,编辑器重建脚本;`Tools/dnc.ps1 test` 跑测试。游戏里:
-
-```cpp
-UDreamNarrativeStory* Story = GetGameInstance()->GetSubsystem<UDreamNarrativeStory>();
-Story->LoadAllScripts();
-UDreamNarrativeDialogueRunner* Runner = Story->TalkTo(TEXT("老周"));
-Runner->OnLine.AddDynamic(this, &AMyHUD::ShowLine);
-Runner->OnChoices.AddDynamic(this, &AMyHUD::ShowChoices);
-```
-
-完整的例子在插件的 `Examples/Lighthouse/灯塔.dna`:章节、频道、事件、演出、资料库、test 块都用到了。
+完整的原始示例是 [Lighthouse](../../../Examples/Lighthouse/%E7%81%AF%E5%A1%94.dna)。这些示例中的中文标识符和对话是有意为之且有效的；说明文字为英文。

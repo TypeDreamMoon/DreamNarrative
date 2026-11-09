@@ -1,19 +1,18 @@
 ---
 title: Gameplay Ability System
-description: 双向的桥与能力任务。
+description: 双向桥与演出能力任务。
 ---
 
 ```cpp
 UDreamNarrativeGASBridge* Bridge = GetGameInstance()->GetSubsystem<UDreamNarrativeGASBridge>();
-Bridge->WatchAbilitySystem(PlayerASC);                 // 也可以盯 Boss 的,收它的阶段事件
+Bridge->WatchAbilitySystem(PlayerASC); // You can also watch a boss ASC for its phase events
 ```
 
 | 写法 | 方向 |
-|---|---|
-| `event 名 gameplay 标签` | GameplayEvent → 剧情事件,参数 `from magnitude` / `from instigator tags X` / `from target tags X` |
-| `fact 名: bool extern gameplay 标签` | 标签计数 → fact |
-| 任务 `gameplay: 标签` | 任务完成 → 给盯着的能力系统发 GameplayEvent |
-| 演出 `gameplay: 标签` | GameplayEvent → 在化身上演这段,事件的 Target / Instigator 绑成 `target` / `instigator` |
+| --- | --- |
+| `event Name gameplay Tag` | GameplayEvent → 剧情事件；参数使用 `from magnitude`、`from instigator tags X` 或 `from target tags X` |
+| `fact Name: bool extern gameplay Tag` | 标签存在/计数 → fact |
+| 任务 `gameplay: Tag` | 任务完成 → 向被监视的能力系统发送 GameplayEvent |
+| 演出 `gameplay: Tag` | GameplayEvent → 在化身上播放演出；Target/Instigator 绑定为 `target`/`instigator` |
 
-能力里直接演:`PlayNarrativeStage` 能力任务(`UAbilityTask_PlayNarrativeStage`),演完 `OnFinished`,被打断 `OnInterrupted`;
-能力先结束则演出随之停下、世界放回。
+使用 `PlayNarrativeStage` 能力任务（`UAbilityTask_PlayNarrativeStage`）直接从能力中播放演出。它在完成时发出 `OnFinished`，在中断时发出 `OnInterrupted`。如果能力先结束，演出会停止，世界恢复原状。

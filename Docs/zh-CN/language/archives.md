@@ -1,7 +1,6 @@
----
-title: 资料库
-description: 解锁了就一直在的文本。
----
+<a id="archives"></a>
+
+# 档案
 
 ```dna
 archive 守夜日志 profile
@@ -9,8 +8,7 @@ archive 守夜日志 profile
   entry
     第一夜:灯坏了。
   entry if 灯修好了
-    灯亮了。海上有一条船跟着光回了港。
+    灯亮了。
 ```
 
-条件第一次成立时解锁,解锁了就一直在;`profile` 的资料跨存档、跨周目(武器故事、图鉴)。
-条目的文字翻译时的 key 是 `archive.<资料>.entry<n>`,按位置从 0 编号;写 `entry [if 条件] #id` 就改叫 `archive.<资料>.<id>`,`dnc freeze` 会把编号写进源码。
+条目在其条件首次变为真时解锁，之后保持解锁状态。条目的文本在 `archive.<Archive>.entry<n>` 下翻译，按位置从 0 开始编号；`entry [if Condition] #id` 则将其命名为 `archive.<Archive>.<id>`，而 `dnc freeze` 会写入这些编号。
