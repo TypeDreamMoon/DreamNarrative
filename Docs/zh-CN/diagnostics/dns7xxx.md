@@ -1,15 +1,14 @@
----
-title: "DNS7xxx · 演出"
-description: "时序、遮罩、恢复、单位与时间基"
----
+<a id="dns7xxx--stage"></a>
+
+# DNS7xxx — 演出
 
 <a id="dns7001"></a>
 
 ## DNS7001
 
-切镜头时没有遮罩盖住。
+切镜头时没有被 mask 盖住。
 
-`cut -> 机位` 让画面一下子跳到另一个机位,观众会看到这一跳。演出的规矩是:跳的那一刻,mask 轨上必须有一个条目正处在最强——`distort`、`exposure`、`streaks` 在它范围的正中间最强,`fade black / white 时长` 淡进去之后就是最强,`cut black`、`comic` 整段都是最强。把切点挪到遮罩的峰值上,或者给切点配一个遮罩(比如 `1.9s..2.1s distort strength 0.8` 盖住 2.0s 的切),或者改用 `blend -> 机位 时长` / `whip -> 机位` 这种看得见过程的移动。过场里镜头之间本来就该看得见的硬切写 `cut -> 机位 hard`,这条就不查它。
+**解释：**`cut -> Shot` 会让画面瞬间切换。在那一刻，mask 轨上必须有一个条目正处于最强：`distort`、`exposure` 和 `streaks` 在各自范围的中点达到峰值；`fade black / white Duration` 在淡入之后达到峰值；`cut black` 和 `comic` 整段都保持最强。把切点移到峰值上，或者为 2.0s 的切点加一个类似 `1.9s..2.1s distort strength 0.8` 的 mask，或者改用看得见过程的过渡，例如 `blend -> Shot Duration` 或 `whip -> Shot`。有意保留的可见硬切可以使用 `cut -> Shot hard`，它不受此限制。
 
 <a id="dns7002"></a>
 
@@ -17,7 +16,7 @@ description: "时序、遮罩、恢复、单位与时间基"
 
 条目越出了演出的长度。
 
-绝对时间的演出写了 `duration`,条目的时间(范围的两头都算)不能比它晚;跟着台词的演出(`base: line`)以整行为 100%,条目不能超过 100%。越出去的条目永远轮不到,多半是长度写短了或者时间多打了一位。条目自带的过程(`blend back 0.4s` 的那 0.4 秒)可以越过结尾,演出会等它走完再交还。
+**解释：**在绝对时间的演出中，条目的两端都必须落在 `duration` 之内；在 `base: line` 演出中，两端必须落在 100% 之内。越出的条目永远不会执行。请修正时长或时间戳。条目自带的过程（例如 `blend back 0.4s` 中的 0.4s）可以越过演出结尾；演出会等它走完再交还控制权。
 
 <a id="dns7003"></a>
 
@@ -25,7 +24,7 @@ description: "时序、遮罩、恢复、单位与时间基"
 
 改了世界却没有放回去。
 
-演出在某一刻改了会留下来的东西,之后既没有在同一条轨上改回来,`restore` 块里也没有写怎么放回去:拿走了镜头(`blend from game`、`cut`、`blend ->`、`whip`)却没有 `blend back`;`hide hud` 之后没有 `show hud`;`text` 之后没有 `clear`;`ramp dark` 之后没有 `light restore`;`key 角色 on` 之后没有 `key 角色 off`。导演在演出结束、被打断时都会兜底把世界放回原样,但那是一下子弹回去的;这条要你写出体面的收尾。写在轨道后面、写进 `restore`,或者把这个条目改成范围(范围结束时自己就放回去了)。
+**解释：**会留下来的改动需要在同一条轨上、或在 `restore` 中有一个之后执行的逆向操作：拿走镜头控制需要 `blend back`；`hide hud` 需要 `show hud`；`text` 需要 `clear`；`ramp dark` 需要 `light restore`；`key Character on` 需要 `key Character off`。导演在演出完成或被打断时总会做紧急还原，但那是一下子弹回去的。请在轨道上或 `restore` 中声明一个体面的收尾，或者改用会在范围结束时释放自身状态的范围。
 
 <a id="dns7004"></a>
 
@@ -33,7 +32,7 @@ description: "时序、遮罩、恢复、单位与时间基"
 
 时间的单位和演出的时间基不合。
 
-演出有两种时间基。默认是绝对时间,条目和过程都用秒(`0.3s`);写了 `base: line` 的演出跟着它挂上的那一行台词走,长短随那一行而定,所以条目和过程都用这一行的百分比(`40%`),也不能写 `duration`。把单位换成这个演出用的那一种;如果其实想要固定的秒数,就去掉 `base: line`、写上 `duration`,用 `play` 播它。
+**解释：**绝对时间的演出中，条目和过程都用秒，例如 `0.3s`。`base: line` 演出从挂上的那一行台词取得长度，使用百分比，例如 `40%`；它不能声明 `duration`。请使用正确的单位。如果要固定长度的演出，去掉 `base: line`、加上 `duration`，并用 `play` 调用它。
 
 <a id="dns7005"></a>
 
@@ -41,23 +40,38 @@ description: "时序、遮罩、恢复、单位与时间基"
 
 范围倒着写了。
 
-`起..止` 的范围,止不能比起早。多半是两个数写反了。
+**解释：**在 `Start..End` 中，结束不能早于开始。多半是两个数字写反了。
 
 <a id="dns7006"></a>
 
 ## DNS7006
 
-这条轨上没有这个动词,或者参数不对。
+这条轨上没有这个动词，或者参数不对。
 
-每条轨只认自己的动词:camera 有 `blend from game / back / ->`、`cut ->`、`whip ->`、`push`;light 有 `ramp dark`、`restore`、`key`;mask 有 `distort`、`exposure`、`streaks`、`comic`、`cut black`、`fade black / white`;vfx 有 `spawn`、`stop`;ui 有 `hide hud`、`show hud`、`text`、`clear`;anim 有 `montage`;game 有 `input lock`、`hitstop`、`time`、`damage window`;sequence 有 `play`。消息里给出了这个动词该怎么写。同一个码也报这几种情况:演出属性只有 `base` 和 `gameplay`;机位要写 `local (x, y, z)`,可以再写 `rot (pitch, yaw, roll)`;`restore` 里只能放把世界放回去的条目(`camera blend back`、`light restore`、`light key 角色 off`、`ui show hud`、`ui clear`、`vfx stop`)。只有 `text` 条目能在行尾写 `#id`(它的文字翻译时用的 key),别的条目写了也报这个码。
+**解释：**每条轨只接受自己的动词：
+
+| Track | Verbs |
+| --- | --- |
+| camera | `blend from game / back / ->`, `cut ->`, `whip ->`, `push`, `shake` |
+| light | `ramp dark`, `restore`, `key` |
+| mask | `distort`, `exposure`, `streaks`, `comic`, `cut black`, `fade black / white` |
+| vfx | `spawn`, `stop` |
+| ui | `hide hud`, `show hud`, `text`, `clear` |
+| anim | `montage` |
+| game | `input lock`, `hitstop`, `time`, `damage window` |
+| sequence | `play` |
+| audio | `sound`, `music` |
+| blocking | `move`、`face`、`look`；`back` 仅用于 `restore` |
+
+消息中会给出期望的写法。这个码还覆盖无效的演出属性（只能是 `base` 和 `gameplay`）、缺少 `local (x, y, z)` 的机位或标记（后面可选跟 `rot (pitch, yaw, roll)`），以及无效的 `restore` 条目。还原只接受会释放世界状态的操作：`camera blend back`、`light restore`、`light key Character off`、`ui show hud`、`ui clear`、`vfx stop` 和 `blocking back`。只有 `text` 条目可以用 `#id` 结尾（它的文字翻译时所用的 key）；其他条目上出现 `#id` 会在这里报出。
 
 <a id="dns7007"></a>
 
 ## DNS7007
 
-该写范围的写成了时刻,或者反过来。
+该写时刻的写成了范围，或者反过来。
 
-有的动词发生在一个时刻:镜头的移动和切换、`ramp dark` 与 `restore`、`show hud`、`clear`、`stop`、`montage`、`sequence play`,它们不能写成 `起..止`。有的动词是一段起落:`distort`、`exposure`、`streaks` 从范围开头升到正中最强再落下去,只写一个时刻就没有起落可言。按动词改成一个时刻或一个范围。
+**解释：**镜头的过渡与切换、`ramp dark`、`restore`、`show hud`、`clear`、`stop`、`montage`、`sequence play` 和 `shake` 都发生在一个时刻，不能使用 `Start..End`。`distort`、`exposure` 和 `streaks` 需要一个范围，才能升到范围中点的峰值再落下来。请按动词选择对应的时间写法。`music` 搭配 `keep` 时同样需要一个时刻，因为它要在演出结束后继续存在；如果音乐只在一个范围内持续，去掉 `keep`。
 
 <a id="dns7008"></a>
 
@@ -65,7 +79,7 @@ description: "时序、遮罩、恢复、单位与时间基"
 
 切到了演出没有声明的机位。
 
-`cut ->`、`blend ->`、`whip ->` 后面的名字要在这个演出的 `shots` 块里声明过:`名 local (x, y, z) [of 角色] [look 角色] [fov 度数]`。检查是不是名字拼错了,或者机位写在了别的演出里——机位只属于声明它的演出。
+**解释：**`cut ->`、`blend ->` 和 `whip ->` 的目标必须在本演出的 `shots` 块里声明过：`Name local (x, y, z) [of Character] [look Character] [fov Degrees]`。请检查拼写和归属；在别的演出里声明的机位在这里看不到。
 
 <a id="dns7009"></a>
 
@@ -73,12 +87,12 @@ description: "时序、遮罩、恢复、单位与时间基"
 
 绝对时间的演出没有写长度。
 
-按秒走的演出要有 `duration`,导演才知道什么时候演完、对话什么时候接着说、看门狗什么时候该介入。加上 `duration 6.0s` 这样的一行;如果这个演出其实是跟着台词走的,写 `base: line`,再用 `@演出名` 挂到台词上。
+**解释：**以秒计时的演出需要 `duration`，这样导演才知道什么时候演完、对话什么时候可以接下去、看门狗什么时候该介入。请加上类似 `duration 6.0s` 的声明。如果这是跟着台词走的演出，请改用 `base: line`，并用 `@StageName` 挂到台词上。
 
 <a id="dns7010"></a>
 
 ## DNS7010
 
-`play` 了一个跟着台词走的演出。
+`play` 用在了跟着台词走的演出上。
 
-写了 `base: line` 的演出没有自己的长度,它的时间是挂上的那一行台词给的,所以只能用 `@演出名` 挂在台词行上,不能单独 `play`。把它挂到台词上;如果要单独播,就把它改成绝对时间(去掉 `base: line`,写上 `duration`,时间改成秒)。
+**解释：**带 `base: line` 的演出没有自己的时长；它的时间由挂上的那一行台词提供。请用 `@StageName` 把它挂到台词上，或者去掉 `base: line`、声明 `duration` 并把时间改成秒，把它转成绝对时间。

@@ -1,7 +1,6 @@
----
-title: 角色与 fact
-description: 一本账:四种类型、谁能写、存在哪。
----
+<a id="characters-and-facts"></a>
+
+# 角色与 fact
 
 ```dna
 character 守夜人 player
@@ -9,14 +8,13 @@ character 老周
   display: 老周
 
 fact 见过老周: bool
-fact 找到的零件: int extern range 0..3     // extern:游戏写,剧情读
-fact 心情: tag in (平静, 不安) = 平静
-fact 已见结局 profile                       // 一组;成员是 已见结局.A
+fact 找到的零件: int extern range 0..3     // extern: the game writes; the story reads
+fact 小雾的信任: int range 0..3
+fact 已见结局 profile                       // A group; profile persists across saves and playthroughs
   A: bool
   B: bool
 ```
 
-- 类型只有 `bool`、`int`、`float`、`tag`;`range` 约束数值,`tag in (…)` 是有限集合。
-- **所有权**:剧情自己的 fact 只能由 `.dna` 写;游戏代码要喂的写 `extern`。
-- **作用域**:默认跟存档槽;`session` 不存盘;`profile` 跨存档、跨周目;`progress` 选章时保留。
-- `gameplay 标签`:extern fact 跟着能力系统上这个标签的计数(GAS 桥)。
+fact 有四种类型：`bool`、`int`、`float` 和 `tag`。诸如 `tag in (甲, 乙)` 这样的声明定义了一个有限集合。归故事所有的 fact 只能由 `.dna` 写入；来自游戏代码的写入会被拒绝。将游戏提供的值声明为 `extern`。
+
+默认作用域是存档槽。`session` 不会被持久化；`profile` 会跨存档槽持久化；`progress` 在选择章节时会保留其当前值。

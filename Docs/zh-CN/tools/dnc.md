@@ -1,16 +1,18 @@
 ---
 title: dnc 与测试
-description: 命令行、测试档位、探索器、录制回放。
+description: 命令行工具、测试预设、探索与录制/回放。
 ---
 
 ```powershell
-Tools/dnc.ps1 build                  # 编译源码目录下的所有 .dna(编辑器关着)
-Tools/dnc.ps1 lint                   # 只检查
-Tools/dnc.ps1 dump -File 灯塔.dna      # 看语法树
-Tools/dnc.ps1 test -Preset Quick     # 逻辑层、规格套件、冒烟;也有 Explore、Smoke、All
+Tools/dnc.ps1 build                  # Compile all .dna files in Source Directory with the editor closed
+Tools/dnc.ps1 lint                   # Check without writing assets
+Tools/dnc.ps1 dump -File 灯塔.dna      # Inspect the syntax tree
+Tools/dnc.ps1 test -Preset Quick     # Logic, specification and smoke; also Explore, Smoke and All
 ```
 
-- 测试在插件自带的测试宿主工程里跑,编辑器无头启动;报告(通过 / 失败 / 最慢的几个)写到 `Saved/DreamNarrativeTestReports`。
-- **规格套件**:每个 `test` 块是一条自动化测试;覆盖矩阵检查运行时的每条路径都有块走到。
-- **探索器**:`explore` 块把所有走法穷举,报软锁、`always` 的反例、不可达的内容。
-- **冒烟**:真的 GameInstance、真的世界:演出在玩家控制器上演,打断后世界逐项读回比较。
+- 测试在插件的宿主工程中以无头编辑器运行。通过、失败与最慢测试的报告写入 `Saved/DreamNarrativeTestReports`。
+- **规格套件**：每个 `test` 块是一条自动化测试；覆盖矩阵验证这些块覆盖了运行时路径。
+- **探索器**：`explore` 块枚举所有路径，并报告软锁、`always` 反例与不可达内容。
+- **冒烟测试**：使用真实的 GameInstance 和世界，在玩家控制器上播放演出，将其打断，再读回世界状态进行比较。
+
+编写与录制测试请参见 [test 与 explore 块](../language/tests.md)。
